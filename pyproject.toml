@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ngsolve_webgpu"
+version = "0.0.1"
+description = "NGSolve WebGPU addon"
+authors = [
+    { name = "Matthias Hochsteger", email = "mhochsteger@cerbsim.com" }
+]
+# license = { text = "MIT" }
+keywords = ["WebGPU", "compute shaders", "graphics", "Python", "NGSolve", "FEM", "Netgen"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    # "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent"
+]
+readme = "README.md"
+requires-python = ">=3.8"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ngsolve_webgpu*"]
+
+[tool.setuptools.package-data]
+# Include .wgsl and .js files in the webgpu package
+webgpu = ["shader/*.wgsl", "*.js"]
