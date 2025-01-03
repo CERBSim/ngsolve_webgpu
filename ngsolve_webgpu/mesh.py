@@ -1,15 +1,15 @@
 import math
 import typing
 from enum import Enum
+from pathlib import Path
 
 import ngsolve as ngs
 import ngsolve.webgui
 import numpy as np
 
-from .gpu import WebGPU
-from .uniforms import Binding
-from .utils import (
-    BaseBinding,
+from webgpu.gpu import RenderObject
+from webgpu.uniforms import Binding
+from webgpu.utils import (
     BufferBinding,
     ShaderStage,
     TextureBinding,
@@ -17,7 +17,7 @@ from .utils import (
     decode_bytes,
     encode_bytes,
 )
-from .webgpu_api import *
+from webgpu.webgpu_api import *
 
 
 class _eltype:
@@ -64,43 +64,10 @@ ElTypes2D = [ElType.TRIG, ElType.QUAD]
 ElTypes3D = [ElType.TET, ElType.HEX, ElType.PRISM, ElType.PYRAMID]
 
 
-class RenderObject:
-    """Base class for render objects"""
-
-    data: typing.Any
-    gpu: WebGPU
-    label: str = ""
-
-    def __init__(self, gpu, label=None):
-        self.gpu = gpu
-
-        if label is None:
-            self.label = self.__class__.__name__
-        else:
-            self.label = label
-
-        self.on_resize()
-
-    def render(self, encoder: CommandEncoder):
-        raise NotImplementedError
-
-    def on_resize(self):
-        pass
-
-    def get_bindings(self) -> list[BaseBinding]:
-        raise NotImplementedError
-
-    def create_bind_group(self):
-        return create_bind_group(self.device, self.get_bindings(), self.label)
-
-    @property
-    def device(self) -> Device:
-        return self.gpu.device
-
-
 class DataRenderObject(RenderObject):
     """Base class for render objects that use a "data" object, like MeshData"""
 
+    data: typing.Any
     _buffers: dict = {}
 
     def __init__(self, gpu, data, label=None):
@@ -132,7 +99,13 @@ class MeshRenderObject(DataRenderObject):
 
     def _create_pipelines(self):
         bind_layout, self._bind_group = self.create_bind_group()
-        shader_module = self.gpu.shader_module
+        shader_code = ""
+
+        d = Path(__file__).parent / "shader"
+        for file_name in ["clipping.wgsl", "eval.wgsl", "mesh.wgsl", "shader.wgsl", "uniforms.wgsl"]:
+            shader_code += (d / file_name).read_text()
+
+        shader_module = self.device.createShaderModule(shader_code)
 
         self._pipeline = self.device.createRenderPipeline(
             self.device.createPipelineLayout([bind_layout], self.label),

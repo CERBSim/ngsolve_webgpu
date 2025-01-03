@@ -24,5 +24,4 @@ where = ["."]
 include = ["ngsolve_webgpu*"]
 
 [tool.setuptools.package-data]
-# Include .wgsl and .js files in the webgpu package
-webgpu = ["shader/*.wgsl", "*.js"]
+webgpu = ["shader/*.wgsl"]
