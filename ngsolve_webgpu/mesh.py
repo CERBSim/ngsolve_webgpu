@@ -8,7 +8,7 @@ import ngsolve.webgui
 import numpy as np
 
 from webgpu.gpu import RenderObject
-from webgpu.uniforms import Binding
+# from webgpu.uniforms import Binding
 from webgpu.utils import (
     BufferBinding,
     ShaderStage,
@@ -16,8 +16,35 @@ from webgpu.utils import (
     create_bind_group,
     decode_bytes,
     encode_bytes,
+    read_shader_file
 )
 from webgpu.webgpu_api import *
+
+
+class Binding:
+    """Binding numbers for uniforms in shader code in uniforms.wgsl"""
+
+    EDGES = 8
+    TRIGS = 9
+    TRIG_FUNCTION_VALUES = 10
+    SEG_FUNCTION_VALUES = 11
+    VERTICES = 12
+    TRIGS_INDEX = 13
+    GBUFFERLAM = 14
+
+    MESH = 20
+    EDGE = 21
+    SEG = 22
+    TRIG = 23
+    QUAD = 24
+    TET = 25
+    PYRAMID = 26
+    PRISM = 27
+    HEX = 28
+
+    LINE_INTEGRAL_CONVOLUTION = 40
+    LINE_INTEGRAL_CONVOLUTION_INPUT_TEXTURE = 41
+    LINE_INTEGRAL_CONVOLUTION_OUTPUT_TEXTURE = 42
 
 
 class _eltype:
@@ -98,12 +125,14 @@ class MeshRenderObject(DataRenderObject):
         ]
 
     def _create_pipelines(self):
-        bind_layout, self._bind_group = self.create_bind_group()
+        bindings = self.get_bindings()
+        bind_layout, self._bind_group = create_bind_group(self.device, bindings, self.label)
         shader_code = ""
 
-        d = Path(__file__).parent / "shader"
-        for file_name in ["clipping.wgsl", "eval.wgsl", "mesh.wgsl", "shader.wgsl", "uniforms.wgsl"]:
-            shader_code += (d / file_name).read_text()
+        for file_name in ["clipping.wgsl", "eval.wgsl", "mesh.wgsl", "shader.wgsl", "uniforms.wgsl", ]:
+            shader_code += read_shader_file(file_name, __file__)
+
+        shader_code += self.gpu.colormap.get_shader_code()
 
         shader_module = self.device.createShaderModule(shader_code)
 

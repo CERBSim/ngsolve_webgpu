@@ -9,8 +9,6 @@
 @group(0) @binding(2) var<uniform> u_font : FontUniforms;
 @group(0) @binding(3) var u_font_texture : texture_2d<f32>;
 @group(0) @binding(5) var<uniform> u_function : FunctionUniforms;
-@group(0) @binding(6) var u_colormap_texture : texture_1d<f32>;
-@group(0) @binding(7) var u_colormap_sampler : sampler;
 @group(0) @binding(14) var gBufferLam : texture_2d<f32>;
 
 // legacy uniforms

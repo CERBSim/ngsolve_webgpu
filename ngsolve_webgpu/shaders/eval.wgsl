@@ -28,17 +28,17 @@ fn evalSeg(id: u32, icomp: u32, lam: f32) -> f32 {
     return v[0];
 }
 
-fn evalTrig(id: u32, icomp: u32, lam: vec2<f32>) -> f32 {
-    var order: i32 = i32(trig_function_values[1]);
-    let ncomp: u32 = u32(trig_function_values[0]);
+fn evalTrig( data: ptr<storage, array<f32>, read>, id: u32, icomp: u32, lam: vec2<f32>) -> f32 {
+    var order: i32 = i32(data[1]);
+    let ncomp: u32 = u32(data[0]);
     var ndof: u32 = u32((order + 1) * (order + 2) / 2);
 
-    let offset: u32 = ndof * id + VALUES_OFFSET;
+    let offset: u32 = ndof * id + VALUES_OFFSET + icomp;
     let stride: u32 = ncomp;
 
     var v: array<f32, 28>;
     for (var i: u32 = 0u; i < ndof; i++) {
-        v[i] = trig_function_values[offset + i * stride];
+        v[i] = data[offset + i * stride];
     }
 
     let dy = order + 1;

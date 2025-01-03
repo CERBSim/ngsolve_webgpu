@@ -47,11 +47,6 @@ fn checkClipping(p: vec3<f32>) {
     }
 }
 
-fn getColor(value: f32) -> vec4<f32> {
-    let v = (value - u_function.colormap.x) / (u_function.colormap.y - u_function.colormap.x);
-    return textureSample(u_colormap_texture, u_colormap_sampler, v);
-}
-
 @vertex
 fn vertexEdgeP1(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) edgeId: u32) -> VertexOutput1d {
     let edge = edges_p1[edgeId];
@@ -125,7 +120,8 @@ fn vertexTrigP1Indexed(@builtin(vertex_index) vertexId: u32, @builtin(instance_i
 @fragment
 fn fragmentTrig(input: VertexOutput2d) -> @location(0) vec4<f32> {
     checkClipping(input.p);
-    let value = evalTrig(input.id, 0u, input.lam);
+    let p = &trig_function_values;
+    let value = evalTrig(p, input.id, 0u, input.lam);
     return getColor(value);
 }
 
@@ -162,7 +158,8 @@ fn fragmentDeferred(@builtin(position) coord: vec4<f32>) -> @location(0) vec4<f3
     if lam.x == -1.0 {discard;}
     let trigId = bitcast<u32>(g_values.x);
 
-    let value = evalTrig(trigId, 0u, lam);
+    let p = &trig_function_values;
+    let value = evalTrig(p, trigId, 0u, lam);
     return getColor(value);
 }
 
@@ -170,7 +167,8 @@ fn fragmentDeferred(@builtin(position) coord: vec4<f32>) -> @location(0) vec4<f3
 @fragment
 fn fragmentTrigToGBuffer(@location(0) p: vec3<f32>, @location(1) lam: vec2<f32>, @location(2) @interpolate(flat) id: u32) -> @location(0) vec4<f32> {
     checkClipping(p);
-    let value = evalTrig(id, 0u, lam);
+    let pdata = &trig_function_values;
+    let value = evalTrig(pdata, id, 0u, lam);
     return vec4<f32>(bitcast<f32>(id), lam, 0.0);
 }
 
