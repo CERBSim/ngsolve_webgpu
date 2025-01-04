@@ -44,13 +44,10 @@ class GeometryRenderObject(RenderObject):
         vis_data = self.geo._visualizationData()
         verts = vis_data["vertices"].flatten()
         self.num_trigs = len(verts)//9
-        print("num trigs = ", self.num_trigs)
         normals = vis_data["normals"].flatten()
-        print("vertices = ", verts)
         center = 0.5 * (vis_data["max"] + vis_data["min"])
         diam = np.linalg.norm(vis_data["max"] - vis_data["min"])
         indices = np.array(vis_data["triangles"][3::4], dtype=np.uint32).flatten()
-        print("triangles = ", vis_data["triangles"])
         self._buffers = {}
         for key, data, binding in zip(("vertices", "normals", "indices"),
                              (verts, normals, indices),
