@@ -84,7 +84,6 @@ class GeometryRenderObject(RenderObject):
                 # shift trigs behind to ensure that edges are rendered properly
                 depthBias=1,
                 depthBiasSlopeScale=1.0))
-        self.gpu.update_uniforms()
 
     def render(self, encoder: CommandEncoder):
         render_pass = self.gpu.begin_render_pass(encoder, label=self.label)
