@@ -91,18 +91,19 @@ fn clipTet(lam: array<vec3f, 4>, values: array<f32, 4>) -> ClipTetResult {
 fn calcMeshFace(color: vec4<f32>, p: array<vec3<f32>, 3>, vertId: u32, nr: u32, index: u32) -> MeshFragmentInput {
     let n = cross(p[1] - p[0], p[2] - p[0]);
     let point = p[vertId % 3];
-    let position = calcPosition(point);
+    let position = cameraMapPoint(point);
     return MeshFragmentInput(position, color, point, n, nr, index);
 }
 
 @fragment
 fn fragmentMesh(input: MeshFragmentInput) -> @location(0) vec4<f32> {
+    return lightCalcColor(input.n, input.color);
     // checkClipping(input.p);
-    let n4 = u_view.normal_mat * vec4(input.n, 1.0);
-    let n = normalize(n4.xyz);
-    let brightness = clamp(dot(n, normalize(vec3<f32>(-1., -3., -3.))), .0, 1.) * 0.7 + 0.3;
-    let color = input.color.xyz * brightness;
-    return vec4<f32>(color, input.color.w);
+    // let n4 = cameraMapNormal(input.n);
+    // let n = normalize(n4.xyz);
+    // let brightness = clamp(dot(n, normalize(vec3<f32>(-1., -3., -3.))), .0, 1.) * 0.7 + 0.3;
+    // let color = input.color.xyz * brightness;
+    // return vec4<f32>(color, input.color.w);
 }
 
 @vertex

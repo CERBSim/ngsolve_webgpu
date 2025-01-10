@@ -21,10 +21,6 @@ struct VertexOutput3d {
   @location(3) n: vec3<f32>,
 };
 
-fn calcPosition(p: vec3<f32>) -> vec4<f32> {
-    return u_view.model_view_projection * vec4<f32>(p, 1.0);
-}
-
 fn calcClipping(p: vec3<f32>) -> bool {
     var result: bool = true;
     if (u_clipping.mode & 0x01u) == 0x01u {
@@ -57,7 +53,7 @@ fn vertexEdgeP1(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) e
         lam = 1.0;
     }
 
-    var position = calcPosition(p);
+    var position = cameraMapPoint(p);
     return VertexOutput1d(position, p, lam, edgeId);
 }
 
@@ -65,7 +61,7 @@ fn calcTrig(p: array<vec3<f32>, 3>, vertexId: u32, trigId: u32, faceSort: vec3u)
     var lam: vec3<f32> = vec3<f32>(0.);
     lam[faceSort[vertexId] ] = 1.0;
 
-    let position = calcPosition(p[vertexId]);
+    let position = cameraMapPoint(p[vertexId]);
     let normal = cross(p[1] - p[0], p[2] - p[0]);
 
     return VertexOutput2d(position, p[vertexId], lam.xy, trigId, normal);
@@ -203,7 +199,7 @@ fn vertexPointNumber(@builtin(vertex_index) vertexId: u32, @builtin(instance_ind
         return FragmentTextInput(vec4<f32>(-1.0, -1.0, 0.0, 1.0), vec2<f32>(0.));
     }
 
-    var position = calcPosition(p);
+    var position = cameraMapPoint(p);
     let i_digit = vertexId / 6;
     let vi = vertexId % 6;
 

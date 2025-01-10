@@ -4,10 +4,7 @@
 // They are used to pass data from the CPU to the GPU (variable names are only relevant within the shader code)
 
 // general uniforms
-@group(0) @binding(0) var<uniform> u_view : ViewUniforms;
 @group(0) @binding(1) var<uniform> u_clipping : ClippingUniforms;
-@group(0) @binding(2) var<uniform> u_font : FontUniforms;
-@group(0) @binding(3) var u_font_texture : texture_2d<f32>;
 @group(0) @binding(5) var<uniform> u_function : FunctionUniforms;
 @group(0) @binding(14) var gBufferLam : texture_2d<f32>;
 
@@ -64,17 +61,6 @@
 @group(0) @binding(61) var<storage,read_write> clpping_triangles: array<ClippingTrig>;
 
 // general uniform structures
-struct ViewUniforms {
-  model_view: mat4x4<f32>,
-  model_view_projection: mat4x4<f32>,
-  normal_mat: mat4x4<f32>,
-  aspect: f32,
-
-  padding0: u32,
-  padding1: u32,
-  padding2: u32,
-};
-
 struct ClippingUniforms {
   plane: vec4<f32>,
   sphere: vec4<f32>,
@@ -90,14 +76,6 @@ struct FunctionUniforms {
 
   padding0: f32,
   padding1: f32,
-};
-
-struct FontUniforms {
-  width: u32,
-  height: u32,
-
-  padding0: u32,
-  padding1: u32,
 };
 
 struct MeshUniforms {

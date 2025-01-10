@@ -126,6 +126,7 @@ class MeshRenderObject(DataRenderObject):
 
     def _create_pipelines(self):
         bindings = self.get_bindings()
+        print("bindings", bindings)
         bind_layout, self._bind_group = create_bind_group(
             self.device, bindings, self.label
         )
@@ -141,6 +142,7 @@ class MeshRenderObject(DataRenderObject):
             shader_code += read_shader_file(file_name, __file__)
 
         shader_code += self.gpu.colormap.get_shader_code()
+        shader_code += self.gpu.camera.get_shader_code()
 
         shader_module = self.device.createShaderModule(shader_code)
 

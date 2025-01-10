@@ -39,7 +39,7 @@ class GeometryRenderObject(RenderObject):
         import numpy as np
 
         bindings = [
-            *self.gpu.u_view.get_bindings(),
+            *self.gpu.camera.get_bindings(),
             *self.gpu.u_font.get_bindings(),
             *self.gpu.u_mesh.get_bindings(),
         ]

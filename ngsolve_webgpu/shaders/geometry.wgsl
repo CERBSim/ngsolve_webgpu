@@ -19,7 +19,7 @@ fn vertexGeo(@builtin(vertex_index) vertId: u32, @builtin(instance_index) trigId
   let normal = -vec3<f32>(u_normals[trigId * 9 + vertId * 3],
                          u_normals[trigId * 9 + vertId * 3 + 1],
                          u_normals[trigId * 9 + vertId * 3 + 2]);
-  let position = calcPosition(point);
+  let position = cameraMapPoint(point);
   return GeoFragmentInput(position,
                           point,
                           normal,
@@ -28,9 +28,5 @@ fn vertexGeo(@builtin(vertex_index) vertId: u32, @builtin(instance_index) trigId
 
 @fragment
 fn fragmentGeo(input: GeoFragmentInput) -> @location(0) vec4<f32> {
-  let n4 = u_view.normal_mat * vec4(input.n, 1.0);
-  let n = normalize(n4.xyz);
-  let brightness = clamp(dot(n, normalize(vec3<f32>(-1., -3., -3.))), .0, 1.) * 0.7 + 0.3;
-  let color = vec3<f32>(0.,1.,0.)* brightness;
-  return vec4<f32>(color, 1.0);
+  return lightCalcColor(input.n, vec3f(0., 1., 0.));
 }
