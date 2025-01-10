@@ -28,5 +28,5 @@ fn vertexGeo(@builtin(vertex_index) vertId: u32, @builtin(instance_index) trigId
 
 @fragment
 fn fragmentGeo(input: GeoFragmentInput) -> @location(0) vec4<f32> {
-  return lightCalcColor(input.n, vec3f(0., 1., 0.));
+  return lightCalcColor(input.n, vec4f(0., 1., 0., 1.));
 }

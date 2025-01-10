@@ -4,7 +4,6 @@
 // They are used to pass data from the CPU to the GPU (variable names are only relevant within the shader code)
 
 // general uniforms
-@group(0) @binding(1) var<uniform> u_clipping : ClippingUniforms;
 @group(0) @binding(5) var<uniform> u_function : FunctionUniforms;
 @group(0) @binding(14) var gBufferLam : texture_2d<f32>;
 
@@ -55,21 +54,6 @@
 @group(0) @binding(51) var<storage, read_write> create_mesh_trig_function_values : array<f32>;
 @group(0) @binding(52) var<storage, read_write> create_mesh_vertex_buffer : array<f32>;
 @group(0) @binding(53) var<storage, read_write> create_mesh_index_buffer : array<u32>;
-
-// 3d mesh clipping
-@group(0) @binding(60) var<storage,read_write> clipping_trig_counter: atomic<u32>;
-@group(0) @binding(61) var<storage,read_write> clpping_triangles: array<ClippingTrig>;
-
-// general uniform structures
-struct ClippingUniforms {
-  plane: vec4<f32>,
-  sphere: vec4<f32>,
-  mode: u32, // 0: disabled, 1: plane, 2: sphere, 3: both
-
-  padding0: u32,
-  padding1: u32,
-  padding2: u32,
-};
 
 struct FunctionUniforms {
   colormap: vec2<f32>,

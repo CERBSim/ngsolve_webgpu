@@ -7,6 +7,7 @@ import ngsolve as ngs
 import ngsolve.webgui
 import numpy as np
 from webgpu.gpu import RenderObject
+from webgpu.font import Font
 
 # from webgpu.uniforms import Binding
 from webgpu.utils import (
@@ -143,6 +144,7 @@ class MeshRenderObject(DataRenderObject):
 
         shader_code += self.gpu.colormap.get_shader_code()
         shader_code += self.gpu.camera.get_shader_code()
+        shader_code += self.gpu.light.get_shader_code()
 
         shader_module = self.device.createShaderModule(shader_code)
 
@@ -701,18 +703,18 @@ def create_testing_square_mesh(gpu, n):
 class PointNumbersRenderObject(DataRenderObject):
     """Render a point numbers of a mesh"""
 
-    _buffers: dict = {}
+    _buffers: dict
 
     def __init__(self, gpu, data, font_size=20, label=None):
         self.n_digits = 6
         self.gpu = gpu
-        self.set_font_size(font_size)
+        self.font = Font(gpu.device, font_size)
         super().__init__(gpu, data, label=label)
 
     def get_bindings(self):
         return [
             *self.gpu.get_bindings(),
-            TextureBinding(Binding.FONT_TEXTURE, self._texture, dim=2),
+            *self.font.get_bindings(),
             BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
         ]
 
@@ -720,7 +722,13 @@ class PointNumbersRenderObject(DataRenderObject):
         bind_layout, self._bind_group = create_bind_group(
             self.device, self.get_bindings(), "PointNumbersRenderObject"
         )
-        shader_module = self.gpu.shader_module
+
+        shader_code = read_shader_file("clipping.wgsl", __file__)
+        shader_code += read_shader_file("numbers.wgsl", __file__)
+        shader_code += read_shader_file("uniforms.wgsl", __file__)
+        shader_code += self.font.get_shader_code()
+        shader_code += self.gpu.camera.get_shader_code()
+        shader_module = self.device.createShaderModule(shader_code)
 
         self._pipeline = self.device.createRenderPipeline(
             label=self.label,
@@ -762,19 +770,9 @@ class PointNumbersRenderObject(DataRenderObject):
         )
 
     def render(self, encoder):
+        print("render numbers", self.label, self.data.num_verts)
         render_pass = self.gpu.begin_render_pass(encoder)
         render_pass.setBindGroup(0, self._bind_group)
         render_pass.setPipeline(self._pipeline)
         render_pass.draw(self.n_digits * 6, self.data.num_verts, 0, 0)
         render_pass.end()
-
-    def set_font_size(self, font_size: int):
-        from .font import create_font_texture
-
-        self._texture = create_font_texture(self.gpu.device, font_size)
-        char_width = self._texture.width // (127 - 32)
-        char_height = self._texture.height
-        self.gpu.u_font.width = char_width
-        self.gpu.u_font.height = char_height
-        if self._buffers:
-            self._create_pipeline()

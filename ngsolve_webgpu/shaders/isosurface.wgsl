@@ -117,8 +117,8 @@ fn clipTet(lam: array<vec3f, 4>, values: array<f32, 4>, ei: u32) -> ClipTetResul
     trigs.trigs[1].id = ei;
     trigs.trigs[1].lam = array(points[0], points[2], points[3]);
 
-    trigs.trigs[0] = checkOrientation(trigs.trigs[0], values);
-    trigs.trigs[1] = checkOrientation(trigs.trigs[1], values);
+    trigs.trigs[0] = clipCheckOrientation(trigs.trigs[0], values);
+    trigs.trigs[1] = clipCheckOrientation(trigs.trigs[1], values);
     return trigs;
 }
 

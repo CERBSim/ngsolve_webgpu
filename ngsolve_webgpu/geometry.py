@@ -40,7 +40,6 @@ class GeometryRenderObject(RenderObject):
 
         bindings = [
             *self.gpu.camera.get_bindings(),
-            *self.gpu.u_font.get_bindings(),
             *self.gpu.u_mesh.get_bindings(),
         ]
         vis_data = self.geo._visualizationData()
@@ -68,8 +67,12 @@ class GeometryRenderObject(RenderObject):
         )
         shader_code = ""
         shader_code += read_shader_file("colormap.wgsl", webgpu.__file__)
-        for shader in ["uniforms", "shader", "geometry", "eval"]:
+        for shader in ["uniforms", "shader", "geometry", "eval", "clipping"]:
             shader_code += read_shader_file(f"{shader}.wgsl", __file__)
+
+        shader_code += self.gpu.camera.get_shader_code()
+        shader_code += self.gpu.light.get_shader_code()
+
         shader_module = self.device.createShaderModule(shader_code)
 
         self._pipeline = self.device.createRenderPipeline(
