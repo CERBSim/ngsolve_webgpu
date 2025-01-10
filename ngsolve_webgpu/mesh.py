@@ -6,8 +6,8 @@ from pathlib import Path
 import ngsolve as ngs
 import ngsolve.webgui
 import numpy as np
-
 from webgpu.gpu import RenderObject
+
 # from webgpu.uniforms import Binding
 from webgpu.utils import (
     BufferBinding,
@@ -16,7 +16,7 @@ from webgpu.utils import (
     create_bind_group,
     decode_bytes,
     encode_bytes,
-    read_shader_file
+    read_shader_file,
 )
 from webgpu.webgpu_api import *
 
@@ -126,10 +126,18 @@ class MeshRenderObject(DataRenderObject):
 
     def _create_pipelines(self):
         bindings = self.get_bindings()
-        bind_layout, self._bind_group = create_bind_group(self.device, bindings, self.label)
+        bind_layout, self._bind_group = create_bind_group(
+            self.device, bindings, self.label
+        )
         shader_code = ""
 
-        for file_name in ["clipping.wgsl", "eval.wgsl", "mesh.wgsl", "shader.wgsl", "uniforms.wgsl", ]:
+        for file_name in [
+            "clipping.wgsl",
+            "eval.wgsl",
+            "mesh.wgsl",
+            "shader.wgsl",
+            "uniforms.wgsl",
+        ]:
             shader_code += read_shader_file(file_name, __file__)
 
         shader_code += self.gpu.colormap.get_shader_code()
@@ -158,6 +166,7 @@ class MeshRenderObject(DataRenderObject):
                 depthBias=1,
                 depthBiasSlopeScale=1.0,
             ),
+            multisample=self.gpu.multisample,
         )
 
     def render(self, encoder: CommandEncoder):
@@ -207,6 +216,7 @@ class MeshRenderObjectIndexed(MeshRenderObject):
                 depthBias=1,
                 depthBiasSlopeScale=1.0,
             ),
+            multisample=self.gpu.multisample,
         )
 
 
@@ -312,6 +322,7 @@ class MeshRenderObjectDeferred(DataRenderObject):
                 depthWriteEnabled=False,
                 depthCompare=CompareFunction.always,
             ),
+            multisample=self.gpu.multisample,
         )
 
     def render(self, encoder: CommandEncoder):
@@ -395,6 +406,7 @@ class Mesh3dElementsRenderObject(DataRenderObject):
                     depthBias=1.0,
                     depthBiasSlopeScale=1,
                 ),
+                multisample=self.gpu.multisample,
             )
 
     def render(self, encoder):
@@ -744,6 +756,7 @@ class PointNumbersRenderObject(DataRenderObject):
                 depthWriteEnabled=True,
                 depthCompare=CompareFunction.less,
             ),
+            multisample=self.gpu.multisample,
         )
 
     def render(self, encoder):

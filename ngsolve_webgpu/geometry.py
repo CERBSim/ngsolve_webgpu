@@ -1,4 +1,3 @@
-
 import webgpu
 from webgpu.gpu import RenderObject
 from webgpu.utils import (
@@ -8,21 +7,21 @@ from webgpu.utils import (
     create_bind_group,
     decode_bytes,
     encode_bytes,
-    read_shader_file
+    read_shader_file,
 )
-
 from webgpu.webgpu_api import (
-    CommandEncoder,
     BufferUsage,
-    VertexState,
-    FragmentState,
     ColorTargetState,
+    CommandEncoder,
+    CompareFunction,
+    DepthStencilState,
+    FragmentState,
     PrimitiveState,
     PrimitiveTopology,
-    DepthStencilState,
-    CompareFunction,
     TextureFormat,
+    VertexState,
 )
+
 
 class Binding:
     VERTICES = 90
@@ -38,29 +37,35 @@ class GeometryRenderObject(RenderObject):
 
     def update(self):
         import numpy as np
-        bindings = [*self.gpu.u_view.get_bindings(),
-                    *self.gpu.u_font.get_bindings(),
-                    *self.gpu.u_mesh.get_bindings()]
+
+        bindings = [
+            *self.gpu.u_view.get_bindings(),
+            *self.gpu.u_font.get_bindings(),
+            *self.gpu.u_mesh.get_bindings(),
+        ]
         vis_data = self.geo._visualizationData()
         verts = vis_data["vertices"].flatten()
-        self.num_trigs = len(verts)//9
+        self.num_trigs = len(verts) // 9
         normals = vis_data["normals"].flatten()
         center = 0.5 * (vis_data["max"] + vis_data["min"])
         diam = np.linalg.norm(vis_data["max"] - vis_data["min"])
         indices = np.array(vis_data["triangles"][3::4], dtype=np.uint32).flatten()
         self._buffers = {}
-        for key, data, binding in zip(("vertices", "normals", "indices"),
-                             (verts, normals, indices),
-                             (Binding.VERTICES, Binding.NORMALS,
-                              Binding.INDICES)):
-            b = self.device.createBuffer(size=len(data) * data.itemsize,
-                                         usage=BufferUsage.STORAGE | BufferUsage.COPY_DST)
+        for key, data, binding in zip(
+            ("vertices", "normals", "indices"),
+            (verts, normals, indices),
+            (Binding.VERTICES, Binding.NORMALS, Binding.INDICES),
+        ):
+            b = self.device.createBuffer(
+                size=len(data) * data.itemsize,
+                usage=BufferUsage.STORAGE | BufferUsage.COPY_DST,
+            )
             self.device.queue.writeBuffer(b, 0, data.tobytes())
             self._buffers[key] = b
             bindings.append(BufferBinding(binding, b))
-        bind_layout, self._bind_group = create_bind_group(self.device,
-                                                          bindings,
-                                                          self.label)
+        bind_layout, self._bind_group = create_bind_group(
+            self.device, bindings, self.label
+        )
         shader_code = ""
         shader_code += read_shader_file("colormap.wgsl", webgpu.__file__)
         for shader in ["uniforms", "shader", "geometry", "eval"]:
@@ -69,21 +74,24 @@ class GeometryRenderObject(RenderObject):
 
         self._pipeline = self.device.createRenderPipeline(
             self.device.createPipelineLayout([bind_layout], self.label),
-            vertex=VertexState(module=shader_module,
-                               entryPoint="vertexGeo"),
-            fragment=FragmentState(module=shader_module,
-                                   entryPoint="fragmentGeo",
-                                   targets=[
-                                       ColorTargetState(format=self.gpu.format)]),
-            primitive=PrimitiveState(
-                topology=PrimitiveTopology.triangle_list),
-            depthStencil = DepthStencilState(
+            vertex=VertexState(module=shader_module, entryPoint="vertexGeo"),
+            fragment=FragmentState(
+                module=shader_module,
+                entryPoint="fragmentGeo",
+                targets=[ColorTargetState(format=self.gpu.format)],
+            ),
+            primitive=PrimitiveState(topology=PrimitiveTopology.triangle_list),
+            depthStencil=DepthStencilState(
                 format=TextureFormat.depth24plus,
                 depthWriteEnabled=True,
                 depthCompare=CompareFunction.less,
                 # shift trigs behind to ensure that edges are rendered properly
                 depthBias=1,
-                depthBiasSlopeScale=1.0))
+                depthBiasSlopeScale=0.0,
+            ),
+            multisample=self.gpu.multisample,
+        )
+
         self.gpu.update_uniforms()
 
     def render(self, encoder: CommandEncoder):
@@ -95,15 +103,18 @@ class GeometryRenderObject(RenderObject):
 
 
 def render_geometry(geo, name="Geometry"):
-    from webgpu.jupyter import gpu
     import js
     import pyodide.ffi
+    from webgpu.jupyter import gpu
+
     render_object = GeometryRenderObject(gpu, geo, name)
+
     def render_function(t):
         gpu.update_uniforms()
         encoder = gpu.device.createCommandEncoder()
         render_object.render(encoder)
         gpu.device.queue.submit([encoder.finish()])
+
     render_function = pyodide.ffi.create_proxy(render_function)
     gpu.input_handler.render_function = render_function
     js.requestAnimationFrame(render_function)
