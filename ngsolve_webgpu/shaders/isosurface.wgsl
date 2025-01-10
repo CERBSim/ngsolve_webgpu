@@ -27,6 +27,27 @@ struct ClipTetResult {
   trigs: array<SubTrig, 2>,
 }
 
+
+fn clipCheckOrientation(trig: SubTrig, values: array<f32, 4>) -> SubTrig {
+  var result = trig;
+  let n = cross(
+    trig.lam[1] - trig.lam[0],
+    trig.lam[2] - trig.lam[0]
+  );
+
+  let p = 1.0/3*(trig.lam[0] + trig.lam[1] + trig.lam[2]) + n;
+  let p4 = 1.0 - p.x - p.y - p.z;
+  let value = p.x * values[0] + p.y * values[1] + p.z * values[2] + p4 * values[3];
+
+  if(value<0.0) {
+    result.lam[1] = trig.lam[2];
+    result.lam[2] = trig.lam[1];
+  }
+
+  return result;
+}
+
+
 // clip tet such that the clip triangle(s) have value 0 everywhere
 fn clipTet(lam: array<vec3f, 4>, values: array<f32, 4>, ei: u32) -> ClipTetResult {
     var trigs = ClipTetResult(0, array<SubTrig, 2>(SubTrig(array<vec3f, 3>(vec3f(0.0), vec3f(0.0), vec3f(0.0)), 0), SubTrig(array<vec3f, 3>(vec3f(0.0), vec3f(0.0), vec3f(0.0)), 0)));
@@ -69,6 +90,8 @@ fn clipTet(lam: array<vec3f, 4>, values: array<f32, 4>, ei: u32) -> ClipTetResul
             let lam_trig = mix(lam[p_pos[0] ], lam[p_neg[i] ], t);
             trigs.trigs[0].lam[i] = lam_trig;
         }
+
+        trigs.trigs[0] = clipCheckOrientation(trigs.trigs[0], values);
         return trigs;
     }
 
@@ -93,6 +116,9 @@ fn clipTet(lam: array<vec3f, 4>, values: array<f32, 4>, ei: u32) -> ClipTetResul
     trigs.trigs[0].lam = array(points[0], points[1], points[2]);
     trigs.trigs[1].id = ei;
     trigs.trigs[1].lam = array(points[0], points[2], points[3]);
+
+    trigs.trigs[0] = checkOrientation(trigs.trigs[0], values);
+    trigs.trigs[1] = checkOrientation(trigs.trigs[1], values);
     return trigs;
 }
 

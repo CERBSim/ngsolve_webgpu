@@ -67,7 +67,7 @@ class IsoSurfaceRenderObject(RenderObject):
                                                                    (0,1,0),
                                                                    (0,0,1)]),
                                               self.mesh.Materials(".*"))
-        func_values = self.cf(mesh_pts).flatten()
+        func_values = np.array(self.cf(mesh_pts).flatten(), dtype=np.float32)
         function_value_buffer = self.device.createBuffer(
             size=len(func_values) * func_values.itemsize,
             usage=BufferUsage.STORAGE | BufferUsage.COPY_DST,
@@ -75,7 +75,7 @@ class IsoSurfaceRenderObject(RenderObject):
         )
         self.device.queue.writeBuffer(
             function_value_buffer, 0, func_values.tobytes())
-        vertices = ngs.CF((ngs.x,ngs.y,ngs.z))(mesh_pts).flatten()
+        vertices = np.array(ngs.CF((ngs.x,ngs.y,ngs.z))(mesh_pts).flatten(), dtype=np.float32)
         vertex_buffer = self.device.createBuffer(
             size=len(vertices) * vertices.itemsize,
             label="vertex",
