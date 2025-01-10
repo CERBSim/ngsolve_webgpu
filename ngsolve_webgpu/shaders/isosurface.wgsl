@@ -28,8 +28,7 @@ struct ClipTetResult {
 }
 
 // clip tet such that the clip triangle(s) have value 0 everywhere
-fn clipTet(lam: array<vec3f, 4>, values: array<f32, 4>) -> ClipTetResult {
-    let ei = 0u;
+fn clipTet(lam: array<vec3f, 4>, values: array<f32, 4>, ei: u32) -> ClipTetResult {
     var trigs = ClipTetResult(0, array<SubTrig, 2>(SubTrig(array<vec3f, 3>(vec3f(0.0), vec3f(0.0), vec3f(0.0)), 0), SubTrig(array<vec3f, 3>(vec3f(0.0), vec3f(0.0), vec3f(0.0)), 0)));
     var p_pos = array<u32, 4>(0u, 0u, 0u, 0u);
     var p_neg = array<u32, 4>(0u, 0u, 0u, 0u);
@@ -100,8 +99,9 @@ fn clipTet(lam: array<vec3f, 4>, values: array<f32, 4>) -> ClipTetResult {
 fn get_tet_points(elid: u32) -> array<vec3f, 4>
 {
   var p: array<vec3f, 4>;
-  for (var i = 0; i < 4; i++) {
-    p[i] = vec3<f32>(vertices[3*elid], vertices[3*elid + 1], vertices[3*elid + 2]);
+  for (var i = 0u; i < 4u; i++) {
+    let i0 = 12*elid + 3*i;
+    p[i] = vec3<f32>(vertices[i0], vertices[i0+ 1], vertices[i0+2]);
   }
   return p;
 }
