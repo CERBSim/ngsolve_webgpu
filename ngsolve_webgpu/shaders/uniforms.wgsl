@@ -55,13 +55,6 @@
 @group(0) @binding(52) var<storage, read_write> create_mesh_vertex_buffer : array<f32>;
 @group(0) @binding(53) var<storage, read_write> create_mesh_index_buffer : array<u32>;
 
-struct FunctionUniforms {
-  colormap: vec2<f32>,
-
-  padding0: f32,
-  padding1: f32,
-};
-
 struct MeshUniforms {
   subdivision: u32,
   shrink: f32,

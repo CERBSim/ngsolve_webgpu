@@ -32,7 +32,7 @@ fn vertexIsoSurface(@builtin(vertex_index) vertId: u32, @builtin(instance_index)
       let lam = vec4f(trig.lam[k], 1.0 - trig.lam[k].x - trig.lam[k].y - trig.lam[k].z);      
       points[k] = lam.x * p[0] + lam.y * p[1] + lam.z * p[2] + lam.w * p[3];
     }
-  return calcMeshFace(vec4<f32>(points[vertId%3], 1.), points, vertId, 0,0);
+  return calcMeshFace(vec4<f32>(0,1,0, 1.), points, vertId, 0,0);
 }
 
 @fragment
@@ -41,8 +41,7 @@ fn fragmentIsoSurface(input: MeshFragmentInput) -> @location(0) vec4<f32> {
   let n4 = u_view.normal_mat * vec4(input.n, 1.0);
   let n = normalize(n4.xyz);
   let brightness = clamp(dot(n, normalize(vec3<f32>(-1., -3., -3.))), .0, 1.) * 0.7 + 0.3;
-  // let color = vec3<f32>(0.,1.,0.)* brightness;
   let color = input.color.xyz * brightness;
-  return vec4<f32>(color, 1.0);
+  return vec4<f32>(color, input.color.a);
 }
 

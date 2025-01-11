@@ -156,20 +156,18 @@ class IsoSurfaceRenderObject(RenderObject):
             self.n_cut_trigs = b[0]
             result_buffer.unmap()
             self.create_cut_trigs(b[0])
-            self.task = None
 
         if self.n_cut_trigs is None:
-            self.task = pyodide.webloop.asyncio.get_running_loop().run_until_complete(
+            task = pyodide.webloop.asyncio.get_running_loop().run_until_complete(
                 result_buffer.mapAsync(MapMode.READ, 0, 4)
             )
 
-            self.task.then(read_buffer)
+            task.then(read_buffer)
         else:
             print("Create render pipeline with cut trigs set = ", self.n_cut_trigs)
-            # encoder = self.gpu.device.createCommandEncoder()
-            render_cut_trigs_binding = BufferBinding(
-                82, cut_trigs_buffer, visibility=ShaderStage.VERTEX
-            )
+            encoder = self.gpu.device.createCommandEncoder()
+            render_cut_trigs_binding = BufferBinding(82, cut_trigs_buffer,
+                                                     visibility=ShaderStage.VERTEX)
             render_layout, self._bind_group = create_bind_group(
                 self.device, bindings + [render_cut_trigs_binding]
             )
@@ -201,9 +199,9 @@ class IsoSurfaceRenderObject(RenderObject):
             )
 
             self.cut_trigs_set = True
-            # self.render(encoder)
-            # self.gpu.update_uniforms()
-            # self.gpu.device.queue.submit([encoder.finish()])
+            self.render(encoder)
+            self.gpu.update_uniforms()
+            self.gpu.device.queue.submit([encoder.finish()])
 
         self._buffers += [
             cut_trigs_buffer,
@@ -219,9 +217,6 @@ class IsoSurfaceRenderObject(RenderObject):
         self.create_cut_trigs()
 
     def render(self, encoder):
-        if self.task:
-            return
-
         if self.cut_trigs_set is False:
             return
         print("render with cut trigs set = ", self.n_cut_trigs)
