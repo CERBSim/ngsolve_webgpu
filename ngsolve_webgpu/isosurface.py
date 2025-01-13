@@ -11,6 +11,7 @@ from webgpu.utils import (
     encode_bytes,
     read_shader_file,
 )
+from webgpu.colormap import Colormap
 from webgpu.webgpu_api import (
     BindGroupEntry,
     BindGroupLayoutEntry,
@@ -39,9 +40,10 @@ class Binding:
 
 
 class IsoSurfaceRenderObject(RenderObject):
-    def __init__(self, gpu, cf, mesh, label):
+    def __init__(self, gpu, levelset, function, mesh, label):
         super().__init__(gpu, label=label)
-        self.cf = cf
+        self.levelset = levelset
+        self.function = function
         self.mesh = mesh
         self.n_cut_trigs = None
         self.cut_trigs_set = False
@@ -65,7 +67,7 @@ class IsoSurfaceRenderObject(RenderObject):
             ngs.IntegrationRule([(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)]),
             self.mesh.Materials(".*"),
         )
-        func_values = np.array(self.cf(mesh_pts).flatten(), dtype=np.float32)
+        func_values = np.array(self.levelset(mesh_pts).flatten(), dtype=np.float32)
         function_value_buffer = self.device.createBuffer(
             size=len(func_values) * func_values.itemsize,
             usage=BufferUsage.STORAGE | BufferUsage.COPY_DST,
@@ -166,18 +168,35 @@ class IsoSurfaceRenderObject(RenderObject):
             )
 
             task.then(read_buffer)
+            def error(e):
+                print("error", e)
+                raise e
+            task.catch(error)
         else:
             print("Create render pipeline with cut trigs set = ", self.n_cut_trigs)
             encoder = self.gpu.device.createCommandEncoder()
+            draw_func_values = np.array(self.function(mesh_pts).flatten(), dtype=np.float32)
+            self.colormap = Colormap(self.gpu.device, min(draw_func_values), max(draw_func_values))
+            self.draw_func_value_buffer = self.device.createBuffer(
+                size=len(draw_func_values) * draw_func_values.itemsize,
+                usage=BufferUsage.STORAGE | BufferUsage.COPY_DST,
+                label="draw function",
+            )
+            self.device.queue.writeBuffer(
+                self.draw_func_value_buffer, 0, draw_func_values.tobytes()
+            )
+            draw_func_binding = BufferBinding(84, self.draw_func_value_buffer,
+                                              visibility=ShaderStage.VERTEX)
             render_cut_trigs_binding = BufferBinding(82, cut_trigs_buffer,
                                                      visibility=ShaderStage.VERTEX)
             render_layout, self._bind_group = create_bind_group(
-                self.device, bindings + [render_cut_trigs_binding]
+                self.device, bindings + [render_cut_trigs_binding, draw_func_binding,
+                                         *self.colormap.get_bindings()]
             )
             self.n_cut_trigs = count
             render_shader_code = read_shader_file("render_isosurface.wgsl", __file__)
             render_shader_module = self.device.createShaderModule(
-                render_shader_code + shader_code
+                render_shader_code + shader_code + self.colormap.get_shader_code()
             )
             self._pipeline = self.device.createRenderPipeline(
                 self.device.createPipelineLayout([render_layout], self.label),
@@ -238,12 +257,12 @@ class IsoSurfaceRenderObject(RenderObject):
         render_pass.end()
 
 
-def render_isosurface(cf, mesh, name="isosurface"):
+def render_isosurface(levelset, function, mesh, name="isosurface"):
     import js
     import pyodide.ffi
     from webgpu.jupyter import gpu
 
-    iso = IsoSurfaceRenderObject(gpu, cf, mesh, name)
+    iso = IsoSurfaceRenderObject(gpu, levelset, function, mesh, name)
     iso.set_render_camera(gpu.input_handler)
 
     def render_function(t):
