@@ -73,8 +73,11 @@ class IsoSurfaceRenderObject(RenderObject):
         )
         self.device.queue.writeBuffer(function_value_buffer, 0, func_values.tobytes())
         vertices = np.array(
-            ngs.CF((ngs.x, ngs.y, ngs.z))(mesh_pts).flatten(), dtype=np.float32
+            ngs.CF((ngs.x, ngs.y, ngs.z))(mesh_pts), dtype=np.float32
         )
+        self.pmin = np.min(vertices, axis=0)
+        self.pmax = np.max(vertices, axis=0)
+        vertices = vertices.flatten()
         vertex_buffer = self.device.createBuffer(
             size=len(vertices) * vertices.itemsize,
             label="vertex",
@@ -216,6 +219,14 @@ class IsoSurfaceRenderObject(RenderObject):
     def update(self):
         self.create_cut_trigs()
 
+    def set_render_camera(self, input_handler):
+        import numpy as np
+        input_handler.transform._center = 0.5 * (self.pmin + self.pmax)
+        input_handler.transform._scale = 2/np.linalg.norm(self.pmax - self.pmin)
+        input_handler.transform.rotate(30, -20)
+        input_handler._update_uniforms()
+
+
     def render(self, encoder):
         if self.cut_trigs_set is False:
             return
@@ -233,6 +244,7 @@ def render_isosurface(cf, mesh, name="isosurface"):
     from webgpu.jupyter import gpu
 
     iso = IsoSurfaceRenderObject(gpu, cf, mesh, name)
+    iso.set_render_camera(gpu.input_handler)
 
     def render_function(t):
         gpu.update_uniforms()

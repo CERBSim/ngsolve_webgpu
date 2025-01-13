@@ -35,6 +35,14 @@ class GeometryRenderObject(RenderObject):
         self.geo = geo
         self.update()
 
+    def set_render_camera(self, input_handler):
+        import numpy as np
+        input_handler.transform._center = 0.5 * (self.pmin + self.pmax)
+        input_handler.transform._scale = 2/np.linalg.norm(self.pmax - self.pmin)
+        input_handler.transform.rotate(30, -20)
+        input_handler._update_uniforms()
+
+
     def update(self):
         import numpy as np
 
@@ -43,12 +51,8 @@ class GeometryRenderObject(RenderObject):
             *self.gpu.u_mesh.get_bindings(),
         ]
         vis_data = self.geo._visualizationData()
-        pmin = np.array(vis_data["min"], dtype=np.float32)
-        pmax = np.array(vis_data["max"], dtype=np.float32)
-        self.gpu.input_handler.transform._center = 0.5 * (pmin + pmax)
-        self.gpu.input_handler.transform._scale = 2/np.linalg.norm(pmax - pmin)
-        self.gpu.input_handler.transform.rotate(30, -20)
-        self.gpu.input_handler._update_uniforms()
+        self.pmin = np.array(vis_data["min"], dtype=np.float32)
+        self.pmax = np.array(vis_data["max"], dtype=np.float32)
         verts = vis_data["vertices"].flatten()
         self.num_trigs = len(verts) // 9
         normals = vis_data["normals"].flatten()
@@ -116,7 +120,7 @@ def render_geometry(geo, name="Geometry"):
     from webgpu.jupyter import gpu
 
     render_object = GeometryRenderObject(gpu, geo, name)
-
+    render_object.set_render_camera(gpu.input_handler)
     def render_function(t):
         gpu.update_uniforms()
         encoder = gpu.device.createCommandEncoder()
