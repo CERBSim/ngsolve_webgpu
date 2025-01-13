@@ -4,21 +4,14 @@ from webgpu.gpu import RenderObject
 from webgpu.utils import (
     BufferBinding,
     ShaderStage,
-    TextureBinding,
     UniformBinding,
     create_bind_group,
-    decode_bytes,
-    encode_bytes,
     read_shader_file,
 )
 from webgpu.colormap import Colormap
 from webgpu.webgpu_api import (
-    BindGroupEntry,
-    BindGroupLayoutEntry,
     BufferUsage,
-    Color,
     ColorTargetState,
-    CommandEncoder,
     CompareFunction,
     ComputeState,
     DepthStencilState,
@@ -26,18 +19,17 @@ from webgpu.webgpu_api import (
     MapMode,
     PrimitiveState,
     PrimitiveTopology,
-    RenderPassColorAttachment,
-    RenderPassDepthStencilAttachment,
     TextureFormat,
     VertexState,
 )
 
-
 class Binding:
-    VERTICES = 90
-    NORMALS = 91
-    INDICES = 92
-
+    COUNTER = 80
+    COUNT_FLAG = 81
+    CUT_TRIANGLES = 82
+    FUNCTION_VALUES = 83
+    DRAW_FUNCTION_VALUES = 84
+    VERTICES = 12
 
 class IsoSurfaceRenderObject(RenderObject):
     def __init__(self, gpu, levelset, function, mesh, label):
@@ -51,7 +43,6 @@ class IsoSurfaceRenderObject(RenderObject):
         self.update()
 
     def count_cut_trigs(self):
-        count = None
         import ngsolve as ngs
 
         compute_encoder = self.gpu.device.createCommandEncoder(label="count_iso_trigs")
@@ -93,7 +84,9 @@ class IsoSurfaceRenderObject(RenderObject):
             usage=BufferUsage.STORAGE,
         )
         cut_trigs_binding = BufferBinding(
-            82, cut_trigs_buffer, read_only=False, visibility=ShaderStage.COMPUTE
+            Binding.CUT_TRIANGLES,
+            cut_trigs_buffer, read_only=False,
+            visibility=ShaderStage.COMPUTE
         )
         self.device.queue.writeBuffer(self.vertex_buffer, 0, vertices.tobytes())
         self.result_buffer = self.device.createBuffer(
@@ -114,12 +107,15 @@ class IsoSurfaceRenderObject(RenderObject):
             *self.gpu.camera.get_bindings(),
             *self.gpu.u_mesh.get_bindings(),
             BufferBinding(
-                80, self.counter_buffer, read_only=False, visibility=ShaderStage.COMPUTE
+                Binding.COUNTER, self.counter_buffer,
+                read_only=False, visibility=ShaderStage.COMPUTE
             ),
-            BufferBinding(83, self.function_value_buffer,
+            BufferBinding(Binding.FUNCTION_VALUES,
+                          self.function_value_buffer,
                           visibility=ShaderStage.ALL),
-            BufferBinding(12, self.vertex_buffer, visibility=ShaderStage.ALL),
-            UniformBinding(81, self.only_count),
+            BufferBinding(Binding.VERTICES,
+                          self.vertex_buffer, visibility=ShaderStage.ALL),
+            UniformBinding(Binding.COUNT_FLAG, self.only_count),
             cut_trigs_binding
         ]
 
@@ -184,19 +180,21 @@ class IsoSurfaceRenderObject(RenderObject):
             usage=BufferUsage.STORAGE,
         )
         cut_trigs_binding = BufferBinding(
-            82, self.cut_trigs_buffer, read_only=False, visibility=ShaderStage.COMPUTE
+            Binding.CUT_TRIANGLES, self.cut_trigs_buffer,
+            read_only=False, visibility=ShaderStage.COMPUTE
         )
         bindings = [
             *self.gpu.camera.get_bindings(),
             *self.gpu.u_mesh.get_bindings(),
             BufferBinding(
-                80, self.counter_buffer,
+                Binding.COUNTER, self.counter_buffer,
                 read_only=False, visibility=ShaderStage.COMPUTE
             ),
-            BufferBinding(83, self.function_value_buffer,
+            BufferBinding(Binding.FUNCTION_VALUES, self.function_value_buffer,
                           visibility=ShaderStage.ALL),
-            BufferBinding(12, self.vertex_buffer, visibility=ShaderStage.ALL),
-            UniformBinding(81, self.only_count),
+            BufferBinding(Binding.VERTICES, self.vertex_buffer,
+                          visibility=ShaderStage.ALL),
+            UniformBinding(Binding.COUNT_FLAG, self.only_count),
         ]
 
         layout, group = create_bind_group(
@@ -236,9 +234,11 @@ class IsoSurfaceRenderObject(RenderObject):
         self.device.queue.writeBuffer(
             self.draw_func_value_buffer, 0, draw_func_values.tobytes()
         )
-        draw_func_binding = BufferBinding(84, self.draw_func_value_buffer,
+        draw_func_binding = BufferBinding(Binding.DRAW_FUNCTION_VALUES,
+                                          self.draw_func_value_buffer,
                                           visibility=ShaderStage.VERTEX)
-        render_cut_trigs_binding = BufferBinding(82, self.cut_trigs_buffer,
+        render_cut_trigs_binding = BufferBinding(Binding.CUT_TRIANGLES,
+                                                 self.cut_trigs_buffer,
                                                  visibility=ShaderStage.VERTEX)
         render_layout, self._bind_group = create_bind_group(
             self.device, bindings + [render_cut_trigs_binding, draw_func_binding,
