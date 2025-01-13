@@ -708,7 +708,7 @@ class PointNumbersRenderObject(DataRenderObject):
     def __init__(self, gpu, data, font_size=20, label=None):
         self.n_digits = 6
         self.gpu = gpu
-        self.font = Font(gpu.device, font_size)
+        self.font = Font(gpu, font_size)
         super().__init__(gpu, data, label=label)
 
     def get_bindings(self):

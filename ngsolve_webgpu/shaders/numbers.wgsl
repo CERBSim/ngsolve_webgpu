@@ -29,8 +29,8 @@ fn vertexPointNumber(@builtin(vertex_index) vertexId: u32, @builtin(instance_ind
     }
     digit = digit % 10;
 
-    let w: f32 = 2 * f32(u_font.width) / 400.;
-    let h: f32 = 2 * f32(u_font.height) / 400.;
+    let w: f32 = 2 * f32(u_font.width) / f32(u_font.canvas_width);
+    let h: f32 = 2 * f32(u_font.height) / f32(u_font.canvas_height);
 
     var tex_coord = vec2<f32>(
         f32((digit + 16) * u_font.width),
