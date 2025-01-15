@@ -1,26 +1,12 @@
 import numpy as np
-import webgpu
-from webgpu.gpu import RenderObject
-from webgpu.utils import (
-    BufferBinding,
-    ShaderStage,
-    UniformBinding,
-    create_bind_group,
-    read_shader_file,
-)
-from webgpu.colormap import Colormap
+from webgpu import (RenderObject, BufferBinding, read_shader_file, Colormap,
+                    UniformBinding, create_bind_group)
 from webgpu.webgpu_api import (
     BufferUsage,
-    ColorTargetState,
-    CompareFunction,
-    ComputeState,
-    DepthStencilState,
-    FragmentState,
-    MapMode,
-    PrimitiveState,
     PrimitiveTopology,
-    TextureFormat,
-    VertexState,
+    ComputeState,
+    ShaderStage,
+    MapMode,
 )
 
 
@@ -32,24 +18,24 @@ class Binding:
     DRAW_FUNCTION_VALUES = 84
     VERTICES = 12
 
-
 class IsoSurfaceRenderObject(RenderObject):
+    n_vertices: int = 3
+    vertex_entry_point: str = "vertexIsoSurface"
+    fragment_entry_point: str = "fragmentIsoSurface"
+
     def __init__(self, gpu, levelset, function, mesh, label):
         super().__init__(gpu, label=label)
         self.levelset = levelset
         self.function = function
         self.mesh = mesh
-        self.n_cut_trigs = None
         self.cut_trigs_set = False
         self.task = None
-        self.update()
 
     def count_cut_trigs(self):
         import ngsolve as ngs
 
         compute_encoder = self.gpu.device.createCommandEncoder(label="count_iso_trigs")
         # binding -> counter i32
-        print("mesh tets = ", self.mesh.ne)
         self.counter_buffer = self.device.createBuffer(
             size=4,
             usage=BufferUsage.STORAGE | BufferUsage.COPY_SRC | BufferUsage.COPY_DST,
@@ -82,7 +68,7 @@ class IsoSurfaceRenderObject(RenderObject):
         )
         # just a dummy here, needed in create
         cut_trigs_buffer = self.device.createBuffer(
-            label="cut trigs " + str(self.n_cut_trigs),
+            label="cut trigs " + str(self.n_instances),
             size=64,
             usage=BufferUsage.STORAGE,
         )
@@ -159,12 +145,15 @@ class IsoSurfaceRenderObject(RenderObject):
         import pyodide
 
         def read_buffer(task):
-            data = self.result_buffer.getMappedRange(0, 4)
-            b = np.frombuffer(memoryview(data.to_py()), dtype=np.int32)
-            # conversion to int imporant, type is np.uint32 which fucks things up...
-            self.n_cut_trigs = int(b[0])
-            self.result_buffer.unmap()
-            self.create_cut_trigs()
+            try:
+                data = self.result_buffer.getMappedRange(0, 4)
+                b = np.frombuffer(memoryview(data.to_py()), dtype=np.int32)
+                # conversion to int imporant, type is np.uint32 which fucks things up...
+                self.n_instances = int(b[0])
+                self.result_buffer.unmap()
+                self.create_cut_trigs()
+            except Exception as e:
+                print(e)
 
         task = pyodide.webloop.asyncio.get_running_loop().run_until_complete(
             self.result_buffer.mapAsync(MapMode.READ, 0, 4)
@@ -186,9 +175,9 @@ class IsoSurfaceRenderObject(RenderObject):
         self.device.queue.writeBuffer(
             self.counter_buffer, 0, np.array([0], dtype=np.uint32).tobytes(), 0, 4
         )
-        cut_buffer_size = 64 * self.n_cut_trigs
+        cut_buffer_size = 64 * self.n_instances
         self.cut_trigs_buffer = self.device.createBuffer(
-            label="cut trigs " + str(self.n_cut_trigs),
+            label="cut trigs ",
             size=cut_buffer_size,
             usage=BufferUsage.STORAGE,
         )
@@ -227,6 +216,7 @@ class IsoSurfaceRenderObject(RenderObject):
         shader_module = self.device.createShaderModule(
             compute_shader_code + shader_code
         )
+        self.shader_code = shader_code
         pipeline = self.device.createComputePipeline(
             self.device.createPipelineLayout([layout], self.label + " create"),
             label="count_iso_trigs",
@@ -242,8 +232,7 @@ class IsoSurfaceRenderObject(RenderObject):
         compute_pass.end()
 
         self.device.queue.submit([compute_encoder.finish()])
-        print("Create render pipeline with cut trigs set = ", self.n_cut_trigs)
-        encoder = self.gpu.device.createCommandEncoder()
+        print("Create render pipeline with cut trigs set = ", self.n_instances)
         draw_func_values = np.array(
             self.function(self.mesh_pts).flatten(), dtype=np.float32
         )
@@ -258,89 +247,47 @@ class IsoSurfaceRenderObject(RenderObject):
         self.device.queue.writeBuffer(
             self.draw_func_value_buffer, 0, draw_func_values.tobytes()
         )
-        draw_func_binding = BufferBinding(
-            Binding.DRAW_FUNCTION_VALUES,
-            self.draw_func_value_buffer,
-            visibility=ShaderStage.VERTEX,
-        )
-        render_cut_trigs_binding = BufferBinding(
-            Binding.CUT_TRIANGLES, self.cut_trigs_buffer, visibility=ShaderStage.VERTEX
-        )
-        render_layout, self._bind_group = create_bind_group(
-            self.device,
-            bindings
-            + [
-                render_cut_trigs_binding,
-                draw_func_binding,
-                *self.colormap.get_bindings(),
-            ],
-        )
-        render_shader_code = read_shader_file("render_isosurface.wgsl", __file__)
-        render_shader_module = self.device.createShaderModule(
-            render_shader_code + shader_code + self.colormap.get_shader_code()
-        )
-        self._pipeline = self.device.createRenderPipeline(
-            self.device.createPipelineLayout([render_layout], self.label),
-            vertex=VertexState(
-                module=render_shader_module, entryPoint="vertexIsoSurface"
-            ),
-            fragment=FragmentState(
-                module=render_shader_module,
-                entryPoint="fragmentIsoSurface",
-                targets=[ColorTargetState(format=self.gpu.format)],
-            ),
-            primitive=PrimitiveState(topology=PrimitiveTopology.triangle_list),
-            depthStencil=DepthStencilState(
-                format=TextureFormat.depth24plus,
-                depthWriteEnabled=True,
-                depthCompare=CompareFunction.less,
-                # shift trigs behind to ensure that edges are rendered properly
-                depthBias=1,
-                depthBiasSlopeScale=1.0,
-            ),
-            multisample=self.gpu.multisample,
-        )
-
+        self.create_render_pipeline()
         self.cut_trigs_set = True
-        self.render(encoder)
+        encoder = self.gpu.device.createCommandEncoder()
         self.gpu.update_uniforms()
+        self.render(encoder)
         self.gpu.device.queue.submit([encoder.finish()])
+
+    def get_bindings(self):
+        return [
+            *self.gpu.camera.get_bindings(),
+            *self.gpu.u_mesh.get_bindings(),
+            *self.colormap.get_bindings(),
+            BufferBinding(
+                Binding.FUNCTION_VALUES,
+                self.function_value_buffer,
+            ),
+            BufferBinding(
+                Binding.VERTICES, self.vertex_buffer,
+            ),
+            UniformBinding(Binding.COUNT_FLAG, self.only_count),
+            BufferBinding(
+                Binding.CUT_TRIANGLES, self.cut_trigs_buffer, visibility=ShaderStage.VERTEX
+                ),
+            BufferBinding(
+                Binding.DRAW_FUNCTION_VALUES,
+                self.draw_func_value_buffer,
+                visibility=ShaderStage.VERTEX),
+            ]
+        
+
+    def get_shader_code(self):
+        render_shader_code = read_shader_file("render_isosurface.wgsl", __file__)
+        return render_shader_code + self.shader_code + self.colormap.get_shader_code()
 
     def update(self):
         self.count_cut_trigs()
 
-    def set_render_camera(self, input_handler):
-        import numpy as np
-
-        input_handler.transform._center = 0.5 * (self.pmin + self.pmax)
-        input_handler.transform._scale = 2 / np.linalg.norm(self.pmax - self.pmin)
-        input_handler.transform.rotate(30, -20)
-        input_handler._update_uniforms()
+    def get_bounding_box(self):
+        return (self.pmin, self.pmax)
 
     def render(self, encoder):
         if self.cut_trigs_set is False:
             return
-        render_pass = self.gpu.begin_render_pass(encoder, label=self.label)
-        render_pass.setBindGroup(0, self._bind_group)
-        render_pass.setPipeline(self._pipeline)
-        render_pass.draw(3, self.n_cut_trigs)
-        render_pass.end()
-
-
-def render_isosurface(levelset, function, mesh, name="isosurface"):
-    import js
-    import pyodide.ffi
-    from webgpu.jupyter import gpu
-
-    iso = IsoSurfaceRenderObject(gpu, levelset, function, mesh, name)
-    iso.set_render_camera(gpu.input_handler)
-
-    def render_function(t):
-        gpu.update_uniforms()
-        encoder = gpu.device.createCommandEncoder()
-        iso.render(encoder)
-        gpu.device.queue.submit([encoder.finish()])
-
-    render_function = pyodide.ffi.create_proxy(render_function)
-    gpu.input_handler.render_function = render_function
-    # js.requestAnimationFrame(render_function)
+        super().render(encoder)
