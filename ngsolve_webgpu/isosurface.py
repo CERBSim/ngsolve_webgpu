@@ -3,7 +3,6 @@ from webgpu import (RenderObject, BufferBinding, read_shader_file, Colormap,
                     UniformBinding, create_bind_group)
 from webgpu.webgpu_api import (
     BufferUsage,
-    PrimitiveTopology,
     ComputeState,
     ShaderStage,
     MapMode,

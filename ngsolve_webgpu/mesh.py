@@ -163,7 +163,8 @@ class MeshData:
                 vertices[i, :2] = v.point
             else:
                 vertices[i, :] = v.point
-
+        self.pmin = np.min(vertices, axis=0)
+        self.pmax = np.max(vertices, axis=0)
         self.vertices = vertices.tobytes()
 
         self.num_trigs = len(mesh.ngmesh.Elements2D())
@@ -213,6 +214,9 @@ class MeshData:
             self.elements[eltype] = np.array(
                 self.elements[eltype], dtype=np.uint32
             ).tobytes()
+
+    def get_bounding_box(self):
+        return (self.pmin, self.pmax)
 
     def get_buffers(self, device: Device):
         if not self._buffers:
@@ -291,6 +295,9 @@ class MeshRenderObject(RenderObject):
                 Binding.TRIG_FUNCTION_VALUES, self._buffers["trig_function_values"]
             ),
         ]
+
+    def get_bounding_box(self):
+        return self.data.get_bounding_box()
 
     def get_shader_code(self):
         shader_code = ""
@@ -704,6 +711,9 @@ class PointNumbersRenderObject(RenderObject):
         shader_code += self.font.get_shader_code()
         shader_code += self.gpu.camera.get_shader_code()
         return shader_code
+
+    def get_bounding_box(self):
+        return self.data.get_bounding_box()
 
     def get_bindings(self):
         return [
