@@ -1,11 +1,12 @@
-
 import webgpu
 from webgpu.webgpu_api import BufferUsage
+
 
 class Binding:
     VERTICES = 90
     NORMALS = 91
     INDICES = 92
+
 
 class GeometryRenderObject(webgpu.RenderObject):
     vertex_entry_point: str = "vertexGeo"
@@ -19,12 +20,9 @@ class GeometryRenderObject(webgpu.RenderObject):
     def get_bounding_box(self):
         return self.bounding_box
 
-    def get_bindings(self):
+    def update(self):
         import numpy as np
-        bindings = [
-            *self.gpu.camera.get_bindings(),
-            *self.gpu.u_mesh.get_bindings(),
-        ]
+
         vis_data = self.geo._visualizationData()
         self.bounding_box = (vis_data["min"], vis_data["max"])
         verts = vis_data["vertices"].flatten()
@@ -32,10 +30,9 @@ class GeometryRenderObject(webgpu.RenderObject):
         normals = vis_data["normals"].flatten()
         indices = np.array(vis_data["triangles"][3::4], dtype=np.uint32).flatten()
         self._buffers = {}
-        for key, data, binding in zip(
+        for key, data in zip(
             ("vertices", "normals", "indices"),
             (verts, normals, indices),
-            (Binding.VERTICES, Binding.NORMALS, Binding.INDICES),
         ):
             b = self.device.createBuffer(
                 size=len(data) * data.itemsize,
@@ -43,8 +40,17 @@ class GeometryRenderObject(webgpu.RenderObject):
             )
             self.device.queue.writeBuffer(b, 0, data.tobytes())
             self._buffers[key] = b
-            bindings.append(webgpu.BufferBinding(binding, b))
-        return bindings
+
+        self.create_render_pipeline()
+
+    def get_bindings(self):
+        return [
+            *self.gpu.camera.get_bindings(),
+            *self.gpu.u_mesh.get_bindings(),
+            webgpu.BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
+            webgpu.BufferBinding(Binding.NORMALS, self._buffers["normals"]),
+            webgpu.BufferBinding(Binding.INDICES, self._buffers["indices"]),
+        ]
 
     def get_shader_code(self):
         shader_code = webgpu.read_shader_file("colormap.wgsl", webgpu.__file__)
