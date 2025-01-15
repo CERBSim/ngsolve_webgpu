@@ -678,16 +678,32 @@ def create_testing_square_mesh(gpu, n):
     return data
 
 
-class PointNumbersRenderObject(DataRenderObject):
+class PointNumbersRenderObject(RenderObject):
     """Render a point numbers of a mesh"""
 
     _buffers: dict
 
     def __init__(self, gpu, data, font_size=20, label=None):
+        super().__init__(gpu, label=label)
         self.n_digits = 6
-        self.gpu = gpu
         self.font = Font(gpu, font_size)
-        super().__init__(gpu, data, label=label)
+        self.data = data
+        self.vertex_entry_point = "vertexPointNumber"
+        self.fragment_entry_point = "fragmentText"
+        self.n_vertices = self.n_digits * 6
+        self.n_instances = self.data.num_verts
+
+    def update(self):
+        self._buffers = self.data.get_buffers(self.device)
+        self.create_render_pipeline()
+
+    def get_shader_code(self):
+        shader_code = read_shader_file("clipping.wgsl", __file__)
+        shader_code += read_shader_file("numbers.wgsl", __file__)
+        shader_code += read_shader_file("uniforms.wgsl", __file__)
+        shader_code += self.font.get_shader_code()
+        shader_code += self.gpu.camera.get_shader_code()
+        return shader_code
 
     def get_bindings(self):
         return [
@@ -695,62 +711,3 @@ class PointNumbersRenderObject(DataRenderObject):
             *self.font.get_bindings(),
             BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
         ]
-
-    def _create_pipelines(self):
-        bind_layout, self._bind_group = create_bind_group(
-            self.device, self.get_bindings(), "PointNumbersRenderObject"
-        )
-
-        shader_code = read_shader_file("clipping.wgsl", __file__)
-        shader_code += read_shader_file("numbers.wgsl", __file__)
-        shader_code += read_shader_file("uniforms.wgsl", __file__)
-        shader_code += self.font.get_shader_code()
-        shader_code += self.gpu.camera.get_shader_code()
-        shader_module = self.device.createShaderModule(shader_code)
-
-        self._pipeline = self.device.createRenderPipeline(
-            label=self.label,
-            layout=self.device.createPipelineLayout([bind_layout]),
-            vertex=VertexState(
-                module=shader_module,
-                entryPoint="vertexPointNumber",
-            ),
-            fragment=FragmentState(
-                module=shader_module,
-                entryPoint="fragmentText",
-                targets=[
-                    ColorTargetState(
-                        format=self.gpu.format,
-                        blend=BlendState(
-                            color=BlendComponent(
-                                srcFactor=BlendFactor.one,
-                                dstFactor=BlendFactor.one_minus_src_alpha,
-                                operation=BlendOperation.add,
-                            ),
-                            alpha=BlendComponent(
-                                srcFactor=BlendFactor.one,
-                                dstFactor=BlendFactor.one_minus_src_alpha,
-                                operation=BlendOperation.add,
-                            ),
-                        ),
-                    )
-                ],
-            ),
-            primitive=PrimitiveState(
-                topology=PrimitiveTopology.triangle_list,
-            ),
-            depthStencil=DepthStencilState(
-                format=TextureFormat.depth24plus,
-                depthWriteEnabled=True,
-                depthCompare=CompareFunction.less,
-            ),
-            multisample=self.gpu.multisample,
-        )
-
-    def render(self, encoder):
-        print("render numbers", self.label, self.data.num_verts)
-        render_pass = self.gpu.begin_render_pass(encoder)
-        render_pass.setBindGroup(0, self._bind_group)
-        render_pass.setPipeline(self._pipeline)
-        render_pass.draw(self.n_digits * 6, self.data.num_verts, 0, 0)
-        render_pass.end()
