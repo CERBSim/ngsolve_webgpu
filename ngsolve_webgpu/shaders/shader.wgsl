@@ -71,67 +71,7 @@ fn fragmentTrig(input: VertexOutput2d) -> @location(0) vec4<f32> {
 }
 
 @fragment
-fn fragmentTrigMesh(@location(0) p: vec3<f32>, @location(1) lam: vec2<f32>, @location(2) @interpolate(flat) id: u32) -> @location(0) vec4<f32> {
-    checkClipping(p);
-    let value = id;
-    return vec4<f32>(0., 1.0, 0.0, 1.0);
-}
-
-@fragment
 fn fragmentEdge(@location(0) p: vec3<f32>) -> @location(0) vec4<f32> {
     checkClipping(p);
     return vec4<f32>(0, 0, 0, 1.0);
 }
-
-struct DeferredFragmentOutput {
-  @builtin(position) fragPosition: vec4<f32>,
-
-};
-
-
-@fragment
-fn fragmentDeferred(@builtin(position) coord: vec4<f32>) -> @location(0) vec4<f32> {
-    let bufferSize = textureDimensions(gBufferLam);
-    let coordUV = coord.xy / vec2f(bufferSize);
-
-    let g_values = textureLoad(
-        gBufferLam,
-        vec2i(floor(coord.xy)),
-        0
-    );
-    let lam = g_values.yz;
-    if lam.x == -1.0 {discard;}
-    let trigId = bitcast<u32>(g_values.x);
-
-    let p = &trig_function_values;
-    let value = evalTrig(p, trigId, 0u, lam);
-    return getColor(value);
-}
-
-
-@fragment
-fn fragmentTrigToGBuffer(@location(0) p: vec3<f32>, @location(1) lam: vec2<f32>, @location(2) @interpolate(flat) id: u32) -> @location(0) vec4<f32> {
-    checkClipping(p);
-    let pdata = &trig_function_values;
-    let value = evalTrig(pdata, id, 0u, lam);
-    return vec4<f32>(bitcast<f32>(id), lam, 0.0);
-}
-
-struct VertexOutputDeferred {
-  @builtin(position) p: vec4<f32>,
-};
-
-
-@vertex
-fn vertexDeferred(@builtin(vertex_index) vertexId: u32) -> VertexOutputDeferred {
-    var position = vec4<f32>(-1., -1., 0., 1.);
-    if vertexId == 1 || vertexId == 3 {
-        position.x = 1.0;
-    }
-    if vertexId >= 2 {
-        position.y = 1.0;
-    }
-
-    return VertexOutputDeferred(position);
-}
-
