@@ -1,12 +1,12 @@
 import math
-import typing
 from enum import Enum
 
+import netgen.meshing
 import ngsolve as ngs
 import ngsolve.webgui
 import numpy as np
 from webgpu.font import Font
-from webgpu.render_object import RenderObject
+from webgpu.render_object import BaseRenderObject, RenderObject
 
 # from webgpu.uniforms import Binding
 from webgpu.utils import (
@@ -94,16 +94,14 @@ ElTypes3D = [ElType.TET, ElType.HEX, ElType.PRISM, ElType.PYRAMID]
 class MeshData:
     vertices: bytes
     trigs: bytes
-    trigs_index: bytes
     edges: bytes
-    trig_function_values: bytes
-    tests: bytes
 
     num_trigs: int
     num_verts: int
     num_edges: int
     num_tets: int
-    func_dim: int
+
+    # only for drawing the mesh, not needed for function values
     num_elements: dict[str, int]
     elements: dict[str, bytes]
 
@@ -112,107 +110,52 @@ class MeshData:
     __BUFFER_NAMES = [
         "vertices",
         "trigs",
-        "trigs_index",
         "edges",
-        "trig_function_values",
     ]
-    __INT_NAMES = ["num_trigs", "num_verts", "num_edges", "func_dim"]
+    __INT_NAMES = ["num_trigs", "num_verts", "num_edges"]
 
-    def load(self, data: dict):
-        for name in self.__BUFFER_NAMES:
-            setattr(self, name, decode_bytes(data.get(name, "")))
-
-        for name in self.__INT_NAMES:
-            setattr(self, name, data.get(name, 0))
-
-    def dump(self):
-        data = {}
-        for name in self.__BUFFER_NAMES:
-            data[name] = encode_bytes(getattr(self, name))
-
-        for name in self.__INT_NAMES:
-            data[name] = getattr(self, name)
-
-        return data
-
-    def __init__(self, region_or_mesh=None, cf=None, order=1):
+    def __init__(self, mesh: netgen.meshing.Mesh):
         # TODO: implement other element types than triangles
         # TODO: handle region correctly to draw only part of the mesh
-        # TODO: set up proper index buffer - it's currently slow and wrong (due to ngsolve vertex numbering)
         for name in self.__BUFFER_NAMES:
             setattr(self, name, b"")
         for name in self.__INT_NAMES:
             setattr(self, name, 0)
 
-        if region_or_mesh is None:
-            return
-
-        if isinstance(region_or_mesh, ngs.Region):
-            mesh = region_or_mesh.mesh
-            region = region_or_mesh
-        else:
-            mesh = region_or_mesh
-            region = mesh.Region(ngs.VOL)
-
-        region_2d = region.Boundaries() if mesh.dim == 3 else region
-
-        self.num_verts = len(mesh.vertices)
+        # Vertices
+        self.num_verts = len(mesh.Points())
         vertices = np.zeros((self.num_verts, 3), dtype=np.float32)
-        for i, v in enumerate(mesh.vertices):
-            if len(v.point) == 2:
-                vertices[i, :2] = v.point
-            else:
-                vertices[i, :] = v.point
+        for i, p in enumerate(mesh.Points()):
+            vertices[i] = list(p.p)
+
         self.pmin = np.min(vertices, axis=0)
         self.pmax = np.max(vertices, axis=0)
         self.vertices = vertices.tobytes()
 
-        self.num_trigs = len(mesh.ngmesh.Elements2D())
+        # Trigs TODO: Quads
+        self.num_trigs = len(mesh.Elements2D())
+        trigs = mesh.Elements2D().NumPy()
+        trigs_data = np.zeros((self.num_trigs, 4), dtype=np.uint32)
+        trigs_data[:, :3] = trigs["nodes"][:, :3] - 1
+        trigs_data[:, 3] = trigs["index"]
+        self.trigs = trigs_data.tobytes()
 
-        # du to vertex numer ordering in ngsolve, we need to store the points multiple times
-        points = evaluate_cf(ngs.CF((ngs.x, ngs.y, ngs.z)), region_2d, order=1)[2:]
-
-        trigs_index = np.zeros((self.num_trigs, 3), dtype=np.uint32)
-        for i, el in enumerate(mesh.ngmesh.Elements2D()):
-            trigs_index[i, :] = [p.nr - 1 for p in el.vertices[:3]]
-        self.trigs_index = trigs_index.tobytes()
-
-        edge_points = points.reshape(-1, 3, 3)
-        edges = np.zeros((self.num_trigs, 3, 2, 3), dtype=np.float32)
-        for i in range(3):
-            edges[:, i, 0, :] = edge_points[:, i, :]
-            edges[:, i, 1, :] = edge_points[:, (i + 1) % 3, :]
-
-        self.edges = edges.flatten().tobytes()
-        trigs = np.zeros(
-            self.num_trigs,
-            dtype=[
-                ("p", np.float32, 9),  # 3 vec3<f32> (each 4 floats due to padding)
-                ("index", np.int32),  # index (i32)
-            ],
-        )
-        trigs["p"] = points.flatten().reshape(-1, 9)
-        trigs["index"] = [1] * self.num_trigs
-        self.trigs = trigs.tobytes()
-
-        if cf is not None:
-            self.trig_function_values = evaluate_cf(cf, region, order).tobytes()
-            self.func_dim = cf.dim
-
+        # 3d Elements
         self.num_els = {eltype.name: 0 for eltype in ElType}
-        self.elements = {eltype.name: [] for eltype in ElType}
+        elements = {eltype.name: [] for eltype in ElType}
 
-        for i, el in enumerate(mesh.ngmesh.Elements3D()):
+        for i, el in enumerate(mesh.Elements3D()):
             eltype = ElType.from_dim_np(3, len(el.vertices))
             data = [p.nr - 1 for p in el.vertices]
             data.append(el.index)
             data.append(i)
-            self.elements[eltype.name].append(data)
+            elements[eltype.name].append(data)
             self.num_els[eltype.name] += 1
 
-        for eltype in self.elements:
+        self.elements = {}
+        for eltype in elements:
             self.elements[eltype] = np.array(
-                self.elements[eltype], dtype=np.uint32
+                elements[eltype], dtype=np.uint32
             ).tobytes()
 
     def get_bounding_box(self):
@@ -235,42 +178,73 @@ class MeshData:
                 buffer = device.createBuffer(
                     size=len(d), usage=BufferUsage.STORAGE | BufferUsage.COPY_DST
                 )
+                print("make buffer", key, len(d))
                 device.queue.writeBuffer(buffer, 0, d)
                 buffers[key] = buffer
 
             self._buffers = buffers
         return self._buffers
 
+    def load(self, data: dict):
+        for name in self.__BUFFER_NAMES:
+            setattr(self, name, decode_bytes(data.get(name, "")))
+
+        for name in self.__INT_NAMES:
+            setattr(self, name, data.get(name, 0))
+
+    def dump(self):
+        data = {}
+        for name in self.__BUFFER_NAMES:
+            data[name] = encode_bytes(getattr(self, name))
+
+        for name in self.__INT_NAMES:
+            data[name] = getattr(self, name)
+
+        return data
+
     def __del__(self):
         for buf in self._buffers.values():
             buf.destroy()
 
 
-class DataRenderObject(RenderObject):
-    """Base class for render objects that use a "data" object, like MeshData"""
+class FunctionData:
+    mesh_data: MeshData
+    function_data: bytes
+    _buffer: Buffer | None = None
 
-    data: typing.Any
-    _buffers: dict = {}
+    def __init__(self, mesh_data: MeshData, function_data: bytes):
+        self.mesh_data = mesh_data
+        self.function_data = function_data
+        self._buffer = None
 
-    def __init__(self, gpu, data, label=None):
-        super().__init__(gpu, label=label)
-        self.update_data(data)
-        print("init", self.label)
+    def load(self, data: dict):
+        self.mesh_data.load(data["mesh_data"])
+        self.function_data = decode_bytes(data.get("function_data", ""))
 
-    def update_data(self, data):
-        print("update", self.label)
-        self.data = data
-        self._buffers = data.get_buffers(self.device)
-        self._create_pipelines()
+    def dump(self):
+        return {
+            "mesh_data": self.mesh_data.dump(),
+            "function_data": encode_bytes(self.function_data),
+        }
 
-    def _create_pipelines(self):
-        raise NotImplementedError
+    def get_buffers(self, device: Device):
+        if self._buffer is None:
+            print("make buffer", "function", len(self.function_data))
+            self._buffer = device.createBuffer(
+                size=len(self.function_data),
+                usage=BufferUsage.STORAGE | BufferUsage.COPY_DST,
+            )
+            device.queue.writeBuffer(self._buffer, 0, self.function_data)
+        return self.mesh_data.get_buffers(device) | {"function": self._buffer}
+
+    def get_bounding_box(self):
+        return self.mesh_data.get_bounding_box()
 
 
-class MeshRenderObject(RenderObject):
-    """Use "trigs" and "trig_function_values" buffers to render a function on a mesh"""
+class CoefficientFunctionRenderObject(RenderObject):
+    """Use "vertices", "index" and "trig_function_values" buffers to render a mesh"""
 
-    def __init__(self, gpu, data: MeshData, label=None):
+    def __init__(self, gpu, data: FunctionData, label=None):
         super().__init__(gpu, label=label)
         self.data = data
         self.n_vertices = 3
@@ -278,22 +252,13 @@ class MeshRenderObject(RenderObject):
         # shift trigs behind to ensure that edges are rendered properly
         self.depthBias = 1
         self.depthBiasSlopeScale = 1.0
-        self.vertex_entry_point = "vertexTrigP1"
+        self.vertex_entry_point = "vertexTrigP1Indexed"
         self.fragment_entry_point = "fragmentTrig"
 
     def update(self):
-        self.n_instances = self.data.num_trigs
+        self.n_instances = self.data.mesh_data.num_trigs
         self._buffers = self.data.get_buffers(self.device)
         self.create_render_pipeline()
-
-    def get_bindings(self):
-        return [
-            *self.gpu.get_bindings(),
-            BufferBinding(Binding.TRIGS, self._buffers["trigs"]),
-            BufferBinding(
-                Binding.TRIG_FUNCTION_VALUES, self._buffers["trig_function_values"]
-            ),
-        ]
 
     def get_bounding_box(self):
         return self.data.get_bounding_box()
@@ -315,27 +280,16 @@ class MeshRenderObject(RenderObject):
         shader_code += self.gpu.light.get_shader_code()
         return shader_code
 
-
-class MeshRenderObjectIndexed(MeshRenderObject):
-    """Use "vertices", "index" and "trig_function_values" buffers to render a mesh"""
-
-    def __init__(self, gpu, data: MeshData, label=None):
-        super().__init__(gpu, data, label=label)
-        self.vertex_entry_point = "vertexTrigP1Indexed"
-        self.fragment_entry_point = "fragmentTrig"
-
     def get_bindings(self):
         return [
             *self.gpu.get_bindings(),
-            BufferBinding(
-                Binding.TRIG_FUNCTION_VALUES, self._buffers["trig_function_values"]
-            ),
+            BufferBinding(Binding.TRIG_FUNCTION_VALUES, self._buffers["function"]),
             BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
-            BufferBinding(Binding.TRIGS_INDEX, self._buffers["trigs_index"]),
+            BufferBinding(Binding.TRIGS_INDEX, self._buffers["trigs"]),
         ]
 
 
-class MeshRenderObjectDeferred(DataRenderObject):
+class MeshRenderObjectDeferred(BaseRenderObject):
     """Use "vertices", "index" and "trig_function_values" buffers to render a mesh in two render passes
     The first pass renders the trig indices and barycentric coordinates to a g-buffer texture.
     The second pass renders the trigs using the g-buffer texture to evaluate the function value in each pixel of the frame buffer.
@@ -472,7 +426,7 @@ class MeshRenderObjectDeferred(DataRenderObject):
         pass2.end()
 
 
-class Mesh3dElementsRenderObject(DataRenderObject):
+class Mesh3dElementsRenderObject(RenderObject):
     def get_bindings(self):
         bindings = [
             *self.gpu.get_bindings(),
@@ -555,7 +509,7 @@ def _get_bernstein_matrix_trig(n, intrule):
     return mat
 
 
-def evaluate_cf(cf, region, order):
+def evaluate_cf(cf, mesh, order):
     """Evaluate a coefficient function on a mesh and returns the values as a flat array, ready to copy to the GPU as storage buffer.
     The first two entries are the function dimension and the polynomial order of the stored values.
     """
@@ -572,9 +526,7 @@ def evaluate_cf(cf, region, order):
 
     ndof = ibmat.h
 
-    pts = region.mesh.MapToAllElements(
-        {ngs.ET.TRIG: intrule, ngs.ET.QUAD: intrule}, region
-    )
+    pts = mesh.MapToAllElements({ngs.ET.TRIG: intrule, ngs.ET.QUAD: intrule}, ngs.VOL)
     pmat = cf(pts)
     pmat = pmat.reshape(-1, ndof, comps)
 
@@ -585,7 +537,7 @@ def evaluate_cf(cf, region, order):
 
     values = values.transpose((1, 0, 2)).flatten()
     ret = np.concatenate(([np.float32(cf.dim), np.float32(order)], values))
-    return ret
+    return ret.tobytes()
 
 
 def create_testing_square_mesh(gpu, n):
@@ -657,7 +609,7 @@ def create_testing_square_mesh(gpu, n):
     data.num_trigs = n_trigs
     data.num_verts = (n + 1) * (n + 1)
     data.func_dim = 1
-    return data
+    return data.toytes()
 
 
 class PointNumbersRenderObject(RenderObject):

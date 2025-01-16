@@ -46,22 +46,11 @@ fn calcTrig(p: array<vec3<f32>, 3>, vertexId: u32, trigId: u32) -> VertexOutput2
 }
 
 @vertex
-fn vertexTrigP1(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) trigId: u32) -> VertexOutput2d {
-    let trig = trigs_p1[trigId];
-    var p = array<vec3<f32>, 3>(
-        vec3<f32>(trig.p[0], trig.p[1], trig.p[2]),
-        vec3<f32>(trig.p[3], trig.p[4], trig.p[5]),
-        vec3<f32>(trig.p[6], trig.p[7], trig.p[8])
-    );
-    return calcTrig(p, vertexId, trigId);
-}
-
-@vertex
 fn vertexTrigP1Indexed(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) trigId: u32) -> VertexOutput2d {
     var vid = 3 * vec3u(
-        trigs[3 * trigId + 0],
-        trigs[3 * trigId + 1],
-        trigs[3 * trigId + 2]
+        trigs[4 * trigId + 0],
+        trigs[4 * trigId + 1],
+        trigs[4 * trigId + 2]
     );
 
     var p = array<vec3<f32>, 3>(
