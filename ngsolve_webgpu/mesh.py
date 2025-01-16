@@ -542,7 +542,7 @@ def _get_bernstein_matrix_trig(n, intrule):
     fac_n = math.factorial(n)
     for row, ip in enumerate(intrule):
         col = 0
-        x = ip.point[0]
+        x = 1.0 - ip.point[0] - ip.point[1]
         y = ip.point[1]
         z = 1.0 - x - y
         for i in range(n + 1):

@@ -1,6 +1,12 @@
 import numpy as np
-from webgpu import (RenderObject, BufferBinding, read_shader_file, Colormap,
-                    UniformBinding, create_bind_group)
+from webgpu import (
+    RenderObject,
+    BufferBinding,
+    read_shader_file,
+    Colormap,
+    UniformBinding,
+    create_bind_group,
+)
 from webgpu.webgpu_api import (
     BufferUsage,
     ComputeState,
@@ -16,6 +22,7 @@ class Binding:
     FUNCTION_VALUES = 83
     DRAW_FUNCTION_VALUES = 84
     VERTICES = 12
+
 
 class IsoSurfaceRenderObject(RenderObject):
     n_vertices: int = 3
@@ -263,18 +270,21 @@ class IsoSurfaceRenderObject(RenderObject):
                 self.function_value_buffer,
             ),
             BufferBinding(
-                Binding.VERTICES, self.vertex_buffer,
+                Binding.VERTICES,
+                self.vertex_buffer,
             ),
             UniformBinding(Binding.COUNT_FLAG, self.only_count),
             BufferBinding(
-                Binding.CUT_TRIANGLES, self.cut_trigs_buffer, visibility=ShaderStage.VERTEX
-                ),
+                Binding.CUT_TRIANGLES,
+                self.cut_trigs_buffer,
+                visibility=ShaderStage.VERTEX,
+            ),
             BufferBinding(
                 Binding.DRAW_FUNCTION_VALUES,
                 self.draw_func_value_buffer,
-                visibility=ShaderStage.VERTEX),
-            ]
-        
+                visibility=ShaderStage.VERTEX,
+            ),
+        ]
 
     def get_shader_code(self):
         render_shader_code = read_shader_file("render_isosurface.wgsl", __file__)

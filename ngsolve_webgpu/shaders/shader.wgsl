@@ -35,9 +35,9 @@ fn vertexEdgeP1(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) e
     return VertexOutput1d(position, p, lam, edgeId);
 }
 
-fn calcTrig(p: array<vec3<f32>, 3>, vertexId: u32, trigId: u32, faceSort: vec3u) -> VertexOutput2d {
+fn calcTrig(p: array<vec3<f32>, 3>, vertexId: u32, trigId: u32) -> VertexOutput2d {
     var lam: vec3<f32> = vec3<f32>(0.);
-    lam[faceSort[vertexId] ] = 1.0;
+    lam[vertexId] = 1.0;
 
     let position = cameraMapPoint(p[vertexId]);
     let normal = cross(p[1] - p[0], p[2] - p[0]);
@@ -53,7 +53,7 @@ fn vertexTrigP1(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) t
         vec3<f32>(trig.p[3], trig.p[4], trig.p[5]),
         vec3<f32>(trig.p[6], trig.p[7], trig.p[8])
     );
-    return calcTrig(p, vertexId, trigId, vec3u(0, 1, 2));
+    return calcTrig(p, vertexId, trigId);
 }
 
 @vertex
@@ -64,30 +64,12 @@ fn vertexTrigP1Indexed(@builtin(vertex_index) vertexId: u32, @builtin(instance_i
         trigs[3 * trigId + 2]
     );
 
-    var f = vec3u(0, 1, 2);
-
-    if vid[f[0] ] > vid[f[1] ] {
-        let t = f[0];
-        f[0] = f[1];
-        f[1] = t;
-    }
-    if vid[ f[1] ] > vid[f[2] ] {
-        let t = f[1];
-        f[1] = f[2];
-        f[2] = t;
-    }
-    if vid[f[0] ] > vid[f[1] ] {
-        let t = f[0];
-        f[0] = f[1];
-        f[1] = t;
-    }
-
     var p = array<vec3<f32>, 3>(
         vec3<f32>(vertices[vid[0] ], vertices[vid[0] + 1], vertices[vid[0] + 2]),
         vec3<f32>(vertices[vid[1] ], vertices[vid[1] + 1], vertices[vid[1] + 2]),
         vec3<f32>(vertices[vid[2] ], vertices[vid[2] + 1], vertices[vid[2] + 2])
     );
-    return calcTrig(p, vertexId, trigId, f);
+    return calcTrig(p, vertexId, trigId);
 }
 
 
