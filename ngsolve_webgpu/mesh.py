@@ -282,7 +282,6 @@ class MeshRenderObject(RenderObject):
         self.fragment_entry_point = "fragmentTrig"
 
     def update(self):
-        print("update mesh", self.label)
         self.n_instances = self.data.num_trigs
         self._buffers = self.data.get_buffers(self.device)
         self.create_render_pipeline()
@@ -320,6 +319,11 @@ class MeshRenderObject(RenderObject):
 class MeshRenderObjectIndexed(MeshRenderObject):
     """Use "vertices", "index" and "trig_function_values" buffers to render a mesh"""
 
+    def __init__(self, gpu, data: MeshData, label=None):
+        super().__init__(gpu, data, label=label)
+        self.vertex_entry_point = "vertexTrigP1Indexed"
+        self.fragment_entry_point = "fragmentTrig"
+
     def get_bindings(self):
         return [
             *self.gpu.get_bindings(),
@@ -329,35 +333,6 @@ class MeshRenderObjectIndexed(MeshRenderObject):
             BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
             BufferBinding(Binding.TRIGS_INDEX, self._buffers["trigs_index"]),
         ]
-
-    def _create_pipelines(self):
-        bind_layout, self._bind_group = self.create_bind_group()
-        shader_module = self.gpu.shader_module
-
-        self._pipeline = self.device.createRenderPipeline(
-            self.device.createPipelineLayout([bind_layout], self.label),
-            vertex=VertexState(
-                module=shader_module,
-                entryPoint="vertexTrigP1Indexed",
-            ),
-            fragment=FragmentState(
-                module=shader_module,
-                entryPoint="fragmentTrig",
-                targets=[ColorTargetState(format=self.gpu.format)],
-            ),
-            primitive=PrimitiveState(
-                topology=PrimitiveTopology.triangle_list,
-            ),
-            depthStencil=DepthStencilState(
-                format=TextureFormat.depth24plus,
-                depthWriteEnabled=True,
-                depthCompare=CompareFunction.less,
-                # shift trigs behind to ensure that edges are rendered properly
-                depthBias=1,
-                depthBiasSlopeScale=1.0,
-            ),
-            multisample=self.gpu.multisample,
-        )
 
 
 class MeshRenderObjectDeferred(DataRenderObject):
