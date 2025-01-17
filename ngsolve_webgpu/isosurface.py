@@ -1,18 +1,13 @@
 import numpy as np
 from webgpu import (
-    RenderObject,
     BufferBinding,
-    read_shader_file,
     Colormap,
+    RenderObject,
     UniformBinding,
     create_bind_group,
+    read_shader_file,
 )
-from webgpu.webgpu_api import (
-    BufferUsage,
-    ComputeState,
-    ShaderStage,
-    MapMode,
-)
+from webgpu.webgpu_api import BufferUsage, ComputeState, MapMode, ShaderStage
 
 
 class Binding:
@@ -21,6 +16,7 @@ class Binding:
     CUT_TRIANGLES = 82
     FUNCTION_VALUES = 83
     DRAW_FUNCTION_VALUES = 84
+    N_TETS = 85
     VERTICES = 12
 
 
@@ -47,6 +43,21 @@ class IsoSurfaceRenderObject(RenderObject):
             usage=BufferUsage.STORAGE | BufferUsage.COPY_SRC | BufferUsage.COPY_DST,
             label="counter",
         )
+
+        self.ntets_buffer = self.device.createBuffer(
+            size=4,
+            usage=BufferUsage.UNIFORM | BufferUsage.COPY_DST,
+            label="ntets",
+        )
+
+        self.device.queue.writeBuffer(
+            self.ntets_buffer,
+            0,
+            np.uint32(self.mesh.ne).tobytes(),
+            0,
+            4,
+        )
+
         self.mesh_pts = self.mesh.MapToAllElements(
             ngs.IntegrationRule([(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)]),
             self.mesh.Materials(".*"),
@@ -120,6 +131,7 @@ class IsoSurfaceRenderObject(RenderObject):
             BufferBinding(
                 Binding.VERTICES, self.vertex_buffer, visibility=ShaderStage.ALL
             ),
+            UniformBinding(Binding.N_TETS, self.ntets_buffer),
             UniformBinding(Binding.COUNT_FLAG, self.only_count),
             cut_trigs_binding,
         ]
@@ -141,7 +153,7 @@ class IsoSurfaceRenderObject(RenderObject):
         compute_pass = compute_encoder.beginComputePass(label="count_iso_trigs")
         compute_pass.setBindGroup(0, group)
         compute_pass.setPipeline(pipeline)
-        compute_pass.dispatchWorkgroups(self.mesh.ne)
+        compute_pass.dispatchWorkgroups(min(1024, self.mesh.ne))
         compute_pass.end()
 
         compute_encoder.copyBufferToBuffer(
@@ -210,6 +222,7 @@ class IsoSurfaceRenderObject(RenderObject):
             BufferBinding(
                 Binding.VERTICES, self.vertex_buffer, visibility=ShaderStage.ALL
             ),
+            UniformBinding(Binding.N_TETS, self.ntets_buffer),
             UniformBinding(Binding.COUNT_FLAG, self.only_count),
         ]
 
@@ -234,7 +247,7 @@ class IsoSurfaceRenderObject(RenderObject):
         compute_pass = compute_encoder.beginComputePass(label="count_iso_trigs")
         compute_pass.setBindGroup(0, group)
         compute_pass.setPipeline(pipeline)
-        compute_pass.dispatchWorkgroups(self.mesh.ne)
+        compute_pass.dispatchWorkgroups(min(1024, self.mesh.ne))
         compute_pass.end()
 
         self.device.queue.submit([compute_encoder.finish()])

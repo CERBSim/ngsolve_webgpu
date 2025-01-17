@@ -4,6 +4,7 @@
 @group(0) @binding(81) var<uniform> only_count: u32;
 @group(0) @binding(12) var<storage> vertices : array<f32>;
 @group(0) @binding(83) var<storage> function_values: array<f32>;
+@group(0) @binding(85) var<uniform> u_ntets : u32;
 
 struct ViewUniforms {
   model_view: mat4x4<f32>,
