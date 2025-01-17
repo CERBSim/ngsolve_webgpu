@@ -6,7 +6,12 @@ import ngsolve as ngs
 import ngsolve.webgui
 import numpy as np
 from webgpu.font import Font
-from webgpu.render_object import BaseRenderObject, RenderObject
+from webgpu.render_object import (
+    BaseRenderObject,
+    DataObject,
+    RenderObject,
+    _add_render_object,
+)
 
 # from webgpu.uniforms import Binding
 from webgpu.utils import (
@@ -91,21 +96,22 @@ ElTypes2D = [ElType.TRIG, ElType.QUAD]
 ElTypes3D = [ElType.TET, ElType.HEX, ElType.PRISM, ElType.PYRAMID]
 
 
-class MeshData:
-    vertices: bytes
-    trigs: bytes
-    edges: bytes
+class MeshData(DataObject):
+    vertices: bytes = b""
+    trigs: bytes = b""
+    edges: bytes = b""
 
-    num_trigs: int
-    num_verts: int
-    num_edges: int
-    num_tets: int
+    num_trigs: int = 0
+    num_verts: int = 0
+    num_edges: int = 0
+    num_tets: int = 0
 
     # only for drawing the mesh, not needed for function values
     num_elements: dict[str, int]
     elements: dict[str, bytes]
 
-    _buffers: dict = {}
+    mesh: netgen.meshing.Mesh
+    _last_mesh_timestamp: int = -1
 
     __BUFFER_NAMES = [
         "vertices",
@@ -115,8 +121,22 @@ class MeshData:
     __INT_NAMES = ["num_trigs", "num_verts", "num_edges"]
 
     def __init__(self, mesh: netgen.meshing.Mesh):
+        _add_render_object(self)
+        self.mesh = mesh
+        self._buffers = {}
+
+    def redraw(self, timestamp: float | None = None):
+        super().redraw(mesh=self.mesh)
+
+    def update(self, mesh: netgen.meshing.Mesh = None):
+        if mesh:
+            self.mesh = mesh
+
+    def _create_data(self):
         # TODO: implement other element types than triangles
         # TODO: handle region correctly to draw only part of the mesh
+
+        mesh = self.mesh
         for name in self.__BUFFER_NAMES:
             setattr(self, name, b"")
         for name in self.__INT_NAMES:
@@ -158,84 +178,76 @@ class MeshData:
                 elements[eltype], dtype=np.uint32
             ).tobytes()
 
+        self._last_mesh_timestamp = mesh._timestamp
+
+    def needs_update(self):
+        return self._last_mesh_timestamp != self.mesh._timestamp
+
     def get_bounding_box(self):
         return (self.pmin, self.pmax)
 
-    def get_buffers(self, device: Device):
-        if not self._buffers:
-            data = {}
-            for name in self.__BUFFER_NAMES:
-                b = getattr(self, name)
-                if b:
-                    data[name] = b
-
-            for eltype in self.elements:
-                data[eltype] = self.elements[eltype]
-
-            buffers = {}
-            for key in data:
-                d = data[key]
-                buffer = device.createBuffer(
-                    size=len(d), usage=BufferUsage.STORAGE | BufferUsage.COPY_DST
-                )
-                print("make buffer", key, len(d))
-                device.queue.writeBuffer(buffer, 0, d)
-                buffers[key] = buffer
-
-            self._buffers = buffers
-        return self._buffers
-
-    def load(self, data: dict):
-        for name in self.__BUFFER_NAMES:
-            setattr(self, name, decode_bytes(data.get(name, "")))
-
-        for name in self.__INT_NAMES:
-            setattr(self, name, data.get(name, 0))
-
-    def dump(self):
+    def _create_buffers(self, device: Device):
         data = {}
         for name in self.__BUFFER_NAMES:
-            data[name] = encode_bytes(getattr(self, name))
+            b = getattr(self, name)
+            if b:
+                data[name] = b
 
-        for name in self.__INT_NAMES:
-            data[name] = getattr(self, name)
+        for eltype in self.elements:
+            data[eltype] = self.elements[eltype]
 
-        return data
-
-    def __del__(self):
-        for buf in self._buffers.values():
-            buf.destroy()
-
-
-class FunctionData:
-    mesh_data: MeshData
-    function_data: bytes
-    _buffer: Buffer | None = None
-
-    def __init__(self, mesh_data: MeshData, function_data: bytes):
-        self.mesh_data = mesh_data
-        self.function_data = function_data
-        self._buffer = None
-
-    def load(self, data: dict):
-        self.mesh_data.load(data["mesh_data"])
-        self.function_data = decode_bytes(data.get("function_data", ""))
-
-    def dump(self):
-        return {
-            "mesh_data": self.mesh_data.dump(),
-            "function_data": encode_bytes(self.function_data),
-        }
-
-    def get_buffers(self, device: Device):
-        if self._buffer is None:
-            print("make buffer", "function", len(self.function_data))
-            self._buffer = device.createBuffer(
-                size=len(self.function_data),
-                usage=BufferUsage.STORAGE | BufferUsage.COPY_DST,
+        buffers = {}
+        for key in data:
+            d = data[key]
+            buffer = device.createBuffer(
+                size=len(d), usage=BufferUsage.STORAGE | BufferUsage.COPY_DST
             )
-            device.queue.writeBuffer(self._buffer, 0, self.function_data)
-        return self.mesh_data.get_buffers(device) | {"function": self._buffer}
+            device.queue.writeBuffer(buffer, 0, d)
+            buffers[key] = buffer
+
+        self._buffers = buffers
+        return self._buffers
+
+
+class FunctionData(DataObject):
+    mesh_data: MeshData
+    function_data: bytes = b""
+    cf: ngs.CoefficientFunction
+    order: int
+    _timestamp: float = -1
+
+    def __init__(self, mesh_data: MeshData, cf: ngs.CoefficientFunction, order: int):
+        _add_render_object(self)
+        self.mesh_data = mesh_data
+        self.cf = cf
+        self.order = order
+
+    def redraw(self, timestamp: float | None = None):
+        self.mesh_data.redraw(timestamp)
+        super().redraw(timestamp, cf=self.cf, order=self.order)
+
+    def update(
+        self, cf: ngs.CoefficientFunction | None = None, order: int | None = None
+    ):
+        if cf is not None:
+            self.cf = cf
+            self.function_data = b""
+        if order is not None:
+            self.order = order
+            self.function_data = b""
+
+    def _create_data(self):
+        self.function_data = evaluate_cf(
+            self.cf, ngs.Mesh(self.mesh_data.mesh), self.order
+        )
+
+    def _create_buffers(self, device: Device):
+        buffer = device.createBuffer(
+            size=len(self.function_data),
+            usage=BufferUsage.STORAGE | BufferUsage.COPY_DST,
+        )
+        device.queue.writeBuffer(buffer, 0, self.function_data)
+        return self.mesh_data.get_buffers(device) | {"function": buffer}
 
     def get_bounding_box(self):
         return self.mesh_data.get_bounding_box()
@@ -255,9 +267,13 @@ class CoefficientFunctionRenderObject(RenderObject):
         self.vertex_entry_point = "vertexTrigP1Indexed"
         self.fragment_entry_point = "fragmentTrig"
 
+    def redraw(self, timestamp: float | None = None):
+        timestamp = self.data.redraw(timestamp)
+        super().redraw(timestamp)
+
     def update(self):
-        self.n_instances = self.data.mesh_data.num_trigs
         self._buffers = self.data.get_buffers(self.device)
+        self.n_instances = self.data.mesh_data.num_trigs
         self.create_render_pipeline()
 
     def get_bounding_box(self):
