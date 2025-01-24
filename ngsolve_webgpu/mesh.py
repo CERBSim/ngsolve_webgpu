@@ -24,6 +24,7 @@ from webgpu.utils import (
     read_shader_file,
 )
 from webgpu.webgpu_api import *
+from webgpu.colormap import Colormap
 
 
 class Binding:
@@ -256,8 +257,8 @@ class FunctionData(DataObject):
 class CoefficientFunctionRenderObject(RenderObject):
     """Use "vertices", "index" and "trig_function_values" buffers to render a mesh"""
 
-    def __init__(self, gpu, data: FunctionData, label=None):
-        super().__init__(gpu, label=label)
+    def __init__(self, data: FunctionData, label=None):
+        super().__init__(label=label)
         self.data = data
         self.n_vertices = 3
 
@@ -272,6 +273,7 @@ class CoefficientFunctionRenderObject(RenderObject):
         super().redraw(timestamp)
 
     def update(self):
+        self.colormap = Colormap(self.device)
         self._buffers = self.data.get_buffers(self.device)
         self.n_instances = self.data.mesh_data.num_trigs
         self.create_render_pipeline()
@@ -291,14 +293,15 @@ class CoefficientFunctionRenderObject(RenderObject):
         ]:
             shader_code += read_shader_file(file_name, __file__)
 
-        shader_code += self.gpu.colormap.get_shader_code()
-        shader_code += self.gpu.camera.get_shader_code()
-        shader_code += self.gpu.light.get_shader_code()
+        shader_code += self.colormap.get_shader_code()
+        shader_code += self.options.camera.get_shader_code()
+        shader_code += self.options.light.get_shader_code()
         return shader_code
 
     def get_bindings(self):
         return [
-            *self.gpu.get_bindings(),
+            *self.options.get_bindings(),
+            *self.colormap.get_bindings(),
             BufferBinding(Binding.TRIG_FUNCTION_VALUES, self._buffers["function"]),
             BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
             BufferBinding(Binding.TRIGS_INDEX, self._buffers["trigs"]),
@@ -306,9 +309,11 @@ class CoefficientFunctionRenderObject(RenderObject):
 
 
 class Mesh3dElementsRenderObject(RenderObject):
+    # TODO: currently not working
     def get_bindings(self):
         bindings = [
-            *self.gpu.get_bindings(),
+            *self.options.get_bindings(),
+            *self.colormap.get_bindings(),
             BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
         ]
 
@@ -424,18 +429,19 @@ class PointNumbersRenderObject(RenderObject):
 
     _buffers: dict
 
-    def __init__(self, gpu, data, font_size=20, label=None):
-        super().__init__(gpu, label=label)
+    def __init__(self, data, font_size=20, label=None):
+        super().__init__(label=label)
         self.n_digits = 6
-        self.font = Font(gpu, font_size)
         self.data = data
         self.vertex_entry_point = "vertexPointNumber"
         self.fragment_entry_point = "fragmentText"
         self.n_vertices = self.n_digits * 6
-        self.n_instances = self.data.num_verts
+        self.font_size = font_size
 
     def update(self):
+        self.font = Font(self.canvas, self.font_size)
         self._buffers = self.data.get_buffers(self.device)
+        self.n_instances = self.data.num_verts
         self.create_render_pipeline()
 
     def get_shader_code(self):
@@ -443,7 +449,7 @@ class PointNumbersRenderObject(RenderObject):
         shader_code += read_shader_file("numbers.wgsl", __file__)
         shader_code += read_shader_file("uniforms.wgsl", __file__)
         shader_code += self.font.get_shader_code()
-        shader_code += self.gpu.camera.get_shader_code()
+        shader_code += self.options.camera.get_shader_code()
         return shader_code
 
     def get_bounding_box(self):
@@ -451,7 +457,7 @@ class PointNumbersRenderObject(RenderObject):
 
     def get_bindings(self):
         return [
-            *self.gpu.get_bindings(),
+            *self.options.get_bindings(),
             *self.font.get_bindings(),
             BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
         ]

@@ -46,7 +46,7 @@ def Draw(
 
         mesh_data = MeshData(mesh.ngmesh)
         function_data = FunctionData(mesh_data, obj, order)
-        r_cf = CoefficientFunctionRenderObject(None, function_data)
+        r_cf = CoefficientFunctionRenderObject(function_data)
         render_objects.append(r_cf)
 
     scene = wj.Scene(render_objects)

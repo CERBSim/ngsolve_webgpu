@@ -25,8 +25,8 @@ class IsoSurfaceRenderObject(RenderObject):
     vertex_entry_point: str = "vertexIsoSurface"
     fragment_entry_point: str = "fragmentIsoSurface"
 
-    def __init__(self, gpu, levelset, function, mesh, label):
-        super().__init__(gpu, label=label)
+    def __init__(self, levelset, function, mesh, label):
+        super().__init__(label=label)
         self.levelset = levelset
         self.function = function
         self.mesh = mesh
@@ -36,7 +36,7 @@ class IsoSurfaceRenderObject(RenderObject):
     def count_cut_trigs(self):
         import ngsolve as ngs
 
-        compute_encoder = self.gpu.device.createCommandEncoder(label="count_iso_trigs")
+        compute_encoder = self.device.createCommandEncoder(label="count_iso_trigs")
         # binding -> counter i32
         self.counter_buffer = self.device.createBuffer(
             size=4,
@@ -115,8 +115,7 @@ class IsoSurfaceRenderObject(RenderObject):
             self.counter_buffer, 0, np.array([0], dtype=np.uint32).tobytes(), 0, 4
         )
         bindings = [
-            *self.gpu.camera.get_bindings(),
-            *self.gpu.u_mesh.get_bindings(),
+            *self.options.camera.get_bindings(),
             BufferBinding(
                 Binding.COUNTER,
                 self.counter_buffer,
@@ -187,7 +186,7 @@ class IsoSurfaceRenderObject(RenderObject):
     def create_cut_trigs(self):
         import ngsolve as ngs
 
-        compute_encoder = self.gpu.device.createCommandEncoder(label="create_iso_trigs")
+        compute_encoder = self.device.createCommandEncoder(label="create_iso_trigs")
         # binding -> counter i32
         self.device.queue.writeBuffer(self.only_count, 0, np.uint32(0).tobytes(), 0, 4)
         self.device.queue.writeBuffer(
@@ -206,8 +205,7 @@ class IsoSurfaceRenderObject(RenderObject):
             visibility=ShaderStage.COMPUTE,
         )
         bindings = [
-            *self.gpu.camera.get_bindings(),
-            *self.gpu.u_mesh.get_bindings(),
+            *self.options.camera.get_bindings(),
             BufferBinding(
                 Binding.COUNTER,
                 self.counter_buffer,
@@ -243,7 +241,6 @@ class IsoSurfaceRenderObject(RenderObject):
                 module=shader_module, entryPoint="create_iso_triangles"
             ),
         )
-        # self.gpu.begin_render_pass(encoder, label="count_iso_trigs")
         compute_pass = compute_encoder.beginComputePass(label="count_iso_trigs")
         compute_pass.setBindGroup(0, group)
         compute_pass.setPipeline(pipeline)
@@ -256,7 +253,7 @@ class IsoSurfaceRenderObject(RenderObject):
             self.function(self.mesh_pts).flatten(), dtype=np.float32
         )
         self.colormap = Colormap(
-            self.gpu.device, min(draw_func_values), max(draw_func_values)
+            self.device, min(draw_func_values), max(draw_func_values)
         )
         self.draw_func_value_buffer = self.device.createBuffer(
             size=len(draw_func_values) * draw_func_values.itemsize,
@@ -268,15 +265,13 @@ class IsoSurfaceRenderObject(RenderObject):
         )
         self.create_render_pipeline()
         self.cut_trigs_set = True
-        encoder = self.gpu.device.createCommandEncoder()
-        self.gpu.update_uniforms()
+        encoder = self.device.createCommandEncoder()
         self.render(encoder)
-        self.gpu.device.queue.submit([encoder.finish()])
+        self.device.queue.submit([encoder.finish()])
 
     def get_bindings(self):
         return [
-            *self.gpu.camera.get_bindings(),
-            *self.gpu.u_mesh.get_bindings(),
+            *self.options.camera.get_bindings(),
             *self.colormap.get_bindings(),
             BufferBinding(
                 Binding.FUNCTION_VALUES,

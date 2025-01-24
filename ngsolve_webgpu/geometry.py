@@ -13,9 +13,9 @@ class GeometryRenderObject(webgpu.RenderObject):
     fragment_entry_point: str = "fragmentGeo"
     n_vertices: int = 3
 
-    def __init__(self, gpu, geo, label="Geometry"):
+    def __init__(self, geo, label="Geometry"):
         self.geo = geo
-        super().__init__(gpu, label=label)
+        super().__init__(label=label)
 
     def get_bounding_box(self):
         return self.bounding_box
@@ -45,8 +45,7 @@ class GeometryRenderObject(webgpu.RenderObject):
 
     def get_bindings(self):
         return [
-            *self.gpu.camera.get_bindings(),
-            *self.gpu.u_mesh.get_bindings(),
+            *self.options.camera.get_bindings(),
             webgpu.BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
             webgpu.BufferBinding(Binding.NORMALS, self._buffers["normals"]),
             webgpu.BufferBinding(Binding.INDICES, self._buffers["indices"]),
@@ -57,6 +56,6 @@ class GeometryRenderObject(webgpu.RenderObject):
         for shader in ["uniforms", "shader", "geometry", "eval", "clipping"]:
             shader_code += webgpu.read_shader_file(f"{shader}.wgsl", __file__)
 
-        shader_code += self.gpu.camera.get_shader_code()
-        shader_code += self.gpu.light.get_shader_code()
+        shader_code += self.options.camera.get_shader_code()
+        shader_code += self.options.light.get_shader_code()
         return shader_code
