@@ -33,6 +33,20 @@ class IsoSurfaceRenderObject(RenderObject):
         self.cut_trigs_set = False
         self.task = None
 
+    def update(self, levelset=None, function=None, mesh=None):
+        if levelset is not None:
+            self.levelset = levelset
+        if function is not None:
+            self.function = function
+        if mesh is not None:
+            self.mesh = mesh
+        self.cut_trigs_set = False
+        self.count_cut_trigs()
+
+    def redraw(self, timestamp: float | None = None, **kwargs):
+        super().redraw(levelset=self.levelset, function=self.function,
+                       mesh=self.mesh)
+
     def count_cut_trigs(self):
         import ngsolve as ngs
 
@@ -298,9 +312,6 @@ class IsoSurfaceRenderObject(RenderObject):
         render_shader_code = read_shader_file("render_isosurface.wgsl", __file__)
         return render_shader_code + self.shader_code + self.colormap.get_shader_code()
 
-    def update(self):
-        self.count_cut_trigs()
-
     def get_bounding_box(self):
         return (self.pmin, self.pmax)
 
@@ -308,3 +319,4 @@ class IsoSurfaceRenderObject(RenderObject):
         if self.cut_trigs_set is False:
             return
         super().render(encoder)
+
