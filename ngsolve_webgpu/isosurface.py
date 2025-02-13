@@ -32,6 +32,7 @@ class IsoSurfaceRenderObject(RenderObject):
         self.mesh = mesh
         self.cut_trigs_set = False
         self.task = None
+        self.colormap = Colormap()
 
     def update(self, levelset=None, function=None, mesh=None):
         if levelset is not None:
@@ -266,9 +267,8 @@ class IsoSurfaceRenderObject(RenderObject):
         draw_func_values = np.array(
             self.function(self.mesh_pts).flatten(), dtype=np.float32
         )
-        self.colormap = Colormap(
-            self.device, min(draw_func_values), max(draw_func_values)
-        )
+        self.colormap.options = self.options
+        self.colormap.update(min(draw_func_values), max(draw_func_values))
         self.draw_func_value_buffer = self.device.createBuffer(
             size=len(draw_func_values) * draw_func_values.itemsize,
             usage=BufferUsage.STORAGE | BufferUsage.COPY_DST,
