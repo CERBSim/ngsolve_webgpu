@@ -1,8 +1,38 @@
 import ngsolve as ngs
 import webgpu.jupyter as wj
 
-wj.pyodide_install_packages(["ngsolve"])
+local_path = None # change this to local path of pyodide compiled zip files
 
+if local_path is None:
+    wj.pyodide_install_packages(["ngsolve"])
+else:
+    def local_install(package):
+        from IPython.display import Javascript, display
+        with open(package, "rb") as f:
+            package = f.read()
+        package = wj._encode_data(package)
+        display(
+            Javascript(
+                f"""
+async function install_packages() {{
+    let binary_string = atob('{package}');
+    const len = binary_string.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {{
+        bytes[i] = binary_string.charCodeAt(i);
+    }}
+    await pyodide.unpackArchive(bytes, 'zip');
+}}
+install_packages();
+"""
+            ))
+    local_install(local_path + "/pyngcore.zip")
+    local_install(local_path + "/netgen.zip")
+    wj.run_code_in_pyodide("""import netgen
+print('netgen', netgen.__file__)""")
+    local_install(local_path + "/ngsolve.zip")
+    wj.run_code_in_pyodide("""import ngsolve
+print('ngsolve', ngsolve.__file__)""")
 
 def Draw(
     obj: ngs.CoefficientFunction | ngs.Mesh,
