@@ -267,13 +267,15 @@ class CoefficientFunctionRenderObject(RenderObject):
         self.depthBiasSlopeScale = 1.0
         self.vertex_entry_point = "vertexTrigP1Indexed"
         self.fragment_entry_point = "fragmentTrig"
+        self.colormap = Colormap()
 
     def redraw(self, timestamp: float | None = None):
         timestamp = self.data.redraw(timestamp)
         super().redraw(timestamp)
 
     def update(self):
-        self.colormap = Colormap(self.device)
+        self.colormap.options = self.options
+        self.colormap.update()
         self._buffers = self.data.get_buffers(self.device)
         self.n_instances = self.data.mesh_data.num_trigs
         self.create_render_pipeline()
