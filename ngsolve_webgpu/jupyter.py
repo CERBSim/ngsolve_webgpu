@@ -1,38 +1,50 @@
 import ngsolve as ngs
 import webgpu.jupyter as wj
 
-local_path = None # change this to local path of pyodide compiled zip files
+# local_path = None # change this to local path of pyodide compiled zip files
+local_path = "/home/christopher/git/source/ngsolve/dist/pyodide"
 
 if local_path is None:
     wj.pyodide_install_packages(["ngsolve"])
 else:
-    def local_install(package):
-        from IPython.display import Javascript, display
-        with open(package, "rb") as f:
-            package = f.read()
-        package = wj._encode_data(package)
-        display(
-            Javascript(
-                f"""
-async function install_packages() {{
-    let binary_string = atob('{package}');
-    const len = binary_string.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {{
-        bytes[i] = binary_string.charCodeAt(i);
-    }}
-    await pyodide.unpackArchive(bytes, 'zip');
-}}
-install_packages();
-"""
-            ))
-    local_install(local_path + "/pyngcore.zip")
-    local_install(local_path + "/netgen.zip")
-    wj.run_code_in_pyodide("""import netgen
-print('netgen', netgen.__file__)""")
-    local_install(local_path + "/ngsolve.zip")
-    wj.run_code_in_pyodide("""import ngsolve
-print('ngsolve', ngsolve.__file__)""")
+    def local_install(local_packages):
+        packages = []
+        for package in local_packages:
+            with open(local_path + f"/{package}.zip", "rb") as f:
+                data = f.read()
+            packages.append((package, data))
+        packages = wj._encode_data(packages)
+        print("packages = ", packages)
+        wj.run_code_in_pyodide(f"""
+import shutil
+from pyodide._package_loader import get_dynlibs
+import pyodide_js        
+from pathlib import Path
+import webgpu.jupyter as wj
+for package, data in wj._decode_data('{packages}'):
+    with open(package + '.zip', 'wb') as f:
+            f.write(data)
+    import os
+    print("local files = ", os.listdir('.'))
+    shutil.unpack_archive(package + '.zip', '.', 'zip')
+    print("after local files = ", os.listdir('.'))
+    libs = get_dynlibs(package + '.zip', '.zip', Path('.'))
+    print('got libs = ', libs)
+    for lib in libs:
+        await pyodide_js._api.loadDynlib(lib, True, [])
+    import importlib
+    print('import package = ', package)
+    importlib.import_module(package)
+""")
+    local_install(["pyngcore", "netgen", "ngsolve"])
+    # wj.run_code_in_pyodide("""import netgen
+# print('netgen', netgen.__file__)""")
+#     wj.run_code_in_pyodide("""
+# import micropip
+# await micropip.install('scipy')    
+# import scipy""")
+#     wj.run_code_in_pyodide("""import ngsolve
+# print('ngsolve', ngsolve.__file__)""")
 
 def Draw(
     obj: ngs.CoefficientFunction | ngs.Mesh,
