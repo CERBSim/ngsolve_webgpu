@@ -3,69 +3,81 @@ import webgpu.jupyter as wj
 
 _local_path = None  # change this to local path of pyodide compiled zip files
 
-if _local_path is None:
-    wj.run_code_in_pyodide(
-        """
-    _NGSOLVE_BASE_URL = "https://ngsolve.org/files/pyodide-0.27.2/master/"
-
-    import micropip
-    from pyodide.http import pyfetch
-    import pyodide_js
-    from pyodide._package_loader import unpack_buffer
-
-    await micropip.install("scipy")
-    import scipy
-
-    for module in ["pyngcore", "netgen", "ngsolve"]:
-        response = await pyfetch(f"{_NGSOLVE_BASE_URL}/{module}.zip")
-        data = await response.buffer()
-        dynlibs = list(
-            unpack_buffer(
-                data, format="zip", filename=f"{module}.zip", calculate_dynlibs=True
-            )
-        )
-        for lib in dynlibs:
-            await pyodide_js._api.loadDynlib(lib, True, [])
-    """
-    )
-else:
-
-    def local_install(local_packages):
-        packages = []
-        for package in local_packages:
-            with open(_local_path + f"/{package}.zip", "rb") as f:
-                data = f.read()
-            packages.append((package, data))
-        packages = wj._encode_data(packages)
-        print("packages = ", packages)
-        wj.run_code_in_pyodide(
-            f"""
-import shutil
-from pyodide._package_loader import get_dynlibs
-import pyodide_js
-from pathlib import Path
-import webgpu.jupyter as wj
-import micropip
-await micropip.install('scipy')
-import scipy
-for package, data in wj._decode_data('{packages}'):
-    with open(package + '.zip', 'wb') as f:
-            f.write(data)
-    import os
-    print("local files = ", os.listdir('.'))
-    shutil.unpack_archive(package + '.zip', '.', 'zip')
-    print("after local files = ", os.listdir('.'))
-    libs = get_dynlibs(package + '.zip', '.zip', Path('.'))
-    print('got libs = ', libs)
-    for lib in libs:
-        await pyodide_js._api.loadDynlib(lib, True, [])
-    import importlib
-    print('import package = ', package)
-    importlib.import_module(package)
+if not wj._is_pyodide:
+    from IPython.display import Javascript, display
+    def run_on_pyodide_ready(code):
+        display(Javascript(f"""
+function waitTillPyodideReady() {{
+        console.log("waiting for pyodide");
+    if(window.pyodide_ready === undefined) {{
+       window.setTimeout(waitTillPyodideReady, 100);
+    }} else {{
+        window.pyodide_ready.then(() => {{
+        window.webgpu_ready = Promise.all([window.webgpu_ready, window.pyodide.runPythonAsync(`{code}`)]);
+        }});
+    }}
+}}
+waitTillPyodideReady();
 """
-        )
+                           ))
+    if _local_path is None:
+        run_on_pyodide_ready("""
+        _NGSOLVE_BASE_URL = "https://ngsolve.org/files/pyodide-0.27.2/master/"
+        print("run code")
+        import micropip
+        from pyodide.http import pyfetch
+        import pyodide_js
+        from pyodide._package_loader import unpack_buffer
 
-    local_install(["pyngcore", "netgen", "ngsolve"])
+        await micropip.install("scipy")
+        import scipy
+
+        for module in ["pyngcore", "netgen", "ngsolve"]:
+            response = await pyfetch(f"{_NGSOLVE_BASE_URL}/{module}.zip")
+            data = await response.buffer()
+            dynlibs = list(
+                unpack_buffer(
+                    data, format="zip", filename=f"{module}.zip", calculate_dynlibs=True
+                )
+            )
+            for lib in dynlibs:
+                await pyodide_js._api.loadDynlib(lib, True, [])
+            print("loaded ", module)
+        """)
+    else:
+
+        def local_install(local_packages):
+            packages = []
+            for package in local_packages:
+                with open(_local_path + f"/{package}.zip", "rb") as f:
+                    data = f.read()
+                packages.append((package, data))
+            packages = wj._encode_data(packages)
+            run_on_pyodide_ready(f"""
+    import shutil
+    from pyodide._package_loader import get_dynlibs
+    import pyodide_js
+    from pathlib import Path
+    import webgpu.jupyter as wj
+    import micropip
+    await micropip.install('scipy')
+    import scipy
+    for package, data in wj._decode_data('{packages}'):
+        with open(package + '.zip', 'wb') as f:
+                f.write(data)
+        import os
+        print("local files = ", os.listdir('.'))
+        shutil.unpack_archive(package + '.zip', '.', 'zip')
+        print("after local files = ", os.listdir('.'))
+        libs = get_dynlibs(package + '.zip', '.zip', Path('.'))
+        print('got libs = ', libs)
+        for lib in libs:
+            await pyodide_js._api.loadDynlib(lib, True, [])
+        import importlib
+        print('import package = ', package)
+        importlib.import_module(package)
+    """)
+        local_install(["pyngcore", "netgen", "ngsolve"])
 
 
 def Draw(

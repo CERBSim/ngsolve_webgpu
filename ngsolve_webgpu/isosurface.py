@@ -1,4 +1,5 @@
 import numpy as np
+from ngsolve_webgpu.mesh import CoefficientFunctionRenderObject
 from webgpu import (
     BufferBinding,
     Colormap,
@@ -279,9 +280,7 @@ class IsoSurfaceRenderObject(RenderObject):
         )
         self.create_render_pipeline()
         self.cut_trigs_set = True
-        encoder = self.device.createCommandEncoder()
-        self.render(encoder)
-        self.device.queue.submit([encoder.finish()])
+        self.options.render_function(0.)
 
     def get_bindings(self):
         return [
@@ -320,3 +319,29 @@ class IsoSurfaceRenderObject(RenderObject):
             return
         super().render(encoder)
 
+
+class NegativeSurfaceRenderer(CoefficientFunctionRenderObject):
+    def __init__(self, functiondata, levelsetdata):
+        super().__init__(functiondata, label="NegativeSurfaceRenderer")
+        self.fragment_entry_point = "fragmentCheckLevelset"
+        self.levelset = levelsetdata
+
+    def redraw(self, timestamp: float | None = None, **kwargs):
+        super().redraw(timestamp=timestamp, **kwargs)
+        self.levelset.redraw(timestamp=timestamp, **kwargs)
+
+    def update(self):
+        buffers = self.levelset.get_buffers(self.device)
+        self.levelset_buffer = buffers["function"]
+        super().update()
+
+    def get_bindings(self):
+        return super().get_bindings() + [
+            BufferBinding(80, self.levelset_buffer)]
+
+    def get_shader_code(self):
+        return super().get_shader_code() + read_shader_file("negative_surface.wgsl", __file__)
+
+    def redraw(self, timestamp: float | None = None):
+        timestamp = self.levelset.redraw(timestamp)
+        super().redraw(timestamp)

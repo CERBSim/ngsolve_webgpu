@@ -238,7 +238,7 @@ class FunctionData(DataObject):
             self.function_data = b""
 
     def _create_data(self):
-        self.function_data = evaluate_cf(
+        self.function_data, self.minval, self.maxval = evaluate_cf(
             self.cf, ngs.Mesh(self.mesh_data.mesh), self.order
         )
 
@@ -261,6 +261,7 @@ class CoefficientFunctionRenderObject(RenderObject):
         super().__init__(label=label)
         self.data = data
         self.n_vertices = 3
+        self.colormap = Colormap()
 
         # shift trigs behind to ensure that edges are rendered properly
         self.depthBias = 1
@@ -277,6 +278,8 @@ class CoefficientFunctionRenderObject(RenderObject):
         self.colormap.options = self.options
         self.colormap.update()
         self._buffers = self.data.get_buffers(self.device)
+        self.colormap.options = self.options
+        self.colormap.update(self.data.minval, self.data.maxval)
         self.n_instances = self.data.mesh_data.num_trigs
         self.create_render_pipeline()
 
@@ -412,8 +415,12 @@ def evaluate_cf(cf, mesh, order):
 
     ndof = ibmat.h
 
-    pts = mesh.MapToAllElements({ngs.ET.TRIG: intrule, ngs.ET.QUAD: intrule}, ngs.VOL)
+    vb = mesh.Materials(".*")
+    if mesh.dim == 3:
+        vb = mesh.Boundaries(".*")
+    pts = mesh.MapToAllElements({ngs.ET.TRIG: intrule, ngs.ET.QUAD: intrule}, vb)
     pmat = cf(pts)
+    minval, maxval = (min(pmat), max(pmat)) if len(pmat) else (0,1)
     pmat = pmat.reshape(-1, ndof, comps)
 
     values = np.zeros((ndof, pmat.shape[0], comps), dtype=np.float32)
@@ -423,7 +430,7 @@ def evaluate_cf(cf, mesh, order):
 
     values = values.transpose((1, 0, 2)).flatten()
     ret = np.concatenate(([np.float32(cf.dim), np.float32(order)], values))
-    return ret.tobytes()
+    return ret.tobytes(), minval, maxval
 
 
 class PointNumbersRenderObject(RenderObject):
