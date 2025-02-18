@@ -62,7 +62,7 @@ def evaluate_cf(cf, mesh, order):
         vb = mesh.Boundaries(".*")
     pts = mesh.MapToAllElements({ngs.ET.TRIG: intrule, ngs.ET.QUAD: intrule}, vb)
     pmat = cf(pts)
-    minval, maxval = (min(pmat), max(pmat)) if len(pmat) else (0, 1)
+    minval, maxval = (min(pmat.reshape(-1)), max(pmat.reshape(-1))) if len(pmat) else (0, 1)
     pmat = pmat.reshape(-1, ndof, comps)
 
     values = np.zeros((ndof, pmat.shape[0], comps), dtype=np.float32)
@@ -141,10 +141,11 @@ class CoefficientFunctionRenderObject(RenderObject):
 
     def update(self):
         self.colormap.options = self.options
-        self.colormap.update()
         self._buffers = self.data.get_buffers(self.device)
         self.colormap.options = self.options
-        self.colormap.update(self.data.minval, self.data.maxval)
+        if self.colormap.autoupdate:
+            self.colormap.set_min_max(self.data.minval, self.data.maxval)
+        self.colormap.update()
         self.n_instances = self.data.mesh_data.num_trigs
         self.create_render_pipeline()
 

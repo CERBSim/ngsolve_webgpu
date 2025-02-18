@@ -240,6 +240,7 @@ class IsoSurfaceRenderObject(RenderObject):
             self.colormap.set_min_max(
                 min(draw_func_values), max(draw_func_values), set_autoupdate=False
             )
+        self.colormap.update()
         self.draw_func_value_buffer = self.device.createBuffer(
             size=len(draw_func_values) * draw_func_values.itemsize,
             usage=BufferUsage.STORAGE | BufferUsage.COPY_DST,
