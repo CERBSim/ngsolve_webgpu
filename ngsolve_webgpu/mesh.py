@@ -18,7 +18,6 @@ class Binding:
 
     EDGES = 8
     TRIGS = 9
-    TRIG_FUNCTION_VALUES = 10
     SEG_FUNCTION_VALUES = 11
     VERTICES = 12
     TRIGS_INDEX = 13

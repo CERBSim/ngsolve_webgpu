@@ -33,12 +33,26 @@ fn evalTrig( data: ptr<storage, array<f32>, read>, id: u32, icomp: u32, lam: vec
     let ncomp: u32 = u32((*data)[0]);
     var ndof: u32 = u32((order + 1) * (order + 2) / 2);
 
-    let offset: u32 = ndof * id * ncomp + VALUES_OFFSET + icomp;
+    var v: array<f32, 28>;
+    let offset: u32 = ndof * id * ncomp + VALUES_OFFSET;
     let stride: u32 = ncomp;
 
-    var v: array<f32, 28>;
-    for (var i: u32 = 0u; i < ndof; i++) {
-        v[i] = (*data)[offset + i * stride];
+    if(icomp == 0u)
+      {
+        // norm of vector
+        for (var i: u32 = 0u; i < ndof; i++) {
+          v[i] = 0.0;
+          for (var j: u32 = 0u; j < ncomp; j++) {
+            v[i] += (*data)[offset + i * stride + j] * (*data)[offset + i * stride + j];
+          }
+          v[i] = sqrt(v[i]);
+        }
+      }
+    else {
+
+        for (var i: u32 = 0u; i < ndof; i++) {
+          v[i] = (*data)[offset + icomp-1 + i * stride];
+        }
     }
 
     let dy = order + 1;

@@ -13,11 +13,16 @@ from webgpu.colormap import Colormap
 from webgpu.utils import (
     BufferBinding,
     read_shader_file,
+    buffer_from_array
 )
 from webgpu.webgpu_api import Device, BufferUsage
 
-from .mesh import MeshData, Binding
+from .mesh import MeshData
+from .mesh import Binding as MeshBinding
 
+class Binding:
+    TRIG_FUNCTION_VALUES = 10
+    COMPONENT = 55
 
 def _get_bernstein_matrix_trig(n, intrule):
     """Create inverse vandermonde matrix for the Bernstein basis functions on a triangle of degree n and given integration points"""
@@ -120,11 +125,15 @@ class FunctionData(DataObject):
     def get_bounding_box(self):
         return self.mesh_data.get_bounding_box()
 
+def _change_cf_dim(me, value):
+    me.component = value
+    me.redraw()
 
 class CoefficientFunctionRenderObject(RenderObject):
     """Use "vertices", "index" and "trig_function_values" buffers to render a mesh"""
 
-    def __init__(self, data: FunctionData, label=None):
+    def __init__(self, data: FunctionData, component = 0,
+                 label=None):
         super().__init__(label=label)
         self.data = data
         self.n_vertices = 3
@@ -135,13 +144,16 @@ class CoefficientFunctionRenderObject(RenderObject):
         self.depthBiasSlopeScale = 1.0
         self.vertex_entry_point = "vertexTrigP1Indexed"
         self.fragment_entry_point = "fragmentTrig"
+        self.component = component
         self.colormap = Colormap()
 
     def redraw(self, timestamp: float | None = None):
         timestamp = self.data.redraw(timestamp)
-        super().redraw(timestamp)
+        super().redraw(timestamp, component=self.component)
 
-    def update(self):
+    def update(self, component=None):
+        if component is not None:
+            self.component = component
         self.colormap.options = self.options
         self._buffers = self.data.get_buffers(self.device)
         self.colormap.options = self.options
@@ -149,10 +161,21 @@ class CoefficientFunctionRenderObject(RenderObject):
             self.colormap.set_min_max(self.data.minval, self.data.maxval)
         self.colormap.update()
         self.n_instances = self.data.mesh_data.num_trigs
+        self.component_buffer = buffer_from_array(np.array([self.component],
+                                                           np.uint32))
         self.create_render_pipeline()
 
     def get_bounding_box(self):
         return self.data.get_bounding_box()
+
+    def add_options_to_gui(self, gui):
+        if self.data.cf.dim > 1:
+            options = { "Norm" : 0 }
+            for d in range(self.data.cf.dim):
+                options[str(d)] = d+1
+            gui.dropdown(func=_change_cf_dim,
+                         objects=self, label="Component",
+                         values=options)
 
     def get_shader_code(self):
         shader_code = ""
@@ -176,6 +199,7 @@ class CoefficientFunctionRenderObject(RenderObject):
             *self.options.get_bindings(),
             *self.colormap.get_bindings(),
             BufferBinding(Binding.TRIG_FUNCTION_VALUES, self._buffers["function"]),
-            BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
-            BufferBinding(Binding.TRIGS_INDEX, self._buffers["trigs"]),
+            BufferBinding(MeshBinding.VERTICES, self._buffers["vertices"]),
+            BufferBinding(MeshBinding.TRIGS_INDEX, self._buffers["trigs"]),
+            BufferBinding(Binding.COMPONENT, self.component_buffer)
         ]

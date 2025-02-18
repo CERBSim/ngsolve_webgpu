@@ -151,5 +151,7 @@ def Draw(
         render_objects.append(wf)
 
     scene = wj.Scene(render_objects)
-    wj.Draw(scene, width, height, modules=["ngsolve_webgpu"])
+    scene = wj.Draw(scene, width, height, modules=["ngsolve_webgpu"])
+    for r in render_objects:
+        r.add_options_to_gui(scene.gui)
     return scene

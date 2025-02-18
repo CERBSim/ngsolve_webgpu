@@ -1,3 +1,6 @@
+
+@group(0) @binding(55) var<storage> u_function_component: u32;
+
 struct VertexOutput1d {
   @builtin(position) fragPosition: vec4<f32>,
   @location(0) p: vec3<f32>,
@@ -67,7 +70,7 @@ fn vertexTrigP1Indexed(@builtin(vertex_index) vertexId: u32, @builtin(instance_i
 fn fragmentTrig(input: VertexOutput2d) -> @location(0) vec4<f32> {
     checkClipping(input.p);
     let p = &trig_function_values;
-    let value = evalTrig(p, input.id, 0u, input.lam);
+    let value = evalTrig(p, input.id, u_function_component, input.lam);
     return getColor(value);
 }
 
