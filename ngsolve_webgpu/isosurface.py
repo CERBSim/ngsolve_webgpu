@@ -298,13 +298,13 @@ class NegativeSurfaceRenderer(CoefficientFunctionRenderObject):
         self.levelset = levelsetdata
 
     def redraw(self, timestamp: float | None = None, **kwargs):
+        self.levelset.redraw(timestamp=timestamp)
         super().redraw(timestamp=timestamp, **kwargs)
-        self.levelset.redraw(timestamp=timestamp, **kwargs)
 
-    def update(self):
+    def update(self, **kwargs):
         buffers = self.levelset.get_buffers(self.device)
         self.levelset_buffer = buffers["function"]
-        super().update()
+        super().update(**kwargs)
 
     def get_bindings(self):
         return super().get_bindings() + [BufferBinding(80, self.levelset_buffer)]
@@ -313,7 +313,3 @@ class NegativeSurfaceRenderer(CoefficientFunctionRenderObject):
         return super().get_shader_code() + read_shader_file(
             "negative_surface.wgsl", __file__
         )
-
-    def redraw(self, timestamp: float | None = None):
-        timestamp = self.levelset.redraw(timestamp)
-        super().redraw(timestamp)
