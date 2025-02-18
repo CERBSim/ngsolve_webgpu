@@ -5,8 +5,11 @@ _local_path = None  # change this to local path of pyodide compiled zip files
 
 if not wj._is_pyodide:
     from IPython.display import Javascript, display
+
     def run_on_pyodide_ready(code):
-        display(Javascript(f"""
+        display(
+            Javascript(
+                f"""
 function waitTillPyodideReady() {{
         window.webgpu_ready = new Promise((resolve, reject) => {{
             if(window.pyodide_ready === undefined) {{
@@ -22,9 +25,12 @@ function waitTillPyodideReady() {{
 }}
 waitTillPyodideReady();
 """
-                           ))
+            )
+        )
+
     if _local_path is None:
-        run_on_pyodide_ready("""
+        run_on_pyodide_ready(
+            """
         _NGSOLVE_BASE_URL = "https://ngsolve.org/files/pyodide-0.27.2/master/"
         print("run code")
         import micropip
@@ -46,7 +52,8 @@ waitTillPyodideReady();
             for lib in dynlibs:
                 await pyodide_js._api.loadDynlib(lib, True, [])
             print("loaded ", module)
-        """)
+        """
+        )
     else:
 
         def local_install(local_packages):
@@ -56,7 +63,8 @@ waitTillPyodideReady();
                     data = f.read()
                 packages.append((package, data))
             packages = wj._encode_data(packages)
-            run_on_pyodide_ready(f"""
+            run_on_pyodide_ready(
+                f"""
     import shutil
     from pyodide._package_loader import get_dynlibs
     import pyodide_js
@@ -79,7 +87,9 @@ waitTillPyodideReady();
         import importlib
         print('import package = ', package)
         importlib.import_module(package)
-    """)
+    """
+            )
+
         local_install(["pyngcore", "netgen", "ngsolve"])
 
 

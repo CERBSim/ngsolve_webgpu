@@ -1,5 +1,4 @@
 import numpy as np
-from ngsolve_webgpu.mesh import CoefficientFunctionRenderObject
 from webgpu import (
     BufferBinding,
     Colormap,
@@ -11,6 +10,8 @@ from webgpu import (
 from webgpu.webgpu_api import BufferUsage, ComputeState, MapMode, ShaderStage
 
 from webgpu.utils import uniform_from_array, buffer_from_array
+
+from .cf import CoefficientFunctionRenderObject
 
 
 class Binding:
@@ -48,25 +49,28 @@ class IsoSurfaceRenderObject(RenderObject):
         self.count_cut_trigs()
 
     def redraw(self, timestamp: float | None = None, **kwargs):
-        super().redraw(levelset=self.levelset, function=self.function,
-                       mesh=self.mesh)
+        super().redraw(levelset=self.levelset, function=self.function, mesh=self.mesh)
 
     def count_cut_trigs(self):
         import ngsolve as ngs
 
         compute_encoder = self.device.createCommandEncoder(label="count_iso_trigs")
         # binding -> counter i32
-        self.counter_buffer = buffer_from_array(np.array([0], dtype=np.uint32),
-                                                usage=BufferUsage.STORAGE | BufferUsage.COPY_DST | BufferUsage.COPY_SRC)
+        self.counter_buffer = buffer_from_array(
+            np.array([0], dtype=np.uint32),
+            usage=BufferUsage.STORAGE | BufferUsage.COPY_DST | BufferUsage.COPY_SRC,
+        )
 
-        self.ntets_buffer = uniform_from_array(np.array([self.mesh.ne], dtype=np.uint32))
+        self.ntets_buffer = uniform_from_array(
+            np.array([self.mesh.ne], dtype=np.uint32)
+        )
 
         self.mesh_pts = self.mesh.MapToAllElements(
             ngs.IntegrationRule([(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)]),
             self.mesh.Materials(".*"),
         )
         func_values = np.array(self.levelset(self.mesh_pts).flatten(), dtype=np.float32)
-        
+
         self.function_value_buffer = buffer_from_array(func_values)
 
         func_values = np.array(self.levelset(self.mesh_pts).flatten(), dtype=np.float32)
@@ -232,7 +236,10 @@ class IsoSurfaceRenderObject(RenderObject):
             self.function(self.mesh_pts).flatten(), dtype=np.float32
         )
         self.colormap.options = self.options
-        self.colormap.update(min(draw_func_values), max(draw_func_values))
+        if self.colormap.autoupdate:
+            self.colormap.set_min_max(
+                min(draw_func_values), max(draw_func_values), set_autoupdate=False
+            )
         self.draw_func_value_buffer = self.device.createBuffer(
             size=len(draw_func_values) * draw_func_values.itemsize,
             usage=BufferUsage.STORAGE | BufferUsage.COPY_DST,
@@ -243,7 +250,7 @@ class IsoSurfaceRenderObject(RenderObject):
         )
         self.create_render_pipeline()
         self.cut_trigs_set = True
-        self.options.render_function(0.)
+        self.options.render_function(0.0)
 
     def get_bindings(self):
         return [
@@ -299,11 +306,12 @@ class NegativeSurfaceRenderer(CoefficientFunctionRenderObject):
         super().update()
 
     def get_bindings(self):
-        return super().get_bindings() + [
-            BufferBinding(80, self.levelset_buffer)]
+        return super().get_bindings() + [BufferBinding(80, self.levelset_buffer)]
 
     def get_shader_code(self):
-        return super().get_shader_code() + read_shader_file("negative_surface.wgsl", __file__)
+        return super().get_shader_code() + read_shader_file(
+            "negative_surface.wgsl", __file__
+        )
 
     def redraw(self, timestamp: float | None = None):
         timestamp = self.levelset.redraw(timestamp)
