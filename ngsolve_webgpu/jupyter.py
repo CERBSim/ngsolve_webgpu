@@ -100,6 +100,7 @@ def Draw(
     width=600,
     height=600,
     order: int = 2,
+    vectors=None,
     **kwargs,
 ):
     """
@@ -149,6 +150,15 @@ def Draw(
         wf = Mesh2dWireframeRenderer(mesh_data)
         render_objects.append(r_cf)
         render_objects.append(wf)
+        if vectors:
+            options = vectors if isinstance(vectors, dict) else {}
+            if mesh.dim != 2:
+                raise ValueError("Vectors currently only implemented on 2d meshes")
+            from .cf import VectorCFRenderer
+            vcf = VectorCFRenderer(obj, mesh, **options)
+            vcf.colormap = r_cf.colormap
+            render_objects.append(vcf)
+            
 
     scene = wj.Scene(render_objects)
     scene = wj.Draw(scene, width, height, modules=["ngsolve_webgpu"])

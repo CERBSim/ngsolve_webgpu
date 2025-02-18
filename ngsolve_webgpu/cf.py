@@ -9,6 +9,7 @@ from webgpu.render_object import (
     RenderObject,
     _add_render_object,
 )
+from webgpu.vectors import BaseVectorRenderObject, VectorRenderer
 from webgpu.colormap import Colormap
 from webgpu.utils import (
     BufferBinding,
@@ -203,3 +204,49 @@ class CoefficientFunctionRenderObject(RenderObject):
             BufferBinding(MeshBinding.TRIGS_INDEX, self._buffers["trigs"]),
             BufferBinding(Binding.COMPONENT, self.component_buffer)
         ]
+
+
+class VectorCFRenderer(VectorRenderer):
+    def __init__(self, cf: ngs.CoefficientFunction,
+                 mesh: ngs.Mesh, grid_size=20, size=None):
+        # calling super-super class to not create points and vectors
+        BaseVectorRenderObject.__init__(self)
+        self.cf = cf
+        self.mesh = mesh
+        # this somehow segfaults in pyodide?
+        self.grid_size = grid_size
+        self.size = size
+
+    def redraw(self, timestamp=None):
+        super().redraw(timestamp=timestamp, cf=self.cf, mesh=self.mesh, grid_size=self.grid_size)
+
+    def update(self, cf=None, mesh=None, grid_size=None, size=None):
+        if cf is not None:
+            self.cf = cf
+        if mesh is not None:
+            self.mesh = mesh
+        if grid_size is not None:
+            self.gridsize = grid_size
+        if size is not None:
+            self.size = size
+        bb = self.mesh.ngmesh.bounding_box
+        self.bounding_box = np.array([[bb[0][0], bb[0][1], bb[0][2]],
+                                      [bb[1][0], bb[1][1], bb[1][2]]])
+        vs = np.linspace(self.bounding_box[0][0], self.bounding_box[1][0], self.grid_size+1, endpoint=False)[1:]
+        points = np.meshgrid(vs, vs)
+        xvals = points[0].flatten()
+        yvals = points[1].flatten()
+        self.size = self.size or 1 / 60 * np.linalg.norm(
+            self.bounding_box[1] - self.bounding_box[0]
+        )
+        mpts_ = self.mesh(xvals, yvals, 0.)
+        pts, mpts = [], []
+        for i in range(len(xvals)):
+            if mpts_[i]["nr"] != -1:
+                mpts.append(mpts_[i])
+                pts.append([xvals[i], yvals[i], 0.])
+        self.points = np.array(pts, dtype=np.float32).reshape(-1)
+        values = self.cf(mpts)
+        self.vectors = np.array([values[:,0], values[:,1], np.zeros_like(values[:,0])], dtype=np.float32).T.reshape(-1)
+        super().update()
+        
