@@ -10,6 +10,8 @@ from webgpu import (
 )
 from webgpu.webgpu_api import BufferUsage, ComputeState, MapMode, ShaderStage
 
+from webgpu.utils import uniform_from_array, buffer_from_array
+
 
 class Binding:
     COUNTER = 80
@@ -54,39 +56,19 @@ class IsoSurfaceRenderObject(RenderObject):
 
         compute_encoder = self.device.createCommandEncoder(label="count_iso_trigs")
         # binding -> counter i32
-        self.counter_buffer = self.device.createBuffer(
-            size=4,
-            usage=BufferUsage.STORAGE | BufferUsage.COPY_SRC | BufferUsage.COPY_DST,
-            label="counter",
-        )
+        self.counter_buffer = buffer_from_array(np.array([0], dtype=np.uint32),
+                                                usage=BufferUsage.STORAGE | BufferUsage.COPY_DST | BufferUsage.COPY_SRC)
 
-        self.ntets_buffer = self.device.createBuffer(
-            size=4,
-            usage=BufferUsage.UNIFORM | BufferUsage.COPY_DST,
-            label="ntets",
-        )
-
-        self.device.queue.writeBuffer(
-            self.ntets_buffer,
-            0,
-            np.uint32(self.mesh.ne).tobytes(),
-            0,
-            4,
-        )
+        self.ntets_buffer = uniform_from_array(np.array([self.mesh.ne], dtype=np.uint32))
 
         self.mesh_pts = self.mesh.MapToAllElements(
             ngs.IntegrationRule([(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)]),
             self.mesh.Materials(".*"),
         )
         func_values = np.array(self.levelset(self.mesh_pts).flatten(), dtype=np.float32)
-        self.function_value_buffer = self.device.createBuffer(
-            size=len(func_values) * func_values.itemsize,
-            usage=BufferUsage.STORAGE | BufferUsage.COPY_DST,
-            label="function",
-        )
-        self.device.queue.writeBuffer(
-            self.function_value_buffer, 0, func_values.tobytes()
-        )
+        
+        self.function_value_buffer = buffer_from_array(func_values)
+
         func_values = np.array(self.levelset(self.mesh_pts).flatten(), dtype=np.float32)
         vertices = np.array(
             ngs.CF((ngs.x, ngs.y, ngs.z))(self.mesh_pts), dtype=np.float32
@@ -94,11 +76,8 @@ class IsoSurfaceRenderObject(RenderObject):
         self.pmin = np.min(vertices, axis=0)
         self.pmax = np.max(vertices, axis=0)
         vertices = vertices.flatten()
-        self.vertex_buffer = self.device.createBuffer(
-            size=len(vertices) * vertices.itemsize,
-            label="vertex",
-            usage=BufferUsage.STORAGE | BufferUsage.COPY_DST,
-        )
+        self.vertex_buffer = buffer_from_array(vertices)
+
         # just a dummy here, needed in create
         cut_trigs_buffer = self.device.createBuffer(
             label="cut trigs " + str(self.n_instances),
@@ -111,25 +90,12 @@ class IsoSurfaceRenderObject(RenderObject):
             read_only=False,
             visibility=ShaderStage.COMPUTE,
         )
-        self.device.queue.writeBuffer(self.vertex_buffer, 0, vertices.tobytes())
         self.result_buffer = self.device.createBuffer(
             size=4,
             label="result",
             usage=BufferUsage.MAP_READ | BufferUsage.COPY_DST,
         )
-        self.only_count = self.device.createBuffer(
-            label="only_count", size=4, usage=BufferUsage.UNIFORM | BufferUsage.COPY_DST
-        )
-        self.device.queue.writeBuffer(
-            self.only_count,
-            0,
-            np.uint32(1).tobytes(),
-            0,
-            4,
-        )
-        self.device.queue.writeBuffer(
-            self.counter_buffer, 0, np.array([0], dtype=np.uint32).tobytes(), 0, 4
-        )
+        self.only_count = uniform_from_array(np.array([1], dtype=np.uint32))
         bindings = [
             *self.options.camera.get_bindings(),
             BufferBinding(
@@ -200,8 +166,6 @@ class IsoSurfaceRenderObject(RenderObject):
         task.catch(error)
 
     def create_cut_trigs(self):
-        import ngsolve as ngs
-
         compute_encoder = self.device.createCommandEncoder(label="create_iso_trigs")
         # binding -> counter i32
         self.device.queue.writeBuffer(self.only_count, 0, np.uint32(0).tobytes(), 0, 4)
@@ -264,7 +228,6 @@ class IsoSurfaceRenderObject(RenderObject):
         compute_pass.end()
 
         self.device.queue.submit([compute_encoder.finish()])
-        print("Create render pipeline with cut trigs set = ", self.n_instances)
         draw_func_values = np.array(
             self.function(self.mesh_pts).flatten(), dtype=np.float32
         )
