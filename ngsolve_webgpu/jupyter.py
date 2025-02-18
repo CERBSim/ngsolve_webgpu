@@ -8,14 +8,17 @@ if not wj._is_pyodide:
     def run_on_pyodide_ready(code):
         display(Javascript(f"""
 function waitTillPyodideReady() {{
-        console.log("waiting for pyodide");
-    if(window.pyodide_ready === undefined) {{
-       window.setTimeout(waitTillPyodideReady, 100);
-    }} else {{
-        window.pyodide_ready.then(() => {{
-        window.webgpu_ready = Promise.all([window.webgpu_ready, window.pyodide.runPythonAsync(`{code}`)]);
+        window.webgpu_ready = new Promise((resolve, reject) => {{
+            if(window.pyodide_ready === undefined) {{
+               window.setTimeout(waitTillPyodideReady, 100);
+            }} else {{
+                window.pyodide_ready.then(() => {{
+                window.pyodide.runPythonAsync(`{code}`).then(() => {{
+                    resolve();
+                }});
+                }});
+            }}
         }});
-    }}
 }}
 waitTillPyodideReady();
 """
