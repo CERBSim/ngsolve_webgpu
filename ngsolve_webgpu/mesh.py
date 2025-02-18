@@ -330,7 +330,7 @@ class PointNumbersRenderObject(RenderObject):
         self.data = data
         self.depthBias = -1
         self.vertex_entry_point = "vertexPointNumber"
-        self.fragment_entry_point = "fragmentText"
+        self.fragment_entry_point = "fragmentFont"
         self.n_vertices = self.n_digits * 6
         self.font_size = font_size
 
