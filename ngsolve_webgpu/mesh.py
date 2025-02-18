@@ -272,6 +272,7 @@ class PointNumbersRenderObject(RenderObject):
         super().__init__(label=label)
         self.n_digits = 6
         self.data = data
+        self.depthBias = -1
         self.vertex_entry_point = "vertexPointNumber"
         self.fragment_entry_point = "fragmentText"
         self.n_vertices = self.n_digits * 6
