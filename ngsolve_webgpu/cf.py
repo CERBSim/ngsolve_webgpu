@@ -159,7 +159,8 @@ class CoefficientFunctionRenderObject(RenderObject):
         self._buffers = self.data.get_buffers(self.device)
         self.colormap.options = self.options
         if self.colormap.autoupdate:
-            self.colormap.set_min_max(self.data.minval, self.data.maxval)
+            self.colormap.set_min_max(self.data.minval, self.data.maxval,
+                                      set_autoupdate=False)
         self.colormap.update()
         self.n_instances = self.data.mesh_data.num_trigs
         self.component_buffer = buffer_from_array(np.array([self.component],

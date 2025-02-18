@@ -150,6 +150,7 @@ def Draw(
         wf = Mesh2dWireframeRenderer(mesh_data)
         render_objects.append(r_cf)
         render_objects.append(wf)
+        render_objects.append(r_cf.colormap)
         if vectors:
             options = vectors if isinstance(vectors, dict) else {}
             if mesh.dim != 2:
