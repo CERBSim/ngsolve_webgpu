@@ -62,7 +62,9 @@ def evaluate_cf(cf, mesh, order):
         vb = mesh.Boundaries(".*")
     pts = mesh.MapToAllElements({ngs.ET.TRIG: intrule, ngs.ET.QUAD: intrule}, vb)
     pmat = cf(pts)
-    minval, maxval = (min(pmat.reshape(-1)), max(pmat.reshape(-1))) if len(pmat) else (0, 1)
+    minval, maxval = (
+        (min(pmat.reshape(-1)), max(pmat.reshape(-1))) if len(pmat) else (0, 1)
+    )
     pmat = pmat.reshape(-1, ndof, comps)
 
     values = np.zeros((ndof, pmat.shape[0], comps), dtype=np.float32)

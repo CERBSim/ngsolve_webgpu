@@ -96,9 +96,11 @@ waitTillPyodideReady();
 def Draw(
     obj: ngs.CoefficientFunction | ngs.Mesh,
     mesh: ngs.Mesh | None = None,
+    name: str = None,
     width=600,
     height=600,
     order: int = 2,
+    **kwargs,
 ):
     """
     NGSolve Draw command. Draws a CoefficientFunction or a Mesh with a set of options using the NGSolve webgpu framework.
@@ -125,18 +127,28 @@ def Draw(
     render_objects = []
     if isinstance(obj, ngs.Mesh):
         mesh = obj
+        from .mesh import MeshData, Mesh2dElementsRenderer, Mesh2dWireframeRenderer
+
+        mesh_data = MeshData(mesh.ngmesh)
+        m2d = Mesh2dElementsRenderer(mesh_data)
+        wf = Mesh2dWireframeRenderer(mesh_data)
+        render_objects.append(m2d)
+        render_objects.append(wf)
     if isinstance(obj, ngs.CoefficientFunction):
         if mesh is None:
             if isinstance(mesh, ngs.GridFunction):
                 mesh = mesh.space.mesh
             else:
                 raise ValueError("If obj is a CoefficientFunction, mesh is required.")
-        from .mesh import CoefficientFunctionRenderObject, FunctionData, MeshData
+        from .cf import CoefficientFunctionRenderObject, FunctionData
+        from .mesh import MeshData, Mesh2dWireframeRenderer
 
         mesh_data = MeshData(mesh.ngmesh)
         function_data = FunctionData(mesh_data, obj, order)
         r_cf = CoefficientFunctionRenderObject(function_data)
+        wf = Mesh2dWireframeRenderer(mesh_data)
         render_objects.append(r_cf)
+        render_objects.append(wf)
 
     scene = wj.Scene(render_objects)
     wj.Draw(scene, width, height, modules=["ngsolve_webgpu"])

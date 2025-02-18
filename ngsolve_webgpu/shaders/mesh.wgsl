@@ -235,6 +235,14 @@ fn vertexMeshHex(@builtin(vertex_index) vertId: u32, @builtin(instance_index) el
     return calcMeshFace(vec4<f32>(1., 1., 0., 1.), points, vertId, el.nr, el.index);
 }
 
+@group(0) @binding(54) var<storage> u_mesh_color: vec4<f32>;
+
+@fragment
+fn fragment2dElement(input: VertexOutput2d) -> @location(0) vec4<f32> {
+  checkClipping(input.p);
+  return lightCalcColor(-input.n, u_mesh_color);
+}
+
 
 const TET_FACES = array(
     vec3(0, 2, 1),

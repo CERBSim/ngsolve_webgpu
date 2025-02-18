@@ -58,7 +58,8 @@ fn vertexTrigP1Indexed(@builtin(vertex_index) vertexId: u32, @builtin(instance_i
         vec3<f32>(vertices[vid[1] ], vertices[vid[1] + 1], vertices[vid[1] + 2]),
         vec3<f32>(vertices[vid[2] ], vertices[vid[2] + 1], vertices[vid[2] + 2])
     );
-    return calcTrig(p, vertexId, trigId);
+    // % 3 is here to allow same shader usage for wireframe for line strip
+    return calcTrig(p, vertexId%3, trigId);
 }
 
 

@@ -9,10 +9,7 @@ from webgpu.render_object import (
 )
 
 # from webgpu.uniforms import Binding
-from webgpu.utils import (
-    BufferBinding,
-    read_shader_file,
-)
+from webgpu.utils import BufferBinding, read_shader_file, buffer_from_array
 from webgpu.webgpu_api import *
 
 
@@ -197,6 +194,68 @@ class MeshData(DataObject):
 
         self._buffers = buffers
         return self._buffers
+
+
+class Mesh2dElementsRenderer(RenderObject):
+    n_vertices: int = 3
+    depthBias: int = 1
+    depthBiasSlopeScale: float = 1.0
+    vertex_entry_point: str = "vertexTrigP1Indexed"
+    fragment_entry_point: str = "fragment2dElement"
+    color = (0, 1, 0, 1)
+
+    def __init__(self, data: MeshData):
+        super().__init__(label="Mesh2dElementsRenderer")
+        self.data = data
+
+    def redraw(self, timestamp: float | None = None):
+        timestamp = self.data.redraw(timestamp)
+        super().redraw(timestamp)
+
+    def update(self):
+        self._buffers = self.data.get_buffers(self.device)
+        self.n_instances = self.data.num_trigs
+        self.color_uniform = buffer_from_array(np.array(self.color, dtype=np.float32))
+        self.create_render_pipeline()
+
+    def get_bounding_box(self):
+        return self.data.get_bounding_box()
+
+    def get_bindings(self):
+        return [
+            *self.options.get_bindings(),
+            BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
+            BufferBinding(Binding.TRIGS_INDEX, self._buffers["trigs"]),
+            BufferBinding(54, self.color_uniform),
+        ]
+
+    def get_shader_code(self):
+        shader_code = ""
+
+        for file_name in [
+            "clipping.wgsl",
+            "eval.wgsl",
+            "mesh.wgsl",
+            "shader.wgsl",
+            "uniforms.wgsl",
+        ]:
+            shader_code += read_shader_file(file_name, __file__)
+        # for now as shaders are not seperated well
+        import webgpu.colormap
+
+        shader_code += webgpu.colormap.Colormap().get_shader_code()
+        shader_code += self.options.camera.get_shader_code()
+        shader_code += self.options.light.get_shader_code()
+        return shader_code
+
+
+class Mesh2dWireframeRenderer(Mesh2dElementsRenderer):
+    n_vertices: int = 4
+    depthBias: int = 0
+    vertex_entry_point: str = "vertexTrigP1Indexed"
+    fragment_entry_point: str = "fragment2dElement"
+    topology: PrimitiveTopology = PrimitiveTopology.line_strip
+    color = (0, 0, 0, 1)
 
 
 class Mesh3dElementsRenderObject(RenderObject):
