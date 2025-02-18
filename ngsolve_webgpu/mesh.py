@@ -252,8 +252,6 @@ class Mesh2dElementsRenderer(RenderObject):
 class Mesh2dWireframeRenderer(Mesh2dElementsRenderer):
     n_vertices: int = 4
     depthBias: int = 0
-    vertex_entry_point: str = "vertexTrigP1Indexed"
-    fragment_entry_point: str = "fragment2dElement"
     topology: PrimitiveTopology = PrimitiveTopology.line_strip
     color = (0, 0, 0, 1)
 
