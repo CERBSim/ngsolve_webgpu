@@ -11,6 +11,7 @@ from webgpu.render_object import (
 )
 from webgpu.vectors import BaseVectorRenderObject, VectorRenderer
 from webgpu.colormap import Colormap
+from webgpu.clipping import Clipping
 from webgpu.utils import (
     BufferBinding,
     read_shader_file,
@@ -139,6 +140,7 @@ class CoefficientFunctionRenderObject(RenderObject):
         self.data = data
         self.n_vertices = 3
         self.colormap = Colormap()
+        self.clipping = Clipping()
 
         # shift trigs behind to ensure that edges are rendered properly
         self.depthBias = 1
@@ -146,7 +148,6 @@ class CoefficientFunctionRenderObject(RenderObject):
         self.vertex_entry_point = "vertexTrigP1Indexed"
         self.fragment_entry_point = "fragmentTrig"
         self.component = component
-        self.colormap = Colormap()
 
     def redraw(self, timestamp: float | None = None):
         timestamp = self.data.redraw(timestamp)
@@ -155,13 +156,13 @@ class CoefficientFunctionRenderObject(RenderObject):
     def update(self, component=None):
         if component is not None:
             self.component = component
-        self.colormap.options = self.options
         self._buffers = self.data.get_buffers(self.device)
         self.colormap.options = self.options
         if self.colormap.autoupdate:
             self.colormap.set_min_max(self.data.minval, self.data.maxval,
                                       set_autoupdate=False)
         self.colormap.update()
+        self.clipping.update()
         self.n_instances = self.data.mesh_data.num_trigs
         self.component_buffer = buffer_from_array(np.array([self.component],
                                                            np.uint32))
@@ -183,7 +184,6 @@ class CoefficientFunctionRenderObject(RenderObject):
         shader_code = ""
 
         for file_name in [
-            "clipping.wgsl",
             "eval.wgsl",
             "mesh.wgsl",
             "shader.wgsl",
@@ -192,6 +192,7 @@ class CoefficientFunctionRenderObject(RenderObject):
             shader_code += read_shader_file(file_name, __file__)
 
         shader_code += self.colormap.get_shader_code()
+        shader_code += self.clipping.get_shader_code()
         shader_code += self.options.camera.get_shader_code()
         shader_code += self.options.light.get_shader_code()
         return shader_code
@@ -200,6 +201,7 @@ class CoefficientFunctionRenderObject(RenderObject):
         return [
             *self.options.get_bindings(),
             *self.colormap.get_bindings(),
+            *self.clipping.get_bindings(),
             BufferBinding(Binding.TRIG_FUNCTION_VALUES, self._buffers["function"]),
             BufferBinding(MeshBinding.VERTICES, self._buffers["vertices"]),
             BufferBinding(MeshBinding.TRIGS_INDEX, self._buffers["trigs"]),

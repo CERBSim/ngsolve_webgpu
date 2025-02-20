@@ -2,6 +2,7 @@ import numpy as np
 from webgpu import (
     BufferBinding,
     Colormap,
+    Clipping,
     RenderObject,
     UniformBinding,
     create_bind_group,
@@ -37,6 +38,7 @@ class IsoSurfaceRenderObject(RenderObject):
         self.cut_trigs_set = False
         self.task = None
         self.colormap = Colormap()
+        self.clipping = Clipping()
 
     def update(self, levelset=None, function=None, mesh=None):
         if levelset is not None:
@@ -53,7 +55,7 @@ class IsoSurfaceRenderObject(RenderObject):
 
     def count_cut_trigs(self):
         import ngsolve as ngs
-
+        self.clipping.update()
         compute_encoder = self.device.createCommandEncoder(label="count_iso_trigs")
         # binding -> counter i32
         self.counter_buffer = buffer_from_array(
@@ -102,6 +104,7 @@ class IsoSurfaceRenderObject(RenderObject):
         self.only_count = uniform_from_array(np.array([1], dtype=np.uint32))
         bindings = [
             *self.options.camera.get_bindings(),
+            *self.clipping.get_bindings(),
             BufferBinding(
                 Binding.COUNTER,
                 self.counter_buffer,
@@ -125,6 +128,7 @@ class IsoSurfaceRenderObject(RenderObject):
         shader_code = ""
         compute_shader_code = read_shader_file("compute_isosurface.wgsl", __file__)
         shader_code += read_shader_file("isosurface.wgsl", __file__)
+        shader_code += self.clipping.get_shader_code()
         shader_module = self.device.createShaderModule(
             compute_shader_code + shader_code
         )
@@ -190,6 +194,7 @@ class IsoSurfaceRenderObject(RenderObject):
         )
         bindings = [
             *self.options.camera.get_bindings(),
+            *self.clipping.get_bindings(),
             BufferBinding(
                 Binding.COUNTER,
                 self.counter_buffer,
@@ -214,6 +219,7 @@ class IsoSurfaceRenderObject(RenderObject):
         shader_code = ""
         compute_shader_code = read_shader_file("compute_isosurface.wgsl", __file__)
         shader_code += read_shader_file("isosurface.wgsl", __file__)
+        shader_code += self.clipping.get_shader_code()
         shader_module = self.device.createShaderModule(
             compute_shader_code + shader_code
         )
@@ -241,6 +247,7 @@ class IsoSurfaceRenderObject(RenderObject):
                 min(draw_func_values), max(draw_func_values), set_autoupdate=False
             )
         self.colormap.update()
+        self.clipping.update()
         self.draw_func_value_buffer = self.device.createBuffer(
             size=len(draw_func_values) * draw_func_values.itemsize,
             usage=BufferUsage.STORAGE | BufferUsage.COPY_DST,
@@ -256,6 +263,7 @@ class IsoSurfaceRenderObject(RenderObject):
     def get_bindings(self):
         return [
             *self.options.camera.get_bindings(),
+            *self.clipping.get_bindings(),
             *self.colormap.get_bindings(),
             BufferBinding(
                 Binding.FUNCTION_VALUES,

@@ -41,6 +41,7 @@ fn vertexIsoSurface(@builtin(vertex_index) vertId: u32, @builtin(instance_index)
 @fragment
 fn fragmentIsoSurface(input: MeshFragmentInput) -> @location(0) vec4<f32> {
   let p = input.p;
+  checkClipping(input.p);
   let n4 = u_view.normal_mat * vec4(input.n, 1.0);
   let n = normalize(n4.xyz);
   let brightness = clamp(dot(n, normalize(vec3<f32>(-1., -3., -3.))), .0, 1.) * 0.7 + 0.3;
