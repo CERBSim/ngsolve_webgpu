@@ -97,6 +97,7 @@ class MeshData(DataObject):
     elements: dict[str, bytes]
 
     mesh: netgen.meshing.Mesh
+    _ngs_mesh: "ngsolve.Mesh" | None = None
     _last_mesh_timestamp: int = -1
 
     __BUFFER_NAMES = [
@@ -106,10 +107,22 @@ class MeshData(DataObject):
     ]
     __INT_NAMES = ["num_trigs", "num_verts", "num_edges"]
 
-    def __init__(self, mesh: netgen.meshing.Mesh):
+    def __init__(self, mesh: netgen.meshing.Mesh | "ngsolve.Mesh"):
         _add_render_object(self)
-        self.mesh = mesh
+        if isinstance(mesh, netgen.meshing.Mesh):
+            self.mesh = mesh
+        else:
+            self._ngs_mesh = mesh
+            self.mesh = mesh.ngmesh
         self._buffers = {}
+
+    @property
+    def ngs_mesh(self):
+        import ngsolve
+
+        if self._ngs_mesh is None:
+            self._ngs_mesh = ngsolve.Mesh(self.mesh)
+        return self._ngs_mesh
 
     def redraw(self, timestamp: float | None = None):
         super().redraw(mesh=self.mesh)

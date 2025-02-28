@@ -113,7 +113,7 @@ class FunctionData(DataObject):
 
     def _create_data(self):
         self.function_data, self.minval, self.maxval = evaluate_cf(
-            self.cf, ngs.Mesh(self.mesh_data.mesh), self.order
+            self.cf, self.mesh_data.ngs_mesh, self.order
         )
 
     def _create_buffers(self, device: Device):
