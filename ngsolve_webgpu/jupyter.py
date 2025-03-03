@@ -126,11 +126,11 @@ def Draw(
     """
     # create gui before calling render
     render_objects = []
-    if isinstance(obj, ngs.Mesh):
+    if isinstance(obj, ngs.Mesh | ngs.Region):
         mesh = obj
         from .mesh import MeshData, Mesh2dElementsRenderer, Mesh2dWireframeRenderer
 
-        mesh_data = MeshData(mesh.ngmesh)
+        mesh_data = MeshData(mesh)
         m2d = Mesh2dElementsRenderer(mesh_data)
         wf = Mesh2dWireframeRenderer(mesh_data)
         render_objects.append(m2d)
@@ -156,10 +156,10 @@ def Draw(
             if mesh.dim != 2:
                 raise ValueError("Vectors currently only implemented on 2d meshes")
             from .cf import VectorCFRenderer
+
             vcf = VectorCFRenderer(obj, mesh, **options)
             vcf.colormap = r_cf.colormap
             render_objects.append(vcf)
-            
 
     scene = wj.Scene(render_objects)
     scene = wj.Draw(scene, width, height, modules=["ngsolve_webgpu"])

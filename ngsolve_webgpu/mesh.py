@@ -110,10 +110,17 @@ class MeshData(DataObject):
 
     def __init__(self, mesh):
         _add_render_object(self)
+        self.on_region = False
+        self.need_3d = False
         if isinstance(mesh, netgen.meshing.Mesh):
             self.mesh = mesh
         else:
             self._ngs_mesh = mesh
+            import ngsolve as ngs
+
+            if isinstance(mesh, ngs.Region):
+                self.on_region = True
+                mesh = mesh.mesh
             self.mesh = mesh.ngmesh
         self._buffers = {}
 
@@ -128,14 +135,13 @@ class MeshData(DataObject):
     def redraw(self, timestamp: float | None = None):
         super().redraw(mesh=self.mesh)
 
-    def update(self, mesh = None):
+    def update(self, mesh=None):
         if mesh:
             self.mesh = mesh
 
     def _create_data(self):
         # TODO: implement other element types than triangles
         # TODO: handle region correctly to draw only part of the mesh
-
         mesh = self.mesh
         for name in self.__BUFFER_NAMES:
             setattr(self, name, b"")
@@ -153,8 +159,11 @@ class MeshData(DataObject):
         self.vertices = vertices.tobytes()
 
         # Trigs TODO: Quads
-        self.num_trigs = len(mesh.Elements2D())
         trigs = mesh.Elements2D().NumPy()
+        if self.on_region:
+            indices = np.flatnonzero(self.ngs_mesh.Mask()) + 1
+            trigs = trigs[np.isin(trigs["index"], indices)]
+        self.num_trigs = len(trigs)
         trigs_data = np.zeros((self.num_trigs, 4), dtype=np.uint32)
         trigs_data[:, :3] = trigs["nodes"][:, :3] - 1
         trigs_data[:, 3] = trigs["index"]
@@ -164,13 +173,14 @@ class MeshData(DataObject):
         self.num_els = {eltype.name: 0 for eltype in ElType}
         elements = {eltype.name: [] for eltype in ElType}
 
-        for i, el in enumerate(mesh.Elements3D()):
-            eltype = ElType.from_dim_np(3, len(el.vertices))
-            data = [p.nr - 1 for p in el.vertices]
-            data.append(el.index)
-            data.append(i)
-            elements[eltype.name].append(data)
-            self.num_els[eltype.name] += 1
+        if self.need_3d:
+            for i, el in enumerate(mesh.Elements3D()):
+                eltype = ElType.from_dim_np(3, len(el.vertices))
+                data = [p.nr - 1 for p in el.vertices]
+                data.append(el.index)
+                data.append(i)
+                elements[eltype.name].append(data)
+                self.num_els[eltype.name] += 1
 
         self.elements = {}
         for eltype in elements:
@@ -204,7 +214,6 @@ class MeshData(DataObject):
             )
             device.queue.writeBuffer(buffer, 0, d)
             buffers[key] = buffer
-
         self._buffers = buffers
         return self._buffers
 
