@@ -144,7 +144,7 @@ def Draw(
         from .cf import CoefficientFunctionRenderObject, FunctionData
         from .mesh import MeshData, Mesh2dWireframeRenderer
 
-        mesh_data = MeshData(mesh.ngmesh)
+        mesh_data = MeshData(mesh)
         function_data = FunctionData(mesh_data, obj, order)
         r_cf = CoefficientFunctionRenderObject(function_data)
         wf = Mesh2dWireframeRenderer(mesh_data)

@@ -62,10 +62,16 @@ def evaluate_cf(cf, mesh, order):
 
     ndof = ibmat.h
 
-    vb = mesh.Materials(".*")
-    if mesh.dim == 3:
-        vb = mesh.Boundaries(".*")
-    pts = mesh.MapToAllElements({ngs.ET.TRIG: intrule, ngs.ET.QUAD: intrule}, vb)
+    if isinstance(mesh, ngs.Region):
+        if mesh.VB() == ngs.VOL and mesh.mesh.dim == 3:
+            region = mesh.Boundaries()
+        else:
+            region = mesh
+    else:
+        region = mesh.Materials(".*")
+        if mesh.dim == 3:
+            region = mesh.Boundaries(".*")
+    pts = region.mesh.MapToAllElements({ngs.ET.TRIG: intrule, ngs.ET.QUAD: intrule}, region)
     pmat = cf(pts)
     minval, maxval = (
         (min(pmat.reshape(-1)), max(pmat.reshape(-1))) if len(pmat) else (0, 1)
