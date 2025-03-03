@@ -1,4 +1,6 @@
 
+@group(0) @binding(12) var<storage> vertices : array<f32>;
+
 @vertex
 fn vertexPointNumber(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) pointId: u32) -> FontFragmentInput {
     var p = vec3<f32>(vertices[3 * pointId], vertices[3 * pointId + 1], vertices[3 * pointId + 2]);

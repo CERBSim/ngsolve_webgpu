@@ -11,6 +11,7 @@ from webgpu.render_object import (
 # from webgpu.uniforms import Binding
 from webgpu.utils import BufferBinding, read_shader_file, buffer_from_array
 from webgpu.webgpu_api import *
+from webgpu.clipping import Clipping
 
 
 class Binding:
@@ -219,12 +220,14 @@ class Mesh2dElementsRenderer(RenderObject):
     def __init__(self, data: MeshData):
         super().__init__(label="Mesh2dElementsRenderer")
         self.data = data
+        self.clipping = Clipping()
 
     def redraw(self, timestamp: float | None = None):
         timestamp = self.data.redraw(timestamp)
         super().redraw(timestamp)
 
     def update(self):
+        self.clipping.update()
         self._buffers = self.data.get_buffers(self.device)
         self.n_instances = self.data.num_trigs
         self.color_uniform = buffer_from_array(np.array(self.color, dtype=np.float32))
@@ -236,6 +239,7 @@ class Mesh2dElementsRenderer(RenderObject):
     def get_bindings(self):
         return [
             *self.options.get_bindings(),
+            *self.clipping.get_bindings(),
             BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
             BufferBinding(Binding.TRIGS_INDEX, self._buffers["trigs"]),
             BufferBinding(54, self.color_uniform),
@@ -243,9 +247,8 @@ class Mesh2dElementsRenderer(RenderObject):
 
     def get_shader_code(self):
         shader_code = ""
-
+        shader_code += self.clipping.get_shader_code()
         for file_name in [
-            "clipping.wgsl",
             "eval.wgsl",
             "mesh.wgsl",
             "shader.wgsl",
@@ -346,17 +349,18 @@ class PointNumbersRenderObject(RenderObject):
         self.fragment_entry_point = "fragmentFont"
         self.n_vertices = self.n_digits * 6
         self.font_size = font_size
+        self.clipping = Clipping()
 
     def update(self):
+        self.clipping.update()
         self.font = Font(self.canvas, self.font_size)
         self._buffers = self.data.get_buffers(self.device)
         self.n_instances = self.data.num_verts
         self.create_render_pipeline()
 
     def get_shader_code(self):
-        shader_code = read_shader_file("clipping.wgsl", __file__)
-        shader_code += read_shader_file("numbers.wgsl", __file__)
-        shader_code += read_shader_file("uniforms.wgsl", __file__)
+        shader_code = read_shader_file("numbers.wgsl", __file__)
+        shader_code += self.clipping.get_shader_code()
         shader_code += self.font.get_shader_code()
         shader_code += self.options.camera.get_shader_code()
         return shader_code
@@ -366,6 +370,7 @@ class PointNumbersRenderObject(RenderObject):
 
     def get_bindings(self):
         return [
+            *self.clipping.get_bindings(),
             *self.options.get_bindings(),
             *self.font.get_bindings(),
             BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
