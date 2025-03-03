@@ -161,7 +161,11 @@ class MeshData(DataObject):
         # Trigs TODO: Quads
         trigs = mesh.Elements2D().NumPy()
         if self.on_region:
-            indices = np.flatnonzero(self.ngs_mesh.Mask()) + 1
+            region = self.ngs_mesh
+            import ngsolve as ngs
+            if region.VB() == ngs.VOL and region.mesh.dim == 3:
+                region = region.Boundaries()
+            indices = np.flatnonzero(region.Mask()) + 1
             trigs = trigs[np.isin(trigs["index"], indices)]
         self.num_trigs = len(trigs)
         trigs_data = np.zeros((self.num_trigs, 4), dtype=np.uint32)
