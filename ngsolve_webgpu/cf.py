@@ -12,19 +12,17 @@ from webgpu.render_object import (
 from webgpu.vectors import BaseVectorRenderObject, VectorRenderer
 from webgpu.colormap import Colormap
 from webgpu.clipping import Clipping
-from webgpu.utils import (
-    BufferBinding,
-    read_shader_file,
-    buffer_from_array
-)
+from webgpu.utils import BufferBinding, read_shader_file, buffer_from_array
 from webgpu.webgpu_api import Device, BufferUsage
 
 from .mesh import MeshData
 from .mesh import Binding as MeshBinding
 
+
 class Binding:
     TRIG_FUNCTION_VALUES = 10
     COMPONENT = 55
+
 
 def _get_bernstein_matrix_trig(n, intrule):
     """Create inverse vandermonde matrix for the Bernstein basis functions on a triangle of degree n and given integration points"""
@@ -127,15 +125,16 @@ class FunctionData(DataObject):
     def get_bounding_box(self):
         return self.mesh_data.get_bounding_box()
 
+
 def _change_cf_dim(me, value):
     me.component = value
     me.redraw()
 
+
 class CoefficientFunctionRenderObject(RenderObject):
     """Use "vertices", "index" and "trig_function_values" buffers to render a mesh"""
 
-    def __init__(self, data: FunctionData, component = 0,
-                 label=None):
+    def __init__(self, data: FunctionData, component=0, label=None):
         super().__init__(label=label)
         self.data = data
         self.n_vertices = 3
@@ -159,13 +158,13 @@ class CoefficientFunctionRenderObject(RenderObject):
         self._buffers = self.data.get_buffers(self.device)
         self.colormap.options = self.options
         if self.colormap.autoupdate:
-            self.colormap.set_min_max(self.data.minval, self.data.maxval,
-                                      set_autoupdate=False)
+            self.colormap.set_min_max(
+                self.data.minval, self.data.maxval, set_autoupdate=False
+            )
         self.colormap.update()
         self.clipping.update()
         self.n_instances = self.data.mesh_data.num_trigs
-        self.component_buffer = buffer_from_array(np.array([self.component],
-                                                           np.uint32))
+        self.component_buffer = buffer_from_array(np.array([self.component], np.uint32))
         self.create_render_pipeline()
 
     def get_bounding_box(self):
@@ -173,12 +172,12 @@ class CoefficientFunctionRenderObject(RenderObject):
 
     def add_options_to_gui(self, gui):
         if self.data.cf.dim > 1:
-            options = { "Norm" : 0 }
+            options = {"Norm": 0}
             for d in range(self.data.cf.dim):
-                options[str(d)] = d+1
-            gui.dropdown(func=_change_cf_dim,
-                         objects=self, label="Component",
-                         values=options)
+                options[str(d)] = d + 1
+            gui.dropdown(
+                func=_change_cf_dim, objects=self, label="Component", values=options
+            )
 
     def get_shader_code(self):
         shader_code = ""
@@ -205,13 +204,14 @@ class CoefficientFunctionRenderObject(RenderObject):
             BufferBinding(Binding.TRIG_FUNCTION_VALUES, self._buffers["function"]),
             BufferBinding(MeshBinding.VERTICES, self._buffers["vertices"]),
             BufferBinding(MeshBinding.TRIGS_INDEX, self._buffers["trigs"]),
-            BufferBinding(Binding.COMPONENT, self.component_buffer)
+            BufferBinding(Binding.COMPONENT, self.component_buffer),
         ]
 
 
 class VectorCFRenderer(VectorRenderer):
-    def __init__(self, cf: ngs.CoefficientFunction,
-                 mesh: ngs.Mesh, grid_size=20, size=None):
+    def __init__(
+        self, cf: ngs.CoefficientFunction, mesh: ngs.Mesh, grid_size=20, size=None
+    ):
         # calling super-super class to not create points and vectors
         BaseVectorRenderObject.__init__(self)
         self.cf = cf
@@ -221,7 +221,9 @@ class VectorCFRenderer(VectorRenderer):
         self.size = size
 
     def redraw(self, timestamp=None):
-        super().redraw(timestamp=timestamp, cf=self.cf, mesh=self.mesh, grid_size=self.grid_size)
+        super().redraw(
+            timestamp=timestamp, cf=self.cf, mesh=self.mesh, grid_size=self.grid_size
+        )
 
     def update(self, cf=None, mesh=None, grid_size=None, size=None):
         if cf is not None:
@@ -233,23 +235,30 @@ class VectorCFRenderer(VectorRenderer):
         if size is not None:
             self.size = size
         bb = self.mesh.ngmesh.bounding_box
-        self.bounding_box = np.array([[bb[0][0], bb[0][1], bb[0][2]],
-                                      [bb[1][0], bb[1][1], bb[1][2]]])
-        vs = np.linspace(self.bounding_box[0][0], self.bounding_box[1][0], self.grid_size+1, endpoint=False)[1:]
+        self.bounding_box = np.array(
+            [[bb[0][0], bb[0][1], bb[0][2]], [bb[1][0], bb[1][1], bb[1][2]]]
+        )
+        vs = np.linspace(
+            self.bounding_box[0][0],
+            self.bounding_box[1][0],
+            self.grid_size + 1,
+            endpoint=False,
+        )[1:]
         points = np.meshgrid(vs, vs)
         xvals = points[0].flatten()
         yvals = points[1].flatten()
         self.size = self.size or 1 / 60 * np.linalg.norm(
             self.bounding_box[1] - self.bounding_box[0]
         )
-        mpts_ = self.mesh(xvals, yvals, 0.)
+        mpts_ = self.mesh(xvals, yvals, 0.0)
         pts, mpts = [], []
         for i in range(len(xvals)):
             if mpts_[i]["nr"] != -1:
                 mpts.append(mpts_[i])
-                pts.append([xvals[i], yvals[i], 0.])
+                pts.append([xvals[i], yvals[i], 0.0])
         self.points = np.array(pts, dtype=np.float32).reshape(-1)
         values = self.cf(mpts)
-        self.vectors = np.array([values[:,0], values[:,1], np.zeros_like(values[:,0])], dtype=np.float32).T.reshape(-1)
+        self.vectors = np.array(
+            [values[:, 0], values[:, 1], np.zeros_like(values[:, 0])], dtype=np.float32
+        ).T.reshape(-1)
         super().update()
-        

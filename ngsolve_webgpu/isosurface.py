@@ -55,6 +55,7 @@ class IsoSurfaceRenderObject(RenderObject):
 
     def count_cut_trigs(self):
         import ngsolve as ngs
+
         self.clipping.update()
         compute_encoder = self.device.createCommandEncoder(label="count_iso_trigs")
         # binding -> counter i32
