@@ -5,9 +5,9 @@
 fn fragmentCheckLevelset(input: VertexOutput2d) -> @location(0) vec4<f32> {
     checkClipping(input.p);
     let p = &trig_function_values;
-    let value = evalTrig(p, input.id, 0u, input.lam);
+    let value = evalTrig(p, input.id, 0, input.lam);
     let pl = &levelset_values;
-    let levelset = evalTrig(pl, input.id, 0u, input.lam);
+    let levelset = evalTrig(pl, input.id, 0, input.lam);
     if (levelset > 0.0) {
       discard;
     }

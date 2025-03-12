@@ -76,7 +76,6 @@ class IsoSurfaceRenderObject(RenderObject):
 
         self.function_value_buffer = buffer_from_array(func_values)
 
-        func_values = np.array(self.levelset(self.mesh_pts).flatten(), dtype=np.float32)
         vertices = np.array(
             ngs.CF((ngs.x, ngs.y, ngs.z))(self.mesh_pts), dtype=np.float32
         )
@@ -237,7 +236,6 @@ class IsoSurfaceRenderObject(RenderObject):
         )
         self.create_render_pipeline()
         self.cut_trigs_set = True
-        self.options.render_function(0.0)
 
     def get_bindings(self):
         return [
