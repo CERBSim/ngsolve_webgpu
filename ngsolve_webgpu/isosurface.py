@@ -10,7 +10,7 @@ from webgpu import (
 )
 from webgpu.webgpu_api import BufferUsage, ComputeState, MapMode, ShaderStage
 
-from webgpu.utils import uniform_from_array, buffer_from_array
+from webgpu.utils import uniform_from_array, buffer_from_array, ReadBuffer
 
 from .cf import CoefficientFunctionRenderObject
 
@@ -149,32 +149,18 @@ class IsoSurfaceRenderObject(RenderObject):
         compute_encoder.copyBufferToBuffer(
             self.counter_buffer, 0, self.result_buffer, 0, 4
         )
+        read = ReadBuffer(self.result_buffer, compute_encoder)
         self.device.queue.submit([compute_encoder.finish()])
-        import pyodide
 
-        def read_buffer(task):
-            try:
-                data = self.result_buffer.getMappedRange(0, 4)
-                b = np.frombuffer(memoryview(data.to_py()), dtype=np.int32)
-                # conversion to int imporant, type is np.uint32 which fucks things up...
-                self.n_instances = int(b[0])
-                self.result_buffer.unmap()
-                self.create_cut_trigs()
-            except Exception as e:
-                print(e)
-
-        task = pyodide.webloop.asyncio.get_running_loop().run_until_complete(
-            self.result_buffer.mapAsync(MapMode.READ, 0, 4)
-        )
-        task.then(read_buffer)
-
-        def error(e):
-            print("error", e)
-            raise e
-
-        task.catch(error)
+        array = read.get_array(np.uint32)
+        print("array", array)
+        self.n_instances = int(array[0])
+        print("n_instances", self.n_instances)
+        self.create_cut_trigs()
 
     def create_cut_trigs(self):
+        if self.n_instances == 0:
+            return
         compute_encoder = self.device.createCommandEncoder(label="create_iso_trigs")
         # binding -> counter i32
         self.device.queue.writeBuffer(self.only_count, 0, np.uint32(0).tobytes(), 0, 4)
