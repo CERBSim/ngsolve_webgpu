@@ -163,6 +163,7 @@ class MeshData(DataObject):
         if self.on_region:
             region = self.ngs_mesh
             import ngsolve as ngs
+
             if region.VB() == ngs.VOL and region.mesh.dim == 3:
                 region = region.Boundaries()
             indices = np.flatnonzero(region.Mask()) + 1

@@ -71,7 +71,9 @@ def evaluate_cf(cf, mesh, order):
         region = mesh.Materials(".*")
         if mesh.dim == 3:
             region = mesh.Boundaries(".*")
-    pts = region.mesh.MapToAllElements({ngs.ET.TRIG: intrule, ngs.ET.QUAD: intrule}, region)
+    pts = region.mesh.MapToAllElements(
+        {ngs.ET.TRIG: intrule, ngs.ET.QUAD: intrule}, region
+    )
     pmat = cf(pts)
     minval, maxval = (
         (min(pmat.reshape(-1)), max(pmat.reshape(-1))) if len(pmat) else (0, 1)
