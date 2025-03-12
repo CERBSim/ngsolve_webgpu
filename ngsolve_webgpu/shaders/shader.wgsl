@@ -1,5 +1,5 @@
 
-@group(0) @binding(55) var<storage> u_function_component: u32;
+@group(0) @binding(55) var<storage> u_function_component: i32;
 
 struct VertexOutput1d {
   @builtin(position) fragPosition: vec4<f32>,

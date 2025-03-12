@@ -97,11 +97,6 @@ class IsoSurfaceRenderObject(RenderObject):
             read_only=False,
             visibility=ShaderStage.COMPUTE,
         )
-        self.result_buffer = self.device.createBuffer(
-            size=4,
-            label="result",
-            usage=BufferUsage.MAP_READ | BufferUsage.COPY_DST,
-        )
         self.only_count = uniform_from_array(np.array([1], dtype=np.uint32))
         bindings = [
             *self.options.camera.get_bindings(),
@@ -146,10 +141,7 @@ class IsoSurfaceRenderObject(RenderObject):
         compute_pass.dispatchWorkgroups(min(1024, self.mesh.ne))
         compute_pass.end()
 
-        compute_encoder.copyBufferToBuffer(
-            self.counter_buffer, 0, self.result_buffer, 0, 4
-        )
-        read = ReadBuffer(self.result_buffer, compute_encoder)
+        read = ReadBuffer(self.counter_buffer, compute_encoder)
         self.device.queue.submit([compute_encoder.finish()])
 
         array = read.get_array(np.uint32)

@@ -28,7 +28,7 @@ fn evalSeg(id: u32, icomp: u32, lam: f32) -> f32 {
     return v[0];
 }
 
-fn evalTrig( data: ptr<storage, array<f32>, read>, id: u32, icomp: u32, lam: vec2<f32>) -> f32 {
+fn evalTrig( data: ptr<storage, array<f32>, read>, id: u32, icomp: i32, lam: vec2<f32>) -> f32 {
     var order: i32 = i32((*data)[1]);
     let ncomp: u32 = u32((*data)[0]);
     var ndof: u32 = u32((order + 1) * (order + 2) / 2);
@@ -37,7 +37,7 @@ fn evalTrig( data: ptr<storage, array<f32>, read>, id: u32, icomp: u32, lam: vec
     let offset: u32 = ndof * id * ncomp + VALUES_OFFSET;
     let stride: u32 = ncomp;
 
-    if(icomp == 0u)
+    if(icomp == -1)
       {
         // norm of vector
         for (var i: u32 = 0u; i < ndof; i++) {
@@ -49,9 +49,8 @@ fn evalTrig( data: ptr<storage, array<f32>, read>, id: u32, icomp: u32, lam: vec
         }
       }
     else {
-
         for (var i: u32 = 0u; i < ndof; i++) {
-          v[i] = (*data)[offset + icomp-1 + i * stride];
+          v[i] = (*data)[offset + u32(icomp) + i * stride];
         }
     }
 
