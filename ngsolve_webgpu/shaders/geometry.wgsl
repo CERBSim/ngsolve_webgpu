@@ -2,6 +2,7 @@
 @group(0) @binding(90) var<storage> u_vertices : array<f32>;
 @group(0) @binding(91) var<storage> u_normals : array<f32>;
 @group(0) @binding(92) var<storage> u_indices : array<u32>;
+@group(0) @binding(93) var<storage> u_colors: array<f32>;
 
 struct GeoFragmentInput {
   @builtin(position) position: vec4<f32>,
@@ -28,5 +29,15 @@ fn vertexGeo(@builtin(vertex_index) vertId: u32, @builtin(instance_index) trigId
 
 @fragment
 fn fragmentGeo(input: GeoFragmentInput) -> @location(0) vec4<f32> {
-  return lightCalcColor(input.n, vec4f(0., 1., 0., 1.));
+  let color = vec4<f32>(u_colors[input.index * 4],
+                        u_colors[input.index * 4 + 1],
+                        u_colors[input.index * 4 + 2],
+                        u_colors[input.index * 4 + 3]);
+  return lightCalcColor(input.n, color);
+}
+
+@fragment
+fn fragmentQueryFaceIndex(input: GeoFragmentInput) -> @location(0) u32
+{
+  return input.index;
 }
