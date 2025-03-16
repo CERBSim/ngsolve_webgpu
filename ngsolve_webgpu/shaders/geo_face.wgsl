@@ -13,7 +13,8 @@ struct GeoFragmentInput {
 };
 
 @vertex
-fn vertexGeo(@builtin(vertex_index) vertId: u32, @builtin(instance_index) trigId: u32) -> GeoFragmentInput {
+fn vertex_main(@builtin(vertex_index) vertId: u32,
+               @builtin(instance_index) trigId: u32) -> GeoFragmentInput {
   let point = vec3<f32>(u_vertices[trigId * 9 + vertId * 3],
                         u_vertices[trigId * 9 + vertId * 3 + 1],
                         u_vertices[trigId * 9 + vertId * 3 + 2]);
@@ -28,7 +29,7 @@ fn vertexGeo(@builtin(vertex_index) vertId: u32, @builtin(instance_index) trigId
 }
 
 @fragment
-fn fragmentGeo(input: GeoFragmentInput) -> @location(0) vec4<f32> {
+fn fragment_main(input: GeoFragmentInput) -> @location(0) vec4<f32> {
   let color = vec4<f32>(u_colors[input.index * 4],
                         u_colors[input.index * 4 + 1],
                         u_colors[input.index * 4 + 2],
@@ -37,7 +38,7 @@ fn fragmentGeo(input: GeoFragmentInput) -> @location(0) vec4<f32> {
 }
 
 @fragment
-fn fragmentQueryFaceIndex(input: GeoFragmentInput) -> @location(0) u32
+fn fragmentQueryIndex(input: GeoFragmentInput) -> @location(0) vec2<u32>
 {
-  return input.index;
+  return vec2<u32>(input.index, 2u);
 }

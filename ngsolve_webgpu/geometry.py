@@ -1,5 +1,6 @@
 import webgpu
-from webgpu.utils import buffer_from_array, create_bind_group, ReadBuffer
+from webgpu.render_object import MultipleRenderObject, RenderObject
+from webgpu.utils import buffer_from_array, create_bind_group, ReadBuffer, uniform_from_array
 from webgpu.webgpu_api import *
 
 import numpy as np
@@ -11,15 +12,14 @@ class Binding:
     COLORS = 93
 
 
-class GeometryRenderObject(webgpu.RenderObject):
-    vertex_entry_point: str = "vertexGeo"
-    fragment_entry_point: str = "fragmentGeo"
+class GeometryFaceRenderer(RenderObject):
     n_vertices: int = 3
+    depthBias: int = 1
 
-    def __init__(self, geo, label="Geometry"):
-        self.geo = geo
-        super().__init__(label=label)
+    def __init__(self, geo):
+        super().__init__(label="GeometryFaces")
         self.colors = None
+        self.active = True
 
     def get_bounding_box(self):
         return self.bounding_box
@@ -31,11 +31,10 @@ class GeometryRenderObject(webgpu.RenderObject):
             self.device.queue.writeBuffer(self._buffers["colors"],
                                           0, self.colors.tobytes())
 
-    def update(self):
-        vis_data = self.geo._visualizationData()
+    def update(self, vis_data):
         self.bounding_box = (vis_data["min"], vis_data["max"])
         verts = vis_data["vertices"]
-        self.n_instances = len(verts) // 9
+        self.n_instances = len(verts) // 6
         normals = vis_data["normals"]
         indices = vis_data["indices"]
         if self.colors is None:
@@ -59,34 +58,19 @@ class GeometryRenderObject(webgpu.RenderObject):
 
     def get_shader_code(self):
         shader_code = ""
-        for shader in ["geometry", "clipping"]:
+        for shader in ["geo_face", "clipping"]:
             shader_code += webgpu.read_shader_file(f"{shader}.wgsl", __file__)
 
         shader_code += self.options.camera.get_shader_code()
         shader_code += self.options.light.get_shader_code()
         return shader_code
 
-    def pick_index(self, mouseX, mouseY):
-        rect = self.canvas.canvas.getBoundingClientRect()
-        mouseX -= rect.x
-        mouseY -= int(rect.y)
-        texture_format = TextureFormat.r32uint
-        texture = self.device.createTexture(
-            size=[rect.width, rect.height, 1],
-            sampleCount=1,
-            format=texture_format,
-            usage=TextureUsage.COPY_SRC | TextureUsage.RENDER_ATTACHMENT
-        )
+    def pick_index_render(self, encoder, texture, depth_texture, load_op):
+        texture_format = TextureFormat.rg32uint
         target = ColorTargetState(format=texture_format)
         shader_module = self.device.createShaderModule(self.get_shader_code())
         layout, group = create_bind_group(self.device, self.get_bindings())
         playout = self.device.createPipelineLayout([layout])
-        depth_texture = self.device.createTexture(
-            size=[rect.width, rect.height, 1],
-            format=self.canvas.depth_format,
-            usage=TextureUsage.RENDER_ATTACHMENT,
-            sampleCount=1,
-        )
         pipeline = self.device.createRenderPipeline(
             layout=playout,
             vertex=VertexState(
@@ -94,7 +78,7 @@ class GeometryRenderObject(webgpu.RenderObject):
             ),
             fragment=FragmentState(
                 module=shader_module,
-                entryPoint="fragmentQueryFaceIndex",
+                entryPoint="fragmentQueryIndex",
                 targets=[target],
             ),
             primitive=PrimitiveState(topology=self.topology),
@@ -106,32 +90,253 @@ class GeometryRenderObject(webgpu.RenderObject):
             ),
             multisample=MultisampleState(count=1),
         )
-        read_buffer = self.device.createBuffer(4, BufferUsage.MAP_READ | BufferUsage.COPY_DST)
-        encoder = self.device.createCommandEncoder()
         render_pass = encoder.beginRenderPass(
             colorAttachments=[RenderPassColorAttachment(
                 view=texture.createView(),
-                clearValue=Color(1),
-                loadOp=LoadOp.clear
+                clearValue=Color(0,3),
+                loadOp=load_op
             )],
             depthStencilAttachment=RenderPassDepthStencilAttachment(
                 view=depth_texture.createView(),
                 depthClearValue=1.0,
-                depthLoadOp=LoadOp.clear
+                depthLoadOp=load_op
             )
         )
         render_pass.setPipeline(pipeline)
         render_pass.setBindGroup(0, group)
         render_pass.draw(self.n_vertices, self.n_instances)
         render_pass.end()
+
+class GeometryEdgeRenderer(RenderObject):
+    n_vertices: int = 4
+    topology: PrimitiveTopology = PrimitiveTopology.triangle_strip
+    def __init__(self, geo):
+        self.geo = geo
+        super().__init__(label="GeometryEdges")
+        self.active = True
+        self.thickness = 0.02
+
+    def set_colors(self, colors):
+        """ colors is numpy float32 array with 4 times number indices entries"""
+        self.colors = colors
+        if "colors" in self._buffers:
+            self.device.queue.writeBuffer(self._buffers["colors"],
+                                          0, self.colors.tobytes())
+    def update(self, vis_data):
+        verts = vis_data["edges"]
+        self.colors = vis_data["edge_colors"]
+        self.n_instances = len(verts) // 6
+        self.thickness_uniform = uniform_from_array(
+            np.array([self.thickness], dtype=np.float32))
+        self._buffers = {}
+        self._buffers["vertices"] = buffer_from_array(verts)
+        self._buffers["colors"] = buffer_from_array(self.colors)
+        self._buffers["index"] = buffer_from_array(vis_data["edge_indices"])
+        self.create_render_pipeline()
+
+    def get_shader_code(self):
+        shader_code = ""
+        for shader in ["geo_edge", "clipping"]:
+            shader_code += webgpu.read_shader_file(f"{shader}.wgsl", __file__)
+
+        shader_code += self.options.camera.get_shader_code()
+        return shader_code
+
+    def get_bindings(self):
+        return [
+            *self.options.camera.get_bindings(),
+            webgpu.BufferBinding(90, self._buffers["vertices"]),
+            webgpu.BufferBinding(91, self._buffers["colors"]),
+            webgpu.UniformBinding(92, self.thickness_uniform),
+            webgpu.BufferBinding(93, self._buffers["index"]),
+        ]
+
+    def pick_index_render(self, encoder, texture, depth_texture, load_op):
+        texture_format = TextureFormat.rg32uint
+        target = ColorTargetState(format=texture_format)
+        shader_module = self.device.createShaderModule(self.get_shader_code())
+        layout, group = create_bind_group(self.device, self.get_bindings())
+        playout = self.device.createPipelineLayout([layout])
+        pipeline = self.device.createRenderPipeline(
+            layout=playout,
+            vertex=VertexState(
+                module=shader_module, entryPoint=self.vertex_entry_point
+            ),
+            fragment=FragmentState(
+                module=shader_module,
+                entryPoint="fragmentQueryIndex",
+                targets=[target],
+            ),
+            primitive=PrimitiveState(topology=self.topology),
+            depthStencil=DepthStencilState(
+                format=self.options.canvas.depth_format,
+                depthWriteEnabled=True,
+                depthCompare=CompareFunction.less,
+                depthBias=self.depthBias,
+            ),
+            multisample=MultisampleState(count=1),
+        )
+        render_pass = encoder.beginRenderPass(
+            colorAttachments=[RenderPassColorAttachment(
+                view=texture.createView(),
+                clearValue=Color(0,3),
+                loadOp=load_op
+            )],
+            depthStencilAttachment=RenderPassDepthStencilAttachment(
+                view=depth_texture.createView(),
+                depthClearValue=1.0,
+                depthLoadOp=load_op
+            )
+        )
+        render_pass.setPipeline(pipeline)
+        render_pass.setBindGroup(0, group)
+        render_pass.draw(self.n_vertices, self.n_instances)
+        render_pass.end()
+
+class GeometryVertexRenderer(RenderObject):
+    n_vertices: int = 4
+    topology: PrimitiveTopology = PrimitiveTopology.triangle_strip
+    depthBias: int = 0
+    def __init__(self, geo):
+        self.geo = geo
+        super().__init__(label="GeometryVertices")
+        self.active = True
+        self.thickness = 0.05
+
+    def set_colors(self, colors):
+        """ colors is numpy float32 array with 4 times number indices entries"""
+        self.colors = colors
+        if "colors" in self._buffers:
+            self.device.queue.writeBuffer(self._buffers["colors"],
+                                          0, self.colors.tobytes())
+
+    def get_shader_code(self):
+        shader_code = ""
+        for shader in ["geo_vertex", "clipping"]:
+            shader_code += webgpu.read_shader_file(f"{shader}.wgsl", __file__)
+
+        shader_code += self.options.camera.get_shader_code()
+        return shader_code
+
+    def update(self, vis_data):
+        verts = set(self.geo.shape.vertices)
+        self.colors = np.array([v.col if v.col is not None else [0.3,0.3,0.3,1.] for v in verts], dtype=np.float32).flatten()
+        self.n_instances = len(verts)
+        vert_values = np.array([[pi for pi in v.p] for v in verts], dtype=np.float32).flatten()
+        self._buffers = {}
+        self._buffers["vertices"] = buffer_from_array(vert_values)
+        self._buffers["colors"] = buffer_from_array(self.colors)
+        self.thickness_uniform = uniform_from_array(
+            np.array([self.thickness], dtype=np.float32))
+        self.create_render_pipeline()
+
+    def get_bindings(self):
+        return [
+            *self.options.camera.get_bindings(),
+            webgpu.BufferBinding(90, self._buffers["vertices"]),
+            webgpu.BufferBinding(91, self._buffers["colors"]),
+            webgpu.UniformBinding(92, self.thickness_uniform),
+        ]
+
+    def pick_index_render(self, encoder, texture, depth_texture, load_op):
+        texture_format = TextureFormat.rg32uint
+        target = ColorTargetState(format=texture_format)
+        shader_module = self.device.createShaderModule(self.get_shader_code())
+        layout, group = create_bind_group(self.device, self.get_bindings())
+        playout = self.device.createPipelineLayout([layout])
+        pipeline = self.device.createRenderPipeline(
+            layout=playout,
+            vertex=VertexState(
+                module=shader_module, entryPoint=self.vertex_entry_point
+            ),
+            fragment=FragmentState(
+                module=shader_module,
+                entryPoint="fragmentQueryIndex",
+                targets=[target],
+            ),
+            primitive=PrimitiveState(topology=self.topology),
+            depthStencil=DepthStencilState(
+                format=self.options.canvas.depth_format,
+                depthWriteEnabled=True,
+                depthCompare=CompareFunction.less,
+                depthBias=self.depthBias,
+            ),
+            multisample=MultisampleState(count=1),
+        )
+        render_pass = encoder.beginRenderPass(
+            colorAttachments=[RenderPassColorAttachment(
+                view=texture.createView(),
+                clearValue=Color(0,3),
+                loadOp=load_op
+            )],
+            depthStencilAttachment=RenderPassDepthStencilAttachment(
+                view=depth_texture.createView(),
+                depthClearValue=1.0,
+                depthLoadOp=load_op
+            )
+        )
+        render_pass.setPipeline(pipeline)
+        render_pass.setBindGroup(0, group)
+        render_pass.draw(self.n_vertices, self.n_instances)
+        render_pass.end()
+
+            
+class GeometryRenderObject(MultipleRenderObject):
+    def __init__(self, geo, label="Geometry"):
+        self.geo = geo
+        self.faces = GeometryFaceRenderer(geo)
+        self.edges = GeometryEdgeRenderer(geo)
+        self.vertices = GeometryVertexRenderer(geo)
+        super().__init__([self.vertices, self.edges, self.faces])
+
+    def update(self):
+        vis_data = self.geo._visualizationData()
+        self.bounding_box = (vis_data["min"], vis_data["max"])
+        for ro in self.render_objects:
+            ro.options = self.options
+            ro.update(vis_data)
+
+    def get_bounding_box(self):
+        return self.bounding_box
+
+    def render(self, encoder):
+        for r in self.render_objects:
+            if r.active:
+                r.render(encoder)
+
+    def pick_index(self, mouseX, mouseY):
+        rect = self.canvas.canvas.getBoundingClientRect()
+        mouseX -= rect.x
+        mouseY -= int(rect.y)
+        texture_format = TextureFormat.rg32uint
+        read_size = 8
+        texture = self.device.createTexture(
+            size=[rect.width, rect.height, 1],
+            sampleCount=1,
+            format=texture_format,
+            usage=TextureUsage.COPY_SRC | TextureUsage.RENDER_ATTACHMENT
+        )
+        depth_texture = self.device.createTexture(
+            size=[rect.width, rect.height, 1],
+            format=self.canvas.depth_format,
+            usage=TextureUsage.RENDER_ATTACHMENT,
+            sampleCount=1,
+        )
+        read_buffer = self.device.createBuffer(read_size, BufferUsage.MAP_READ | BufferUsage.COPY_DST)
+        encoder = self.device.createCommandEncoder()
+
+        load_op = LoadOp.clear
+        for ro in self.render_objects:
+            if ro.active:
+                ro.pick_index_render(encoder, texture, depth_texture, load_op)
+                load_op = LoadOp.load
         encoder.copyTextureToBuffer(TexelCopyTextureInfo(texture,
                                                          origin=Origin3d(mouseX, mouseY, 0)),
                                     TexelCopyBufferInfo(TexelCopyBufferLayout(1),
                                                         read_buffer),
                                     [1, 1, 1])
         self.device.queue.submit([encoder.finish()])
-        read_buffer.handle.mapAsync(MapMode.READ, 0, 4)
-        result = np.frombuffer(read_buffer.handle.getMappedRange(0, 4),
+        read_buffer.handle.mapAsync(MapMode.READ, 0, read_size)
+        result = np.frombuffer(read_buffer.handle.getMappedRange(0, read_size),
                                dtype=np.uint32)
-        return result[0]
-            
+        return result
