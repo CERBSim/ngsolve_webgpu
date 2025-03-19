@@ -36,7 +36,10 @@ class Animation(RenderObject):
             if isinstance(f, ngs.GridFunction):
                 if setup:
                     self.gfs.add(f)
-                gf_data.append(f.vec.Copy())
+                index = [i for i,gf in enumerate(self.gfs) if gf == f][0]
+                if index >= len(gf_data):
+                    gf_data.append(f.vec.Copy())
+                # else we already wrote the data
             elif isinstance(f, ngs.Parameter) or isinstance(f, ngs.ParameterC):
                 if setup:
                     self.parameters.add(f)
