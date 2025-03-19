@@ -8,14 +8,14 @@ class Animation(RenderObject):
         super().__init__()
         self.child = child
         self.data = child.data
-        self.time_index = 0
-        self.functions = []
-        self.function_data = []
-        self.parameter_data = []
+        self.time_index = -1
+        self.max_time = -1
         self.gfs = set()
-        self.parameters = set()
+        self.parameters = dict()
         f = self.data.cf
-        self.add_function(f, setup=True)
+        self.crawl_function(f)
+        # initial solution
+        self.add_time(initial=True)
         self.store = True
 
     def update(self):
@@ -25,40 +25,32 @@ class Animation(RenderObject):
     def get_bounding_box(self):
         return self.child.get_bounding_box()
 
-    def add_function(self, function, setup):
-        self.functions.append(function)
-        gf_data = []
-        pdata = []
+    def crawl_function(self, f):
+        if f is None:
+            return
+        if isinstance(f, ngs.GridFunction):
+            self.gfs.add(f)
+        elif isinstance(f, ngs.Parameter) or isinstance(f, ngs.ParameterC):
+            self.parameters[f] = []
+        else:
+            for c in f.data["childs"]:
+                self.crawl_function(c)
 
-        def crawl_children(f):
-            if f is None:
-                return
-            if isinstance(f, ngs.GridFunction):
-                if setup:
-                    self.gfs.add(f)
-                index = [i for i,gf in enumerate(self.gfs) if gf == f][0]
-                if index >= len(gf_data):
-                    gf_data.append(f.vec.Copy())
-                # else we already wrote the data
-            elif isinstance(f, ngs.Parameter) or isinstance(f, ngs.ParameterC):
-                if setup:
-                    self.parameters.add(f)
-                pdata.append(f.Get())
-            else:
-                for c in f.data["childs"]:
-                    crawl_children(c)
-
-        self.function_data.append(gf_data)
-        self.parameter_data.append(pdata)
-        crawl_children(function)
+    def add_time(self, initial=False):
+        self.max_time += 1
+        self.time_index = self.max_time
+        for gf in self.gfs:
+            gf.AddMultiDimComponent(gf.vec)
+        for par, vals in self.parameters.items():
+            vals.append(par.Get())
+        if not initial:
+            self.slider.max(self.max_time)
+            # set value triggers set_time_index
+            self.slider.setValue(self.time_index)
 
     def redraw(self, timestamp: float | None = None):
         if self.store:
-            self.time_index += 1
-            self.add_function(self.data.cf, setup=False)
-            self.slider.max(self.time_index)
-            # set value triggers set_time_index
-            self.slider.setValue(self.time_index)
+            self.add_time()
         else:
             self.child.redraw(timestamp)
 
@@ -70,7 +62,7 @@ class Animation(RenderObject):
             0,
             self.set_time_index,
             min=0,
-            max=len(self.functions) - 1,
+            max=0,
             step=1,
             label="animate",
         )
@@ -78,10 +70,8 @@ class Animation(RenderObject):
 
     def set_time_index(self, time_index):
         self.time_index = time_index
-        self.data.cf = self.functions[time_index]
-        for gf, data in zip(self.gfs, self.function_data[time_index]):
-            gf.vec.data = data
-        for p, pdata in zip(self.parameters, self.parameter_data[time_index]):
-            p.Set(pdata)
+        for gf in self.gfs:
+            gf.vec.data = gf.vecs[time_index + 1]
+        for p, vals in self.parameters.items():
+            p.Set(vals[time_index])
         self.child.redraw()
-        self.options.render_function()
