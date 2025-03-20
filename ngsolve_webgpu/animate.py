@@ -1,7 +1,5 @@
 from webgpu.render_object import RenderObject
 import ngsolve as ngs
-import webgpu.proxy as proxy
-
 
 class Animation(RenderObject):
     def __init__(self, child):
