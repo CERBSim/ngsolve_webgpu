@@ -2,6 +2,7 @@ import webgpu
 from webgpu.render_object import MultipleRenderObject, RenderObject
 from webgpu.utils import buffer_from_array, create_bind_group, ReadBuffer, uniform_from_array
 from webgpu.webgpu_api import *
+from webgpu.clipping import Clipping
 
 import numpy as np
 
@@ -58,11 +59,10 @@ class GeometryFaceRenderer(RenderObject):
 
     def get_shader_code(self):
         shader_code = ""
-        for shader in ["geo_face", "clipping"]:
-            shader_code += webgpu.read_shader_file(f"{shader}.wgsl", __file__)
-
+        shader_code += webgpu.read_shader_file(f"geo_face.wgsl", __file__)
         shader_code += self.options.camera.get_shader_code()
         shader_code += self.options.light.get_shader_code()
+        shader_code += self.clipping.get_shader_code()
         return shader_code
 
     def pick_index_render(self, encoder, texture, depth_texture, load_op):
@@ -136,10 +136,9 @@ class GeometryEdgeRenderer(RenderObject):
 
     def get_shader_code(self):
         shader_code = ""
-        for shader in ["geo_edge", "clipping"]:
-            shader_code += webgpu.read_shader_file(f"{shader}.wgsl", __file__)
-
+        shader_code += webgpu.read_shader_file(f"geo_edge.wgsl", __file__)
         shader_code += self.options.camera.get_shader_code()
+        shader_code += self.clipping.get_shader_code()
         return shader_code
 
     def get_bindings(self):
@@ -212,9 +211,8 @@ class GeometryVertexRenderer(RenderObject):
 
     def get_shader_code(self):
         shader_code = ""
-        for shader in ["geo_vertex", "clipping"]:
-            shader_code += webgpu.read_shader_file(f"{shader}.wgsl", __file__)
-
+        shader_code += webgpu.read_shader_file(f"geo_vertex.wgsl", __file__)
+        shader_code += self.clipping.get_shader_code()
         shader_code += self.options.camera.get_shader_code()
         return shader_code
 
@@ -287,6 +285,10 @@ class GeometryRenderObject(MultipleRenderObject):
         self.faces = GeometryFaceRenderer(geo)
         self.edges = GeometryEdgeRenderer(geo)
         self.vertices = GeometryVertexRenderer(geo)
+        self.clipping = Clipping()
+        self.faces.clipping = self.clipping
+        self.edges.clipping = self.clipping
+        self.vertices.clipping = self.clipping
         super().__init__([self.vertices, self.edges, self.faces])
 
     def update(self):
