@@ -9,6 +9,7 @@ from webgpu.render_object import (
 )
 
 # from webgpu.uniforms import Binding
+from webgpu.uniforms import UniformBase, ct
 from webgpu.utils import BufferBinding, read_shader_file, buffer_from_array
 from webgpu.webgpu_api import *
 from webgpu.clipping import Clipping
@@ -176,23 +177,21 @@ class MeshData(DataObject):
 
         # 3d Elements
         self.num_els = {eltype.name: 0 for eltype in ElType}
-        elements = {eltype.name: [] for eltype in ElType}
+        self.elements = {}  # eltype.name: [] for eltype in ElType}
 
         if self.need_3d:
-            for i, el in enumerate(mesh.Elements3D()):
-                eltype = ElType.from_dim_np(3, len(el.vertices))
-                data = [p.nr - 1 for p in el.vertices]
-                data.append(el.index)
-                data.append(i)
-                elements[eltype.name].append(data)
-                self.num_els[eltype.name] += 1
-
-        self.elements = {}
-        for eltype in elements:
-            self.elements[eltype] = np.array(
-                elements[eltype], dtype=np.uint32
-            ).tobytes()
-
+            els = mesh.Elements3D().NumPy()
+            for num_pts in (4, 5, 6, 8):
+                eltype = ElType.from_dim_np(3, num_pts)
+                filtered = els[els["np"] == num_pts]
+                nels = len(filtered)
+                if nels == 0:
+                    continue
+                f32array = np.empty((nels, num_pts + 2), dtype=np.uint32)
+                f32array[:, :num_pts] = filtered["nodes"][:, :num_pts] - 1
+                f32array[:, num_pts] = filtered["index"]
+                self.elements[eltype.name] = f32array.tobytes()
+                self.num_els[eltype.name] = len(filtered)
         self._last_mesh_timestamp = mesh._timestamp
 
     def needs_update(self):
@@ -285,68 +284,65 @@ class Mesh2dWireframeRenderer(Mesh2dElementsRenderer):
     color = (0, 0, 0, 1)
 
 
+class El3dUniform(UniformBase):
+    _binding = Binding.MESH
+    _fields_ = [
+        ("subdivision", ct.c_uint32),
+        ("shrink", ct.c_float),
+        ("padding", ct.c_float * 2),
+    ]
+
+    def __init__(self, device, subdivision=0, shrink=1.0):
+        super().__init__(device, subdivision=subdivision, shrink=shrink)
+
+
 class Mesh3dElementsRenderObject(RenderObject):
-    # TODO: currently not working
+    n_vertices: int = 3 * 4
+
+    def __init__(self, data: MeshData):
+        super().__init__(label="Mesh3dElementsRenderObject")
+        data.need_3d = True
+        self.data = data
+        self.clipping = Clipping()
+
+    def get_bounding_box(self) -> tuple[list[float], list[float]] | None:
+        return self.data.get_bounding_box()
+
+    def update(self, data: MeshData | None = None):
+        if data is not None:
+            self.data = data
+        self.uniforms = El3dUniform(self.device)
+        self.clipping.options = self.options
+        self.clipping.update()
+        self._buffers = self.data.get_buffers(self.device)
+        self.uniforms.update_buffer()
+        self.n_instances = self.data.num_els[ElType.TET.name]
+        self.create_render_pipeline()
+
+    def add_options_to_gui(self, gui):
+        def set_shrink(value):
+            self.uniforms.shrink = value
+            self.uniforms.update_buffer()
+
+        gui.slider(
+            label="Shrink", value=1.0, min=0.0, max=1.0, step=0.01, func=set_shrink
+        )
+
     def get_bindings(self):
-        bindings = [
-            *self.options.get_bindings(),
-            *self.colormap.get_bindings(),
+        return [
+            *self.clipping.get_bindings(),
             BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
+            BufferBinding(Binding.TET, self._buffers[ElType.TET.name]),
+            *self.uniforms.get_bindings(),
+            *self.options.get_bindings(),
         ]
 
-        for eltype in ElType:
-            if self.data.num_els[eltype.name]:
-                bindings.append(
-                    BufferBinding(
-                        getattr(Binding, eltype.name), self._buffers[eltype.name]
-                    )
-                )
-
-        return bindings
-
-    def _create_pipelines(self):
-        bind_layout, self._bind_group = self.create_bind_group()
-        shader_module = self.gpu.shader_module
-
-        self._pipelines = {}
-        for eltype in ElType:
-
-            if self.data.num_els[eltype.name] == 0:
-                continue
-            el_name = eltype.name.capitalize()
-
-            self._pipelines[el_name.upper()] = self.device.createRenderPipeline(
-                label=f"{self.label}:{el_name}",
-                layout=self.device.createPipelineLayout([bind_layout]),
-                vertex=VertexState(
-                    module=shader_module,
-                    entryPoint=f"vertexMesh{el_name}",
-                ),
-                fragment=FragmentState(
-                    module=shader_module,
-                    entryPoint="fragmentMesh",
-                    targets=[ColorTargetState(format=self.gpu.format)],
-                ),
-                primitive=PrimitiveState(
-                    topology=eltype.value.primitive_topology,
-                ),
-                depthStencil=DepthStencilState(
-                    **self.gpu.depth_stencil,
-                    # shift trigs behind to ensure that edges are rendered properly
-                    depthBias=1.0,
-                    depthBiasSlopeScale=1,
-                ),
-                multisample=self.gpu.multisample,
-            )
-
-    def render(self, encoder):
-        render_pass = self.gpu.begin_render_pass(encoder)
-        render_pass.setBindGroup(0, self._bind_group)
-        for name, pipeline in self._pipelines.items():
-            eltype = ElType[name].value
-            render_pass.setPipeline(pipeline)
-            render_pass.draw(eltype.num_vertices_per_primitive, self.data.num_els[name])
-        render_pass.end()
+    def get_shader_code(self):
+        code = read_shader_file("elements3d.wgsl", __file__)
+        code += self.clipping.get_shader_code()
+        code += self.options.camera.get_shader_code()
+        code += self.options.light.get_shader_code()
+        return code
 
 
 class PointNumbersRenderObject(RenderObject):
