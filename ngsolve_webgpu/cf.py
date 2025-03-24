@@ -23,6 +23,46 @@ class Binding:
     TRIG_FUNCTION_VALUES = 10
     COMPONENT = 55
 
+_intrules_3d = {}
+def get_3d_intrules(order):
+    if order in _intrules_3d:
+        return _intrules_3d[order]
+    if order > 2:
+        raise RuntimeError("only order 1 and 2 supported in 3D")
+    p1_tets = {}
+    p1_tets[ngs.ET.TET]   = [[(1,0,0), (0,1,0), (0,0,1), (0,0,0)]]
+    p1_tets[ngs.ET.PYRAMID]=[[(1,0,0), (0,1,0), (0,0,1), (0,0,0)],
+                             [(1,0,0), (0,1,0), (0,0,1), (1,1,0)]]
+    p1_tets[ngs.ET.PRISM] = [[(1,0,0), (0,1,0), (0,0,1), (0,0,0)],
+                             [(0,0,1), (0,1,0), (0,1,1), (1,0,0)],
+                             [(1,0,1), (0,1,1), (1,0,0), (0,0,1)]]
+    p1_tets[ngs.ET.HEX]   = [[(1,0,0), (0,1,0), (0,0,1), (0,0,0)],
+                             [(0,1,1), (1,1,1), (1,1,0), (1,0,1)],
+                             [(1,0,1), (0,1,1), (1,0,0), (0,0,1)],
+                             [(0,1,1), (1,1,0), (0,1,0), (1,0,0)],
+                             [(0,0,1), (0,1,0), (0,1,1), (1,0,0)],
+                             [(1,0,1), (1,1,0), (0,1,1), (1,0,0)]]
+
+    def makeP2Tets( p1_tets ):
+        midpoint = lambda p0, p1: tuple((0.5*(p0[i]+p1[i]) for i in range(3)))
+        p2_tets = []
+        for tet in p1_tets:
+            tet.append( midpoint(tet[0], tet[3]) )
+            tet.append( midpoint(tet[1], tet[3]) )
+            tet.append( midpoint(tet[2], tet[3]) )
+            tet.append( midpoint(tet[0], tet[1]) )
+            tet.append( midpoint(tet[0], tet[2]) )
+            tet.append( midpoint(tet[1], tet[2]) )
+            p2_tets.append(tet)
+        return p2_tets
+    rules = {}
+    for eltype in p1_tets:
+        points = p1_tets[eltype]
+        if order == 2:
+            points = makeP2Tets( points )
+        rules[eltype] = ngs.IntegrationRule( sum(points, []) )
+    _intrules_3d[order] = rules
+    return rules
 
 def _get_bernstein_matrix_trig(n, intrule):
     """Create inverse vandermonde matrix for the Bernstein basis functions on a triangle of degree n and given integration points"""
@@ -86,13 +126,13 @@ def evaluate_cf(cf, mesh, order):
         values[:, :, i] = ibmat * ngsmat
 
     values = values.transpose((1, 0, 2)).flatten()
-    ret = np.concatenate(([np.float32(cf.dim), np.float32(order)], values))
-    return ret.tobytes(), minval, maxval
-
+    ret = np.concatenate(([np.float32(cf.dim), np.float32(order)], values.reshape(-1)))
+    # print("ret = ", ret)
+    return ret, minval, maxval
 
 class FunctionData(DataObject):
     mesh_data: MeshData
-    function_data: bytes = b""
+    function_data: np.ndarray
     cf: ngs.CoefficientFunction
     order: int
     _timestamp: float = -1
@@ -102,37 +142,62 @@ class FunctionData(DataObject):
         self.mesh_data = mesh_data
         self.cf = cf
         self.order = order
+        self.need_3d = False
+        self._needs_update = True
 
     def redraw(self, timestamp: float | None = None):
         self.mesh_data.redraw(timestamp)
+        self._needs_update = True
         super().redraw(timestamp, cf=self.cf, order=self.order)
+        self._needs_update = False
 
     def update(
         self, cf: ngs.CoefficientFunction | None = None, order: int | None = None
     ):
         if cf is not None:
             self.cf = cf
-            self.function_data = b""
+            self.function_data = np.array([], dtype=np.float32)
+            self._needs_update = True
         if order is not None:
             self.order = order
-            self.function_data = b""
+            self.function_data = np.array([], dtype=np.float32)
+            self._needs_update = True
+
+    def needs_update(self):
+        if self._needs_update == True:
+            self._needs_update = False
+            return True
+        return self._needs_update
 
     def _create_data(self):
         self.function_data, self.minval, self.maxval = evaluate_cf(
             self.cf, self.mesh_data.ngs_mesh, self.order
         )
+        if self.need_3d:
+            self.data_3d, minval, maxval = self.evaluate_3d(self.cf, self.mesh_data.ngs_mesh, self.order)
+            self.minval = min(self.minval, minval)
+            self.maxval = max(self.maxval, maxval)
 
     def _create_buffers(self, device: Device):
-        buffer = device.createBuffer(
-            size=len(self.function_data),
-            usage=BufferUsage.STORAGE | BufferUsage.COPY_DST,
-        )
-        device.queue.writeBuffer(buffer, 0, self.function_data)
-        return self.mesh_data.get_buffers(device) | {"function": buffer}
+        self.mesh_data.need_3d = self.need_3d
+        buffers = self.mesh_data.get_buffers(device)
+        buffers["function"] = buffer_from_array(self.function_data)
+        if self.need_3d:
+            buffers["data_3d"] = buffer_from_array(self.data_3d)
+        return buffers
 
     def get_bounding_box(self):
         return self.mesh_data.get_bounding_box()
 
+    def evaluate_3d(self, cf, region, order):
+        intrules = get_3d_intrules(order)
+        if not isinstance(region, ngs.Region):
+            region = region.Materials(".*")
+        pts = region.mesh.MapToAllElements(intrules, region)
+        vals = cf(pts)
+        vmin, vmax = vals.min(), vals.max()
+        ret = np.concatenate(([np.float32(cf.dim), np.float32(order)], vals.reshape(-1)), dtype=np.float32)
+        return ret, vmin, vmax
 
 def _change_cf_dim(me, value):
     me.component = value
