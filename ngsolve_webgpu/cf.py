@@ -27,10 +27,8 @@ _intrules_3d = {}
 def get_3d_intrules(order):
     if order in _intrules_3d:
         return _intrules_3d[order]
-    if order > 2:
-        raise RuntimeError("only order 1 and 2 supported in 3D")
-    p1_tets = {}
-    p1_tets[ngs.ET.TET]   = [[(1,0,0), (0,1,0), (0,0,1), (0,0,0)]]
+    ref_pts = [[(order-i-j-k)/order, k/order, j/order] for i in range(order+1) for j in range(order+1 - i) for k in range(order+1 - i - j)]
+    p1_tets = {ngs.ET.TET: [[(1,0,0), (0,1,0), (0,0,1), (0,0,0)]]}
     p1_tets[ngs.ET.PYRAMID]=[[(1,0,0), (0,1,0), (0,0,1), (0,0,0)],
                              [(1,0,0), (0,1,0), (0,0,1), (1,1,0)]]
     p1_tets[ngs.ET.PRISM] = [[(1,0,0), (0,1,0), (0,0,1), (0,0,0)],
@@ -42,25 +40,19 @@ def get_3d_intrules(order):
                              [(0,1,1), (1,1,0), (0,1,0), (1,0,0)],
                              [(0,0,1), (0,1,0), (0,1,1), (1,0,0)],
                              [(1,0,1), (1,1,0), (0,1,1), (1,0,0)]]
-
-    def makeP2Tets( p1_tets ):
-        midpoint = lambda p0, p1: tuple((0.5*(p0[i]+p1[i]) for i in range(3)))
-        p2_tets = []
-        for tet in p1_tets:
-            tet.append( midpoint(tet[0], tet[3]) )
-            tet.append( midpoint(tet[1], tet[3]) )
-            tet.append( midpoint(tet[2], tet[3]) )
-            tet.append( midpoint(tet[0], tet[1]) )
-            tet.append( midpoint(tet[0], tet[2]) )
-            tet.append( midpoint(tet[1], tet[2]) )
-            p2_tets.append(tet)
-        return p2_tets
     rules = {}
-    for eltype in p1_tets:
-        points = p1_tets[eltype]
-        if order == 2:
-            points = makeP2Tets( points )
-        rules[eltype] = ngs.IntegrationRule( sum(points, []) )
+    if order > 1:
+        ho_tets = {}
+        for eltype in p1_tets:
+            for tet in p1_tets[eltype]:
+                ho_tets[eltype] = []
+                for lam in ref_pts:
+                    lami = [*lam, 1-sum(lam)]
+                    ho_tets[eltype].append([sum([lami[j]*tet[j][i] for j in range(4)]) for i in range(3)])
+            rules[eltype] = ngs.IntegrationRule(ho_tets[eltype])
+    else:
+        for eltype in p1_tets:
+            rules[eltype] = ngs.IntegrationRule( sum(p1_tets[eltype], []) )
     _intrules_3d[order] = rules
     return rules
 
@@ -194,7 +186,8 @@ class FunctionData(DataObject):
         if not isinstance(region, ngs.Region):
             region = region.Materials(".*")
         pts = region.mesh.MapToAllElements(intrules, region)
-        vals = cf(pts)
+        V_inv = vandermonde_3d(order).T
+        vals = cf(pts).reshape(-1, len(intrules[ngs.ET.TET])).dot(V_inv)
         vmin, vmax = vals.min(), vals.max()
         ret = np.concatenate(([np.float32(cf.dim), np.float32(order)], vals.reshape(-1)), dtype=np.float32)
         return ret, vmin, vmax
@@ -203,6 +196,19 @@ def _change_cf_dim(me, value):
     me.component = value
     me.redraw()
 
+_vandermonde_mats = {}
+def vandermonde_3d(order):
+    if order in _vandermonde_mats:
+        return _vandermonde_mats[order]
+    basis_indices = [(order-i-j-k, k, j, i) for i in range(order+1) for j in range(order+1 - i) for k in range(order+1 - i - j)]
+    n = len(basis_indices)
+    V = np.zeros((n, n))
+    for r, (i, j, k, l) in enumerate(basis_indices):
+        for c, (a, b, c2, d) in enumerate(basis_indices):
+            multinom_coef = math.factorial(order) / (math.factorial(a) * math.factorial(b) * math.factorial(c2) * math.factorial(d))
+            V[r, c] = multinom_coef * (i/order)**a * (j/order)**b * (k/order)**c2 * (l/order)**d
+    _vandermonde_mats[order] = np.linalg.inv(V)
+    return _vandermonde_mats[order]
 
 class CoefficientFunctionRenderObject(RenderObject):
     """Use "vertices", "index" and "trig_function_values" buffers to render a mesh"""
