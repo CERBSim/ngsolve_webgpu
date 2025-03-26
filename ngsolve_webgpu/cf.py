@@ -5,17 +5,15 @@ import ngsolve.webgui
 import ngsolve as ngs
 
 from webgpu.render_object import (
-    DataObject,
     RenderObject,
-    _add_render_object,
 )
 from webgpu.vectors import BaseVectorRenderObject, VectorRenderer
 from webgpu.colormap import Colormap
 from webgpu.clipping import Clipping
 from webgpu.utils import BufferBinding, read_shader_file, buffer_from_array
-from webgpu.webgpu_api import Device, BufferUsage
+from webgpu.webgpu_api import Buffer
 
-from .mesh import MeshData
+from .mesh import MeshData, ElType
 from .mesh import Binding as MeshBinding
 
 
@@ -122,60 +120,58 @@ def evaluate_cf(cf, mesh, order):
     # print("ret = ", ret)
     return ret, minval, maxval
 
-class FunctionData(DataObject):
+class FunctionData:
     mesh_data: MeshData
-    function_data: np.ndarray
+    data_2d: np.ndarray | None = None
+    data_3d: np.ndarray | None = None
+    gpu_2d: Buffer | None = None
+    gpu_3d: Buffer | None = None
     cf: ngs.CoefficientFunction
     order: int
+    order_3d: int
     _timestamp: float = -1
+    minval: float = 1e99
+    maxval: float = -1e99
 
-    def __init__(self, mesh_data: MeshData, cf: ngs.CoefficientFunction, order: int):
-        _add_render_object(self)
+    def __init__(self, mesh_data: MeshData, cf: ngs.CoefficientFunction, order: int,
+                 order3d:int = -1):
         self.mesh_data = mesh_data
         self.cf = cf
         self.order = order
+        self.order_3d = order if order3d == -1 else order3d
         self.need_3d = False
-        self._needs_update = True
 
-    def redraw(self, timestamp: float | None = None):
-        self.mesh_data.redraw(timestamp)
-        self._needs_update = True
-        super().redraw(timestamp, cf=self.cf, order=self.order)
-        self._needs_update = False
-
-    def update(
-        self, cf: ngs.CoefficientFunction | None = None, order: int | None = None
-    ):
-        if cf is not None:
-            self.cf = cf
-            self.function_data = np.array([], dtype=np.float32)
-            self._needs_update = True
-        if order is not None:
-            self.order = order
-            self.function_data = np.array([], dtype=np.float32)
-            self._needs_update = True
-
-    def needs_update(self):
-        if self._needs_update == True:
-            self._needs_update = False
-            return True
-        return self._needs_update
+    def update(self, timestamp: float):
+        if self._timestamp == timestamp:
+            return
+        self._timestamp = timestamp
+        if self.need_3d:
+            self.mesh_data.need_3d = True
+        self.mesh_data.update()
+        self._create_data()
 
     def _create_data(self):
-        self.function_data, self.minval, self.maxval = evaluate_cf(
+        self.gpu_2d = None
+        self.gpu_3d = None
+        self.data_2d, self.minval, self.maxval = evaluate_cf(
             self.cf, self.mesh_data.ngs_mesh, self.order
         )
         if self.need_3d:
-            self.data_3d, minval, maxval = self.evaluate_3d(self.cf, self.mesh_data.ngs_mesh, self.order)
+            self.data_3d, minval, maxval = self.evaluate_3d(self.cf, self.mesh_data.ngs_mesh, self.order_3d)
             self.minval = min(self.minval, minval)
             self.maxval = max(self.maxval, maxval)
 
-    def _create_buffers(self, device: Device):
-        self.mesh_data.need_3d = self.need_3d
-        buffers = self.mesh_data.get_buffers(device)
-        buffers["function"] = buffer_from_array(self.function_data)
-        if self.need_3d:
-            buffers["data_3d"] = buffer_from_array(self.data_3d)
+    def get_buffers(self):
+        buffers = self.mesh_data.get_buffers().copy()
+        if self.gpu_2d is None:
+            self.gpu_2d = buffer_from_array(self.data_2d)
+            if self.data_3d is not None:
+                self.gpu_3d = buffer_from_array(self.data_3d)
+        buffers["data_2d"] = self.gpu_2d
+        if self.gpu_3d is not None:
+            buffers["data_3d"] = self.gpu_3d
+        self.data_2d = None
+        self.data_3d = None
         return buffers
 
     def get_bounding_box(self):
@@ -192,9 +188,6 @@ class FunctionData(DataObject):
         ret = np.concatenate(([np.float32(cf.dim), np.float32(order)], vals.reshape(-1)), dtype=np.float32)
         return ret, vmin, vmax
 
-def _change_cf_dim(me, value):
-    me.component = value
-    me.redraw()
 
 _vandermonde_mats = {}
 def vandermonde_3d(order):
@@ -210,7 +203,7 @@ def vandermonde_3d(order):
     _vandermonde_mats[order] = np.linalg.inv(V)
     return _vandermonde_mats[order]
 
-class CoefficientFunctionRenderObject(RenderObject):
+class CFRenderer(RenderObject):
     """Use "vertices", "index" and "trig_function_values" buffers to render a mesh"""
 
     def __init__(self, data: FunctionData, component=0, label=None):
@@ -227,22 +220,20 @@ class CoefficientFunctionRenderObject(RenderObject):
         self.fragment_entry_point = "fragmentTrig"
         self.component = component
 
-    def redraw(self, timestamp: float | None = None):
-        timestamp = self.data.redraw(timestamp)
-        super().redraw(timestamp, component=self.component)
-
-    def update(self, component=None):
-        if component is not None:
-            self.component = component
-        self._buffers = self.data.get_buffers(self.device)
+    def update(self, timestamp):
+        if timestamp == self._timestamp:
+            return
+        self._timestamp = timestamp
+        self.data.update(timestamp)
+        self._buffers = self.data.get_buffers()
         self.colormap.options = self.options
         if self.colormap.autoupdate:
             self.colormap.set_min_max(
                 self.data.minval, self.data.maxval, set_autoupdate=False
             )
-        self.colormap.update()
-        self.clipping.update()
-        self.n_instances = self.data.mesh_data.num_trigs
+        self.colormap.update(timestamp)
+        self.clipping.update(timestamp)
+        self.n_instances = self.data.mesh_data.num_elements[ElType.TRIG]
         self.component_buffer = buffer_from_array(np.array([self.component], np.uint32))
         self.create_render_pipeline()
 
@@ -255,8 +246,13 @@ class CoefficientFunctionRenderObject(RenderObject):
             for d in range(self.data.cf.dim):
                 options[str(d)] = d + 1
             gui.dropdown(
-                func=_change_cf_dim, objects=self, label="Component", values=options
+                func=self.change_cf_dim, label="Component", values=options
             )
+
+    def change_cf_dim(self, value):
+        self.component = value
+        self.component_buffer = buffer_from_array(np.array([self.component], np.uint32))
+        self.options.render_function()
 
     def get_shader_code(self):
         shader_code = ""
@@ -280,9 +276,9 @@ class CoefficientFunctionRenderObject(RenderObject):
             *self.options.get_bindings(),
             *self.colormap.get_bindings(),
             *self.clipping.get_bindings(),
-            BufferBinding(Binding.TRIG_FUNCTION_VALUES, self._buffers["function"]),
+            BufferBinding(Binding.TRIG_FUNCTION_VALUES, self._buffers["data_2d"]),
             BufferBinding(MeshBinding.VERTICES, self._buffers["vertices"]),
-            BufferBinding(MeshBinding.TRIGS_INDEX, self._buffers["trigs"]),
+            BufferBinding(MeshBinding.TRIGS_INDEX, self._buffers[ElType.TRIG]),
             BufferBinding(Binding.COMPONENT, self.component_buffer),
         ]
 

@@ -3,9 +3,7 @@ import netgen.meshing
 import numpy as np
 from webgpu.font import Font
 from webgpu.render_object import (
-    DataObject,
     RenderObject,
-    _add_render_object,
 )
 
 # from webgpu.uniforms import Binding
@@ -84,33 +82,17 @@ ElTypes2D = [ElType.TRIG, ElType.QUAD]
 ElTypes3D = [ElType.TET, ElType.HEX, ElType.PRISM, ElType.PYRAMID]
 
 
-class MeshData(DataObject):
-    vertices: bytes = b""
-    trigs: bytes = b""
-    edges: bytes = b""
-
-    num_trigs: int = 0
-    num_verts: int = 0
-    num_edges: int = 0
-    num_tets: int = 0
-
+class MeshData:
     # only for drawing the mesh, not needed for function values
-    num_elements: dict[str, int]
-    elements: dict[str, bytes]
+    num_elements: dict[str | ElType, int]
+    elements: dict[str | ElType, np.ndarray]
+    gpu_elements: dict[str | ElType, Buffer]
 
     mesh: netgen.meshing.Mesh
     _ngs_mesh = None
     _last_mesh_timestamp: int = -1
 
-    __BUFFER_NAMES = [
-        "vertices",
-        "trigs",
-        "edges",
-    ]
-    __INT_NAMES = ["num_trigs", "num_verts", "num_edges"]
-
     def __init__(self, mesh):
-        _add_render_object(self)
         self.on_region = False
         self.need_3d = False
         if isinstance(mesh, netgen.meshing.Mesh):
@@ -123,7 +105,9 @@ class MeshData(DataObject):
                 self.on_region = True
                 mesh = mesh.mesh
             self.mesh = mesh.ngmesh
-        self._buffers = {}
+        self.num_elements = {}
+        self.elements = {}
+        self.gpu_elements = {}
 
     @property
     def ngs_mesh(self):
@@ -133,31 +117,28 @@ class MeshData(DataObject):
             self._ngs_mesh = ngsolve.Mesh(self.mesh)
         return self._ngs_mesh
 
-    def redraw(self, timestamp: float | None = None):
-        super().redraw(mesh=self.mesh)
-
-    def update(self, mesh=None):
-        if mesh:
-            self.mesh = mesh
+    def update(self):
+        if self._last_mesh_timestamp != self.mesh._timestamp:
+            self._create_data()
 
     def _create_data(self):
         # TODO: implement other element types than triangles
         # TODO: handle region correctly to draw only part of the mesh
         mesh = self.mesh
-        for name in self.__BUFFER_NAMES:
-            setattr(self, name, b"")
-        for name in self.__INT_NAMES:
-            setattr(self, name, 0)
+        self.num_elements = {eltype: 0 for eltype in ElType}
+        self.elements = {}
+        self.gpu_elements = {}
 
         # Vertices
-        self.num_verts = len(mesh.Points())
-        vertices = np.zeros((self.num_verts, 3), dtype=np.float32)
-        for i, p in enumerate(mesh.Points()):
-            vertices[i] = list(p.p)
+        nv = len(mesh.Points())
+        self.num_elements["vertices"] = nv
+        vertices = np.array(mesh.Coordinates(), dtype=np.float32)
+        if vertices.shape[1] == 2:
+            vertices = np.hstack((vertices, np.zeros((nv, 1), dtype=np.float32)))
 
         self.pmin = np.min(vertices, axis=0)
         self.pmax = np.max(vertices, axis=0)
-        self.vertices = vertices.tobytes()
+        self.elements["vertices"] = vertices
 
         # Trigs TODO: Quads
         trigs = mesh.Elements2D().NumPy()
@@ -169,16 +150,13 @@ class MeshData(DataObject):
                 region = region.Boundaries()
             indices = np.flatnonzero(region.Mask()) + 1
             trigs = trigs[np.isin(trigs["index"], indices)]
-        self.num_trigs = len(trigs)
-        trigs_data = np.zeros((self.num_trigs, 4), dtype=np.uint32)
+        self.num_elements[ElType.TRIG] = len(trigs)
+        trigs_data = np.zeros((len(trigs), 4), dtype=np.uint32)
         trigs_data[:, :3] = trigs["nodes"][:, :3] - 1
         trigs_data[:, 3] = trigs["index"]
-        self.trigs = trigs_data.tobytes()
+        self.elements[ElType.TRIG] = trigs_data
 
         # 3d Elements
-        self.num_els = {eltype.name: 0 for eltype in ElType}
-        self.elements = {}  # eltype.name: [] for eltype in ElType}
-
         if self.need_3d:
             els = mesh.Elements3D().NumPy()
             for num_pts in (4, 5, 6, 8):
@@ -187,40 +165,20 @@ class MeshData(DataObject):
                 nels = len(filtered)
                 if nels == 0:
                     continue
-                f32array = np.empty((nels, num_pts + 2), dtype=np.uint32)
-                f32array[:, :num_pts] = filtered["nodes"][:, :num_pts] - 1
-                f32array[:, num_pts] = filtered["index"]
-                self.elements[eltype.name] = f32array.tobytes()
-                self.num_els[eltype.name] = len(filtered)
+                u32array = np.empty((nels, num_pts + 2), dtype=np.uint32)
+                u32array[:, :num_pts] = filtered["nodes"][:, :num_pts] - 1
+                u32array[:, num_pts] = filtered["index"]
+                self.elements[eltype] = u32array
+                self.num_elements[eltype] = len(filtered)
         self._last_mesh_timestamp = mesh._timestamp
-
-    def needs_update(self):
-        return self._last_mesh_timestamp != self.mesh._timestamp
 
     def get_bounding_box(self):
         return (self.pmin, self.pmax)
 
-    def _create_buffers(self, device: Device):
-        data = {}
-        for name in self.__BUFFER_NAMES:
-            b = getattr(self, name)
-            if b:
-                data[name] = b
-
-        for eltype in self.elements:
-            data[eltype] = self.elements[eltype]
-
-        buffers = {}
-        for key in data:
-            d = data[key]
-            buffer = device.createBuffer(
-                size=len(d), usage=BufferUsage.STORAGE | BufferUsage.COPY_DST
-            )
-            device.queue.writeBuffer(buffer, 0, d)
-            buffers[key] = buffer
-        self._buffers = buffers
-        return self._buffers
-
+    def get_buffers(self):
+        if not self.gpu_elements:
+            self.gpu_elements = { eltype: buffer_from_array(self.elements[eltype]) for eltype in self.elements }
+        return self.gpu_elements
 
 class Mesh2dElementsRenderer(RenderObject):
     n_vertices: int = 3
@@ -235,14 +193,10 @@ class Mesh2dElementsRenderer(RenderObject):
         self.data = data
         self.clipping = Clipping()
 
-    def redraw(self, timestamp: float | None = None):
-        timestamp = self.data.redraw(timestamp)
-        super().redraw(timestamp)
-
     def update(self):
         self.clipping.update()
-        self._buffers = self.data.get_buffers(self.device)
-        self.n_instances = self.data.num_trigs
+        self._buffers = self.data.get_buffers()
+        self.n_instances = self.data.num_elements[ElType.TRIG]
         self.color_uniform = buffer_from_array(np.array(self.color, dtype=np.float32))
         self.create_render_pipeline()
 
@@ -308,15 +262,17 @@ class Mesh3dElementsRenderObject(RenderObject):
     def get_bounding_box(self) -> tuple[list[float], list[float]] | None:
         return self.data.get_bounding_box()
 
-    def update(self, data: MeshData | None = None):
-        if data is not None:
-            self.data = data
+    def update(self, timestamp):
+        if timestamp == self._timestamp:
+            return
+        self._timestamp = timestamp
+        self.data.update()
         self.uniforms = El3dUniform(self.device)
         self.clipping.options = self.options
-        self.clipping.update()
-        self._buffers = self.data.get_buffers(self.device)
+        self.clipping.update(timestamp)
+        self._buffers = self.data.get_buffers()
         self.uniforms.update_buffer()
-        self.n_instances = self.data.num_els[ElType.TET.name]
+        self.n_instances = self.data.num_elements[ElType.TET]
         self.create_render_pipeline()
 
     def add_options_to_gui(self, gui):
@@ -332,7 +288,7 @@ class Mesh3dElementsRenderObject(RenderObject):
         return [
             *self.clipping.get_bindings(),
             BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
-            BufferBinding(Binding.TET, self._buffers[ElType.TET.name]),
+            BufferBinding(Binding.TET, self._buffers[ElType.TET]),
             *self.uniforms.get_bindings(),
             *self.options.get_bindings(),
         ]
@@ -361,11 +317,14 @@ class PointNumbersRenderObject(RenderObject):
         self.font_size = font_size
         self.clipping = Clipping()
 
-    def update(self):
-        self.clipping.update()
+    def update(self, timestamp):
+        if timestamp == self._timestamp:
+            return
+        self._timestamp = timestamp
+        self.clipping.update(timestamp)
         self.font = Font(self.canvas, self.font_size)
-        self._buffers = self.data.get_buffers(self.device)
-        self.n_instances = self.data.num_verts
+        self._buffers = self.data.get_buffers()
+        self.n_instances = self.data.num_elements["vertices"]
         self.create_render_pipeline()
 
     def get_shader_code(self):

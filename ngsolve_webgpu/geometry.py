@@ -16,9 +16,11 @@ class Binding:
 class GeometryFaceRenderer(RenderObject):
     n_vertices: int = 3
     depthBias: int = 1
+    clipping: Clipping | None = None
 
     def __init__(self, geo):
         super().__init__(label="GeometryFaces")
+        self.geo = geo
         self.colors = None
         self.active = True
 
@@ -110,6 +112,8 @@ class GeometryFaceRenderer(RenderObject):
 class GeometryEdgeRenderer(RenderObject):
     n_vertices: int = 4
     topology: PrimitiveTopology = PrimitiveTopology.triangle_strip
+    clipping: Clipping | None = None
+
     def __init__(self, geo):
         self.geo = geo
         super().__init__(label="GeometryEdges")
@@ -196,6 +200,8 @@ class GeometryVertexRenderer(RenderObject):
     n_vertices: int = 4
     topology: PrimitiveTopology = PrimitiveTopology.triangle_strip
     depthBias: int = 0
+    clipping: Clipping | None = None
+
     def __init__(self, geo):
         self.geo = geo
         super().__init__(label="GeometryVertices")
@@ -291,7 +297,10 @@ class GeometryRenderObject(MultipleRenderObject):
         self.vertices.clipping = self.clipping
         super().__init__([self.vertices, self.edges, self.faces])
 
-    def update(self):
+    def update(self, timestamp):
+        if timestamp == self._timestamp:
+            return
+        self._timestamp = timestamp
         vis_data = self.geo._visualizationData()
         self.bounding_box = (vis_data["min"], vis_data["max"])
         for ro in self.render_objects:

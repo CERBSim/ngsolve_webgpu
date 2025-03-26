@@ -16,9 +16,9 @@ class Animation(RenderObject):
         self.add_time(initial=True)
         self.store = True
 
-    def update(self):
+    def update(self, timestamp):
         self.child.options = self.options
-        self.child.update()
+        self.child.update(timestamp)
 
     def get_bounding_box(self):
         return self.child.get_bounding_box()

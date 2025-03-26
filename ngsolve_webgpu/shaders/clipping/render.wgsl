@@ -30,7 +30,7 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
 @fragment
 fn fragment_main(input: VertexOutput2d) -> @location(0) vec4<f32>
 {
-  let value = evalTet(input.elnr, 0, input.lam);
+  let value = evalTet(&function_values_3d, input.elnr, 0, input.lam);
   return lightCalcColor(input.n, getColor(value));
 }
 

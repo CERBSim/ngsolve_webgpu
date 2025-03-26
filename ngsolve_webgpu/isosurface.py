@@ -12,7 +12,7 @@ from webgpu.webgpu_api import BufferUsage, ComputeState, MapMode, ShaderStage
 
 from webgpu.utils import uniform_from_array, buffer_from_array, ReadBuffer
 
-from .cf import CoefficientFunctionRenderObject
+from .cf import CFRenderer
 
 
 class Binding:
@@ -40,23 +40,19 @@ class IsoSurfaceRenderObject(RenderObject):
         self.colormap = Colormap()
         self.clipping = Clipping()
 
-    def update(self, levelset=None, function=None, mesh=None):
-        if levelset is not None:
-            self.levelset = levelset
-        if function is not None:
-            self.function = function
-        if mesh is not None:
-            self.mesh = mesh
+    def update(self, timestamp):
+        if timestamp == self._timestamp:
+            return
+        self._timestamp = timestamp
+        self.clipping.update(timestamp)
+        self.colormap.options = self.options
+        self.colormap.update(timestamp)
         self.cut_trigs_set = False
         self.count_cut_trigs()
-
-    def redraw(self, timestamp: float | None = None, **kwargs):
-        super().redraw(levelset=self.levelset, function=self.function, mesh=self.mesh)
 
     def count_cut_trigs(self):
         import ngsolve as ngs
 
-        self.clipping.update()
         compute_encoder = self.device.createCommandEncoder(label="count_iso_trigs")
         # binding -> counter i32
         self.counter_buffer = buffer_from_array(
@@ -121,8 +117,8 @@ class IsoSurfaceRenderObject(RenderObject):
 
         layout, group = create_bind_group(self.device, bindings, "count_cut_trigs")
         shader_code = ""
-        compute_shader_code = read_shader_file("compute_isosurface.wgsl", __file__)
-        shader_code += read_shader_file("isosurface.wgsl", __file__)
+        compute_shader_code = read_shader_file("isosurface/compute.wgsl", __file__)
+        shader_code += read_shader_file("isosurface/common.wgsl", __file__)
         shader_code += self.clipping.get_shader_code()
         shader_module = self.device.createShaderModule(
             compute_shader_code + shader_code
@@ -144,9 +140,7 @@ class IsoSurfaceRenderObject(RenderObject):
         self.device.queue.submit([compute_encoder.finish()])
 
         array = read.get_array(np.uint32)
-        print("array", array)
         self.n_instances = int(array[0])
-        print("n_instances", self.n_instances)
         self.create_cut_trigs()
 
     def create_cut_trigs(self):
@@ -195,8 +189,8 @@ class IsoSurfaceRenderObject(RenderObject):
             self.device, bindings + [cut_trigs_binding], "create_cut_trigs"
         )
         shader_code = ""
-        compute_shader_code = read_shader_file("compute_isosurface.wgsl", __file__)
-        shader_code += read_shader_file("isosurface.wgsl", __file__)
+        compute_shader_code = read_shader_file("isosurface/compute.wgsl", __file__)
+        shader_code += read_shader_file("isosurface/common.wgsl", __file__)
         shader_code += self.clipping.get_shader_code()
         shader_module = self.device.createShaderModule(
             compute_shader_code + shader_code
@@ -224,8 +218,6 @@ class IsoSurfaceRenderObject(RenderObject):
             self.colormap.set_min_max(
                 min(draw_func_values), max(draw_func_values), set_autoupdate=False
             )
-        self.colormap.update()
-        self.clipping.update()
         self.draw_func_value_buffer = self.device.createBuffer(
             size=len(draw_func_values) * draw_func_values.itemsize,
             usage=BufferUsage.STORAGE | BufferUsage.COPY_DST,
@@ -264,7 +256,7 @@ class IsoSurfaceRenderObject(RenderObject):
         ]
 
     def get_shader_code(self):
-        render_shader_code = read_shader_file("render_isosurface.wgsl", __file__)
+        render_shader_code = read_shader_file("isosurface/render.wgsl", __file__)
         return render_shader_code + self.shader_code + self.colormap.get_shader_code()
 
     def get_bounding_box(self):
@@ -276,25 +268,55 @@ class IsoSurfaceRenderObject(RenderObject):
         super().render(encoder)
 
 
-class NegativeSurfaceRenderer(CoefficientFunctionRenderObject):
+class NegativeSurfaceRenderer(CFRenderer):
     def __init__(self, functiondata, levelsetdata):
         super().__init__(functiondata, label="NegativeSurfaceRenderer")
         self.fragment_entry_point = "fragmentCheckLevelset"
         self.levelset = levelsetdata
 
-    def redraw(self, timestamp: float | None = None, **kwargs):
-        self.levelset.redraw(timestamp=timestamp)
-        super().redraw(timestamp=timestamp, **kwargs)
-
-    def update(self, **kwargs):
-        buffers = self.levelset.get_buffers(self.device)
-        self.levelset_buffer = buffers["function"]
-        super().update(**kwargs)
+    def update(self, timestamp):
+        if timestamp == self._timestamp:
+            return
+        self.levelset.update(timestamp)
+        buffers = self.levelset.get_buffers()
+        self.levelset_buffer = buffers["data_2d"]
+        super().update(timestamp)
 
     def get_bindings(self):
         return super().get_bindings() + [BufferBinding(80, self.levelset_buffer)]
 
     def get_shader_code(self):
         return super().get_shader_code() + read_shader_file(
-            "negative_surface.wgsl", __file__
+            "isosurface/negative_surface.wgsl", __file__
         )
+
+from .clipping import ClippingCF
+class NegativeClippingRenderer(ClippingCF):
+    fragment_entry_point = "fragment_neg_clip"
+    def __init__(self, data, levelsetdata):
+        super().__init__(data, clipping=None, colormap=None)
+        self.levelset = levelsetdata
+        self.levelset.need_3d = True
+
+    def update(self, timestamp):
+        if self._timestamp == timestamp:
+            return
+        self.levelset.update(timestamp)
+        buffers = self.levelset.get_buffers()
+        self.levelset_buffer = buffers["data_3d"]
+        super().update(timestamp)
+
+    def get_bindings(self, compute=False):
+        bindings = super().get_bindings(compute)
+        if not compute:
+            bindings += [BufferBinding(80, self.levelset_buffer)]
+        return bindings
+
+    def get_shader_code(self, compute=False):
+        code = super().get_shader_code(compute)
+        if not compute:
+            code += read_shader_file(
+            "isosurface/negative_clipping.wgsl", __file__
+            )
+        return code
+    

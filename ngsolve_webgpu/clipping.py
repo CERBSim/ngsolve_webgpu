@@ -24,10 +24,12 @@ class VolumeCF(Mesh3dElementsRenderObject):
         self.data.need_3d = True
         self.colormap = Colormap()
 
-    def update(self, data: FunctionData | None = None):
+    def update(self, timestamp):
+        if self._timestamp == timestamp:
+            return
         self.colormap.options = self.options
-        self.colormap.update()
-        super().update(data)
+        self.colormap.update(timestamp)
+        super().update(timestamp)
 
     def get_bindings(self):
         return super().get_bindings() + [
@@ -45,23 +47,20 @@ class ClippingCF(RenderObject):
         super().__init__(label="ClippingCF")
         self.clipping = clipping or Clipping()
         self.colormap = colormap or Colormap()
-        self.clipping.callbacks.append(self.update)
+        self.clipping.callbacks.append(self.build_clip_plane)
         self.data = data
         self.data.need_3d = True
 
-    def redraw(self, timestamp: float | None = None):
-        timestamp = self.data.redraw(timestamp)
-        super().redraw(timestamp)
-
-    def update(self, data: FunctionData | None = None):
-        if data is not None:
-            self.data = data
-        self.clipping.update()
+    def update(self, timestamp):
+        if timestamp == self._timestamp:
+            return
+        self._timestamp = timestamp
+        self.data.update(timestamp)
+        self.clipping.update(timestamp)
         self.colormap.options = self.options
-        self.colormap.update()
-        self._buffers = self.data.get_buffers(self.device)
+        self.colormap.update(timestamp)
+        self._buffers = self.data.get_buffers()
         self.build_clip_plane()
-        self.create_render_pipeline()
 
     def get_shader_code(self, compute=False):
         shader_code = ""
@@ -84,7 +83,7 @@ class ClippingCF(RenderObject):
             BufferBinding(MeshBinding.VERTICES, self._buffers["vertices"]),
             UniformBinding(22, self.n_tets),
             UniformBinding(23, self.only_count),
-            BufferBinding(MeshBinding.TET, self._buffers[ElType.TET.name]),
+            BufferBinding(MeshBinding.TET, self._buffers[ElType.TET]),
             BufferBinding(13, self._buffers["data_3d"]),
             *self.clipping.get_bindings()]
         if compute:
@@ -103,7 +102,7 @@ class ClippingCF(RenderObject):
     def build_clip_plane(self):
         for count in [True, False]:
             encoder = self.device.createCommandEncoder("build_clip_plane")
-            ntets = self.data.mesh_data.num_els[ElType.TET.name]
+            ntets = self.data.mesh_data.num_elements[ElType.TET]
             self.trig_counter = buffer_from_array(
                 np.array([0], dtype=np.uint32),
                 usage=BufferUsage.STORAGE | BufferUsage.COPY_DST | BufferUsage.COPY_SRC)
@@ -138,5 +137,6 @@ class ClippingCF(RenderObject):
             if count:
                 array = read.get_array(dtype=np.uint32)
                 self.n_instances = int(array[0])
+        self.create_render_pipeline()
 
             
