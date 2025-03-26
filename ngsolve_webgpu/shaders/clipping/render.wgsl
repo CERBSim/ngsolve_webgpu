@@ -1,7 +1,7 @@
 
 @group(0) @binding(24) var<storage> subtrigs: array<SubTrig>;
 
-struct VertexOutput2d {
+struct VertexOutputClip {
   @builtin(position) fragPosition: vec4<f32>,
   @location(0) p: vec3<f32>,
   @location(1) n: vec3<f32>,
@@ -12,7 +12,7 @@ struct VertexOutput2d {
 @vertex
 fn vertex_main(@builtin(vertex_index) vertId: u32,
                @builtin(instance_index) trigId: u32)
-  -> VertexOutput2d
+  -> VertexOutputClip
 {
   let trig = subtrigs[trigId];
   let points = get_tet_points(trig.id);
@@ -23,12 +23,12 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
     p = p + lam[i] * points[i];
   }
   
-  return VertexOutput2d(cameraMapPoint(p), p, -u_clipping.plane.xyz, lam.xyz,
-                        trig.id);
+  return VertexOutputClip(cameraMapPoint(p), p, -u_clipping.plane.xyz, lam.xyz,
+                      trig.id);
 }
 
 @fragment
-fn fragment_main(input: VertexOutput2d) -> @location(0) vec4<f32>
+fn fragment_main(input: VertexOutputClip) -> @location(0) vec4<f32>
 {
   let value = evalTet(&function_values_3d, input.elnr, 0, input.lam);
   return lightCalcColor(input.n, getColor(value));

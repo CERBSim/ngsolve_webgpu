@@ -2,7 +2,7 @@
 @group(0) @binding(80) var<storage> levelset: array<f32>;
 
 @fragment
-fn fragment_neg_clip(input: VertexOutput2d) -> @location(0) vec4<f32>
+fn fragment_neg_clip(input: VertexOutputClip) -> @location(0) vec4<f32>
 {
   let lvlset = evalTet(&levelset, input.elnr, 0, input.lam);
   if(lvlset > 0.) {

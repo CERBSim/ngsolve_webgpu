@@ -1,272 +1,49 @@
+
 import numpy as np
 from webgpu import (
     BufferBinding,
     Colormap,
     Clipping,
-    RenderObject,
-    UniformBinding,
-    create_bind_group,
     read_shader_file,
 )
-from webgpu.webgpu_api import BufferUsage, ComputeState, MapMode, ShaderStage
-
-from webgpu.utils import uniform_from_array, buffer_from_array, ReadBuffer
-
+from webgpu.utils import UniformBinding, uniform_from_array
+from .clipping import ClippingCF
 from .cf import CFRenderer
 
-
-class Binding:
-    COUNTER = 80
-    COUNT_FLAG = 81
-    CUT_TRIANGLES = 82
-    FUNCTION_VALUES = 83
-    DRAW_FUNCTION_VALUES = 84
-    N_TETS = 85
-    VERTICES = 12
-
-
-class IsoSurfaceRenderObject(RenderObject):
-    n_vertices: int = 3
-    vertex_entry_point: str = "vertexIsoSurface"
-    fragment_entry_point: str = "fragmentIsoSurface"
-
-    def __init__(self, levelset, function, mesh, label):
-        super().__init__(label=label)
-        self.levelset = levelset
-        self.function = function
-        self.mesh = mesh
-        self.cut_trigs_set = False
-        self.task = None
+class IsoSurfaceRenderObject(ClippingCF):
+    compute_shader = "isosurface/compute.wgsl"
+    vertex_entry_point = "vertex_isosurface"
+    fragment_entry_point = "fragment_isosurface"
+    def __init__(self, func_data, levelset_data):
+        super().__init__(func_data)
+        self.levelset = levelset_data
+        self.levelset.need_3d = True
         self.colormap = Colormap()
         self.clipping = Clipping()
+        self.subdivision = 0
+
+    def get_shader_code(self, compute=False):
+        code = super().get_shader_code(compute=compute)
+        if not compute:
+            code += read_shader_file("isosurface/render.wgsl", __file__)
+        return code
 
     def update(self, timestamp):
         if timestamp == self._timestamp:
             return
-        self._timestamp = timestamp
-        self.clipping.update(timestamp)
-        self.colormap.options = self.options
-        self.colormap.update(timestamp)
-        self.cut_trigs_set = False
-        self.count_cut_trigs()
+        self.uniform_subdiv = uniform_from_array(np.array([self.subdivision], dtype=np.uint32))
+        self.levelset.update(timestamp)
+        self.levelset_buffer = self.levelset.get_buffers()["data_3d"]
+        super().update(timestamp)
 
-    def count_cut_trigs(self):
-        import ngsolve as ngs
-
-        compute_encoder = self.device.createCommandEncoder(label="count_iso_trigs")
-        # binding -> counter i32
-        self.counter_buffer = buffer_from_array(
-            np.array([0], dtype=np.uint32),
-            usage=BufferUsage.STORAGE | BufferUsage.COPY_DST | BufferUsage.COPY_SRC,
-        )
-
-        self.ntets_buffer = uniform_from_array(
-            np.array([self.mesh.ne], dtype=np.uint32)
-        )
-
-        self.mesh_pts = self.mesh.MapToAllElements(
-            ngs.IntegrationRule([(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)]),
-            self.mesh.Materials(".*"),
-        )
-        func_values = np.array(self.levelset(self.mesh_pts).flatten(), dtype=np.float32)
-
-        self.function_value_buffer = buffer_from_array(func_values)
-
-        vertices = np.array(
-            ngs.CF((ngs.x, ngs.y, ngs.z))(self.mesh_pts), dtype=np.float32
-        )
-        self.pmin = np.min(vertices, axis=0)
-        self.pmax = np.max(vertices, axis=0)
-        vertices = vertices.flatten()
-        self.vertex_buffer = buffer_from_array(vertices)
-
-        # just a dummy here, needed in create
-        cut_trigs_buffer = self.device.createBuffer(
-            label="cut trigs " + str(self.n_instances),
-            size=64,
-            usage=BufferUsage.STORAGE,
-        )
-        cut_trigs_binding = BufferBinding(
-            Binding.CUT_TRIANGLES,
-            cut_trigs_buffer,
-            read_only=False,
-            visibility=ShaderStage.COMPUTE,
-        )
-        self.only_count = uniform_from_array(np.array([1], dtype=np.uint32))
-        bindings = [
-            *self.options.camera.get_bindings(),
-            *self.clipping.get_bindings(),
-            BufferBinding(
-                Binding.COUNTER,
-                self.counter_buffer,
-                read_only=False,
-                visibility=ShaderStage.COMPUTE,
-            ),
-            BufferBinding(
-                Binding.FUNCTION_VALUES,
-                self.function_value_buffer,
-                visibility=ShaderStage.ALL,
-            ),
-            BufferBinding(
-                Binding.VERTICES, self.vertex_buffer, visibility=ShaderStage.ALL
-            ),
-            UniformBinding(Binding.N_TETS, self.ntets_buffer),
-            UniformBinding(Binding.COUNT_FLAG, self.only_count),
-            cut_trigs_binding,
+    def get_bindings(self, compute=False):
+        bindings = super().get_bindings(compute)
+        if compute:
+            bindings.append(UniformBinding(27, self.uniform_subdiv))
+        bindings += [
+            BufferBinding(26, self.levelset_buffer),
         ]
-
-        layout, group = create_bind_group(self.device, bindings, "count_cut_trigs")
-        shader_code = ""
-        compute_shader_code = read_shader_file("isosurface/compute.wgsl", __file__)
-        shader_code += read_shader_file("isosurface/common.wgsl", __file__)
-        shader_code += self.clipping.get_shader_code()
-        shader_module = self.device.createShaderModule(
-            compute_shader_code + shader_code
-        )
-        pipeline = self.device.createComputePipeline(
-            self.device.createPipelineLayout([layout], self.label + " count"),
-            label="count_iso_trigs",
-            compute=ComputeState(
-                module=shader_module, entryPoint="create_iso_triangles"
-            ),
-        )
-        compute_pass = compute_encoder.beginComputePass(label="count_iso_trigs")
-        compute_pass.setBindGroup(0, group)
-        compute_pass.setPipeline(pipeline)
-        compute_pass.dispatchWorkgroups(min(1024, self.mesh.ne))
-        compute_pass.end()
-
-        read = ReadBuffer(self.counter_buffer, compute_encoder)
-        self.device.queue.submit([compute_encoder.finish()])
-
-        array = read.get_array(np.uint32)
-        self.n_instances = int(array[0])
-        self.create_cut_trigs()
-
-    def create_cut_trigs(self):
-        if self.n_instances == 0:
-            return
-        compute_encoder = self.device.createCommandEncoder(label="create_iso_trigs")
-        # binding -> counter i32
-        self.device.queue.writeBuffer(self.only_count, 0, np.uint32(0).tobytes(), 0, 4)
-        self.device.queue.writeBuffer(
-            self.counter_buffer, 0, np.array([0], dtype=np.uint32).tobytes(), 0, 4
-        )
-        cut_buffer_size = 64 * self.n_instances
-        self.cut_trigs_buffer = self.device.createBuffer(
-            label="cut trigs ",
-            size=cut_buffer_size,
-            usage=BufferUsage.STORAGE,
-        )
-        cut_trigs_binding = BufferBinding(
-            Binding.CUT_TRIANGLES,
-            self.cut_trigs_buffer,
-            read_only=False,
-            visibility=ShaderStage.COMPUTE,
-        )
-        bindings = [
-            *self.options.camera.get_bindings(),
-            *self.clipping.get_bindings(),
-            BufferBinding(
-                Binding.COUNTER,
-                self.counter_buffer,
-                read_only=False,
-                visibility=ShaderStage.COMPUTE,
-            ),
-            BufferBinding(
-                Binding.FUNCTION_VALUES,
-                self.function_value_buffer,
-                visibility=ShaderStage.ALL,
-            ),
-            BufferBinding(
-                Binding.VERTICES, self.vertex_buffer, visibility=ShaderStage.ALL
-            ),
-            UniformBinding(Binding.N_TETS, self.ntets_buffer),
-            UniformBinding(Binding.COUNT_FLAG, self.only_count),
-        ]
-
-        layout, group = create_bind_group(
-            self.device, bindings + [cut_trigs_binding], "create_cut_trigs"
-        )
-        shader_code = ""
-        compute_shader_code = read_shader_file("isosurface/compute.wgsl", __file__)
-        shader_code += read_shader_file("isosurface/common.wgsl", __file__)
-        shader_code += self.clipping.get_shader_code()
-        shader_module = self.device.createShaderModule(
-            compute_shader_code + shader_code
-        )
-        self.shader_code = shader_code
-        pipeline = self.device.createComputePipeline(
-            self.device.createPipelineLayout([layout], self.label + " create"),
-            label="count_iso_trigs",
-            compute=ComputeState(
-                module=shader_module, entryPoint="create_iso_triangles"
-            ),
-        )
-        compute_pass = compute_encoder.beginComputePass(label="count_iso_trigs")
-        compute_pass.setBindGroup(0, group)
-        compute_pass.setPipeline(pipeline)
-        compute_pass.dispatchWorkgroups(min(1024, self.mesh.ne))
-        compute_pass.end()
-
-        self.device.queue.submit([compute_encoder.finish()])
-        draw_func_values = np.array(
-            self.function(self.mesh_pts).flatten(), dtype=np.float32
-        )
-        self.colormap.options = self.options
-        if self.colormap.autoupdate:
-            self.colormap.set_min_max(
-                min(draw_func_values), max(draw_func_values), set_autoupdate=False
-            )
-        self.draw_func_value_buffer = self.device.createBuffer(
-            size=len(draw_func_values) * draw_func_values.itemsize,
-            usage=BufferUsage.STORAGE | BufferUsage.COPY_DST,
-            label="draw function",
-        )
-        self.device.queue.writeBuffer(
-            self.draw_func_value_buffer, 0, draw_func_values.tobytes()
-        )
-        self.create_render_pipeline()
-        self.cut_trigs_set = True
-
-    def get_bindings(self):
-        return [
-            *self.options.camera.get_bindings(),
-            *self.clipping.get_bindings(),
-            *self.colormap.get_bindings(),
-            BufferBinding(
-                Binding.FUNCTION_VALUES,
-                self.function_value_buffer,
-            ),
-            BufferBinding(
-                Binding.VERTICES,
-                self.vertex_buffer,
-            ),
-            UniformBinding(Binding.COUNT_FLAG, self.only_count),
-            BufferBinding(
-                Binding.CUT_TRIANGLES,
-                self.cut_trigs_buffer,
-                visibility=ShaderStage.VERTEX,
-            ),
-            BufferBinding(
-                Binding.DRAW_FUNCTION_VALUES,
-                self.draw_func_value_buffer,
-                visibility=ShaderStage.VERTEX,
-            ),
-        ]
-
-    def get_shader_code(self):
-        render_shader_code = read_shader_file("isosurface/render.wgsl", __file__)
-        return render_shader_code + self.shader_code + self.colormap.get_shader_code()
-
-    def get_bounding_box(self):
-        return (self.pmin, self.pmax)
-
-    def render(self, encoder):
-        if self.cut_trigs_set is False:
-            return
-        super().render(encoder)
-
+        return bindings
 
 class NegativeSurfaceRenderer(CFRenderer):
     def __init__(self, functiondata, levelsetdata):
@@ -290,11 +67,10 @@ class NegativeSurfaceRenderer(CFRenderer):
             "isosurface/negative_surface.wgsl", __file__
         )
 
-from .clipping import ClippingCF
 class NegativeClippingRenderer(ClippingCF):
     fragment_entry_point = "fragment_neg_clip"
     def __init__(self, data, levelsetdata):
-        super().__init__(data, clipping=None, colormap=None)
+        super().__init__(data)
         self.levelset = levelsetdata
         self.levelset.need_3d = True
 

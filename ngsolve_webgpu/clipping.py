@@ -42,11 +42,13 @@ class VolumeCF(Mesh3dElementsRenderObject):
         return super().get_shader_code() + self.colormap.get_shader_code() + eval_code
 
 class ClippingCF(RenderObject):
+    compute_shader = "clipping/compute.wgsl"
     n_vertices = 3
-    def __init__(self, data: FunctionData, clipping=None, colormap=None):
-        super().__init__(label="ClippingCF")
-        self.clipping = clipping or Clipping()
-        self.colormap = colormap or Colormap()
+    subdivision = 0
+    def __init__(self, data: FunctionData):
+        super().__init__()
+        self.clipping = Clipping()
+        self.colormap = Colormap()
         self.clipping.callbacks.append(self.build_clip_plane)
         self.data = data
         self.data.need_3d = True
@@ -62,17 +64,20 @@ class ClippingCF(RenderObject):
         self._buffers = self.data.get_buffers()
         self.build_clip_plane()
 
+    def get_bounding_box(self):
+        return self.data.get_bounding_box()
+
     def get_shader_code(self, compute=False):
         shader_code = ""
         shader_code += self.clipping.get_shader_code()
         shader_code += self.options.camera.get_shader_code()
         shader_code += read_shader_file("clipping/common.wgsl", __file__)
+        shader_code += read_shader_file("eval/common.wgsl", __file__)
+        shader_code += read_shader_file("eval/tet.wgsl", __file__)
         if compute:
-            shader_code += read_shader_file("clipping/compute.wgsl", __file__)
+            shader_code += read_shader_file(self.compute_shader, __file__)
         else:
             shader_code += read_shader_file("clipping/render.wgsl", __file__)
-            shader_code += read_shader_file("eval/common.wgsl", __file__)
-            shader_code += read_shader_file("eval/tet.wgsl", __file__)
             shader_code += self.colormap.get_shader_code()
             shader_code += self.options.light.get_shader_code()
         return shader_code
@@ -102,7 +107,7 @@ class ClippingCF(RenderObject):
     def build_clip_plane(self):
         for count in [True, False]:
             encoder = self.device.createCommandEncoder("build_clip_plane")
-            ntets = self.data.mesh_data.num_elements[ElType.TET]
+            ntets = self.data.mesh_data.num_elements[ElType.TET] * 4**self.subdivision
             self.trig_counter = buffer_from_array(
                 np.array([0], dtype=np.uint32),
                 usage=BufferUsage.STORAGE | BufferUsage.COPY_DST | BufferUsage.COPY_SRC)
