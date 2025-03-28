@@ -1,3 +1,6 @@
+#import font
+#import clipping
+#import camera
 
 @group(0) @binding(12) var<storage> vertices : array<f32>;
 

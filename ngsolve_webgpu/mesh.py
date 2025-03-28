@@ -328,11 +328,7 @@ class PointNumbersRenderObject(RenderObject):
         self.create_render_pipeline()
 
     def get_shader_code(self):
-        shader_code = read_shader_file("numbers.wgsl", __file__)
-        shader_code += self.clipping.get_shader_code()
-        shader_code += self.font.get_shader_code()
-        shader_code += self.options.camera.get_shader_code()
-        return shader_code
+        return read_shader_file("numbers.wgsl", __file__)
 
     def get_bounding_box(self):
         return self.data.get_bounding_box()
