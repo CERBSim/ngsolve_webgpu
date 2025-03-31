@@ -34,6 +34,9 @@ fn fragment_main(input: GeoFragmentInput) -> @location(0) vec4<f32> {
                         u_colors[input.index * 4 + 1],
                         u_colors[input.index * 4 + 2],
                         u_colors[input.index * 4 + 3]);
+  if (color.a == 0.) {
+    discard;
+  }
   return lightCalcColor(input.n, color);
 }
 

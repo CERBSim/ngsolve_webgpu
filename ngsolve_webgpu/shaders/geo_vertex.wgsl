@@ -52,6 +52,10 @@ fn fragment_main(input: GeoVertexInput) -> @location(0) vec4<f32> {
   if(length(input.pos.xy - input.pos2.xy) > u_vertex_thickness/2.) {
     discard;
   }
+  if (u_vertex_color[input.index*4+3] == 0.) {
+    discard;
+  }
+
   return vec4<f32>(u_vertex_color[input.index * 4],
                    u_vertex_color[input.index * 4 + 1],
                    u_vertex_color[input.index * 4 + 2],

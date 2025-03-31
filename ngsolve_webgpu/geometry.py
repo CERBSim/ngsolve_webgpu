@@ -302,7 +302,8 @@ class GeometryRenderObject(MultipleRenderObject):
             return
         self._timestamp = timestamp
         vis_data = self.geo._visualizationData()
-        self.bounding_box = (vis_data["min"], vis_data["max"])
+        self.bounding_box = (vis_data["min"] + 1e-7, vis_data["max"] - 1e-7)
+
         for ro in self.render_objects:
             ro.options = self.options
             ro.update(vis_data)

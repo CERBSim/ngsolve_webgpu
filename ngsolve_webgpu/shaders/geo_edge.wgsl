@@ -40,6 +40,9 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
 
 @fragment
 fn fragment_main(input: GeoEdgeInput) -> @location(0) vec4<f32> {
+  if (u_color[input.index*4+3] == 0.0) {
+    discard;
+  }
   return vec4<f32>(u_color[input.index * 4],
                    u_color[input.index * 4 + 1],
                    u_color[input.index * 4 + 2],
