@@ -23,17 +23,17 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
                  u_vertices[instanceId * 6 + 5]);
   let tp1 = cameraMapPoint(p1);
   let tp2 = cameraMapPoint(p2);
-  let v = normalize(tp2.xy - tp1.xy);
+  let v = normalize(tp2.xy*tp1.w - tp1.xy*tp2.w);
   let v2 = vec2<f32>(-v.y, v.x);
   var pos: vec4<f32>;
   if(vertId == 0) {
-    pos = vec4<f32>(tp1.xy + v2 * u_thickness/2., tp1.zw); }
+    pos = vec4<f32>(tp1.xy + v2 * u_thickness/2.*tp1.w, tp1.zw); }
   else if(vertId == 1) {
-    pos = vec4<f32>(tp1.xy - v2 * u_thickness/2., tp1.zw); }
+    pos = vec4<f32>(tp1.xy - v2 * u_thickness/2.*tp1.w, tp1.zw); }
   else if(vertId == 2) {
-    pos = vec4<f32>(tp2.xy + v2 * u_thickness/2., tp2.zw); }
+    pos = vec4<f32>(tp2.xy + v2 * u_thickness/2.*tp2.w, tp2.zw); }
   else {
-    pos = vec4<f32>(tp2.xy - v2 * u_thickness/2., tp2.zw); }
+    pos = vec4<f32>(tp2.xy - v2 * u_thickness/2.*tp2.w, tp2.zw); }
   
   return GeoEdgeInput(pos, u_indices[instanceId]);
 }
