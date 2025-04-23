@@ -27,13 +27,13 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
   let v2 = vec2<f32>(-v.y, v.x);
   var pos: vec4<f32>;
   if(vertId == 0) {
-    pos = vec4<f32>(tp1.xy + v2 * u_thickness/2.*tp1.w, tp1.zw); }
+    pos = vec4<f32>(tp1.xy + (-0.5*v.xy + v2) * u_thickness/2.*tp1.w, tp1.zw); }
   else if(vertId == 1) {
-    pos = vec4<f32>(tp1.xy - v2 * u_thickness/2.*tp1.w, tp1.zw); }
+    pos = vec4<f32>(tp1.xy + (-0.5*v.xy + - v2) * u_thickness/2.*tp1.w, tp1.zw); }
   else if(vertId == 2) {
-    pos = vec4<f32>(tp2.xy + v2 * u_thickness/2.*tp2.w, tp2.zw); }
+    pos = vec4<f32>(tp2.xy + (0.5*v.xy + v2) * u_thickness/2.*tp2.w, tp2.zw); }
   else {
-    pos = vec4<f32>(tp2.xy - v2 * u_thickness/2.*tp2.w, tp2.zw); }
+    pos = vec4<f32>(tp2.xy + (0.5*v.xy - v2) * u_thickness/2.*tp2.w, tp2.zw); }
   
   return GeoEdgeInput(pos, u_indices[instanceId]);
 }
