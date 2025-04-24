@@ -8,7 +8,7 @@ from webgpu.render_object import (
 
 # from webgpu.uniforms import Binding
 from webgpu.uniforms import UniformBase, ct
-from webgpu.utils import BufferBinding, read_shader_file, buffer_from_array
+from webgpu.utils import BufferBinding, read_shader_file, buffer_from_array, uniform_from_array
 from webgpu.webgpu_api import *
 from webgpu.clipping import Clipping
 
@@ -21,7 +21,6 @@ class Binding:
     SEG_FUNCTION_VALUES = 11
     VERTICES = 12
     TRIGS_INDEX = 13
-    GBUFFERLAM = 14
 
     MESH = 20
     EDGE = 21
@@ -87,8 +86,10 @@ class MeshData:
     num_elements: dict[str | ElType, int]
     elements: dict[str | ElType, np.ndarray]
     gpu_elements: dict[str | ElType, Buffer]
+    curvature_subdivision: int
 
     mesh: netgen.meshing.Mesh
+    curvature_data = None
     _ngs_mesh = None
     _last_mesh_timestamp: int = -1
 
@@ -108,6 +109,7 @@ class MeshData:
         self.num_elements = {}
         self.elements = {}
         self.gpu_elements = {}
+        self.curvature_subdivision = 1
 
     @property
     def ngs_mesh(self):
@@ -120,6 +122,12 @@ class MeshData:
     def update(self):
         if self._last_mesh_timestamp != self.mesh._timestamp:
             self._create_data()
+
+            if self.curvature_data:
+                self.curvature_data.update(self.mesh._timestamp)
+                self.elements["curvature_2d"] = self.curvature_data.data_2d
+            else:
+                self.elements["curvature_2d"] = np.array([0],dtype=np.float32) 
 
     def _create_data(self):
         # TODO: implement other element types than triangles
@@ -170,6 +178,15 @@ class MeshData:
                 u32array[:, num_pts] = filtered["index"]
                 self.elements[eltype] = u32array
                 self.num_elements[eltype] = len(filtered)
+
+        curve_order = mesh.GetCurveOrder()
+        if curve_order > 1:
+            from .cf import FunctionData
+            import ngsolve as ngs
+            cf = ngs.CF((ngs.x, ngs.y, ngs.z))
+            self.curvature_data = FunctionData(self, cf, curve_order)
+            self.curvature_subdivision = curve_order + 3 
+
         self._last_mesh_timestamp = mesh._timestamp
 
     def get_bounding_box(self):
@@ -178,6 +195,8 @@ class MeshData:
     def get_buffers(self):
         if not self.gpu_elements:
             self.gpu_elements = { eltype: buffer_from_array(self.elements[eltype]) for eltype in self.elements }
+            self.gpu_elements['curvature_subdivision'] = uniform_from_array(np.array([self.curvature_subdivision], dtype=np.uint32))
+
         return self.gpu_elements
 
 class Mesh2dElementsRenderer(RenderObject):

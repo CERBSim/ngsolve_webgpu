@@ -18,7 +18,7 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
   let point = vec3<f32>(u_vertices[trigId * 9 + vertId * 3],
                         u_vertices[trigId * 9 + vertId * 3 + 1],
                         u_vertices[trigId * 9 + vertId * 3 + 2]);
-  let normal = -vec3<f32>(u_normals[trigId * 9 + vertId * 3],
+  let normal = vec3<f32>(u_normals[trigId * 9 + vertId * 3],
                          u_normals[trigId * 9 + vertId * 3 + 1],
                          u_normals[trigId * 9 + vertId * 3 + 2]);
   let position = cameraMapPoint(point);

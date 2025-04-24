@@ -1,24 +1,24 @@
 import math
-import numpy as np
 
-import ngsolve.webgui
 import ngsolve as ngs
-
-from webgpu.render_object import (
-    RenderObject,
-)
-from webgpu.vectors import BaseVectorRenderObject, VectorRenderer
-from webgpu.colormap import Colormap
+import ngsolve.webgui
+import numpy as np
 from webgpu.clipping import Clipping
-from webgpu.utils import BufferBinding, read_shader_file, buffer_from_array
+from webgpu.colormap import Colormap
+from webgpu.render_object import RenderObject
+from webgpu.utils import (BufferBinding, UniformBinding, buffer_from_array,
+                          read_shader_file)
+from webgpu.vectors import BaseVectorRenderObject, VectorRenderer
 from webgpu.webgpu_api import Buffer
 
-from .mesh import MeshData, ElType
 from .mesh import Binding as MeshBinding
+from .mesh import ElType, MeshData
 
 
 class Binding:
-    TRIG_FUNCTION_VALUES = 10
+    FUNCTION_VALUES_2D = 10
+    CURVATURE_VALUES_2D = 14
+    CURVATURE_SUBDIVISION = 15
     COMPONENT = 55
 
 _intrules_3d = {}
@@ -208,8 +208,8 @@ class CFRenderer(RenderObject):
 
     def __init__(self, data: FunctionData, component=0, label=None):
         super().__init__(label=label)
+
         self.data = data
-        self.n_vertices = 3
         self.colormap = Colormap()
         self.clipping = Clipping()
 
@@ -227,6 +227,9 @@ class CFRenderer(RenderObject):
         self.data.update(timestamp)
         self._buffers = self.data.get_buffers()
         self.colormap.options = self.options
+
+        self.curvature_subdivision = self.data.mesh_data.curvature_subdivision
+        self.n_vertices = 3*self.curvature_subdivision**2
         if self.colormap.autoupdate:
             self.colormap.set_min_max(
                 self.data.minval, self.data.maxval, set_autoupdate=False
@@ -276,10 +279,12 @@ class CFRenderer(RenderObject):
             *self.options.get_bindings(),
             *self.colormap.get_bindings(),
             *self.clipping.get_bindings(),
-            BufferBinding(Binding.TRIG_FUNCTION_VALUES, self._buffers["data_2d"]),
+            BufferBinding(Binding.FUNCTION_VALUES_2D, self._buffers["data_2d"]),
             BufferBinding(MeshBinding.VERTICES, self._buffers["vertices"]),
             BufferBinding(MeshBinding.TRIGS_INDEX, self._buffers[ElType.TRIG]),
             BufferBinding(Binding.COMPONENT, self.component_buffer),
+            BufferBinding(Binding.CURVATURE_VALUES_2D, self._buffers["curvature_2d"]),
+            UniformBinding(Binding.CURVATURE_SUBDIVISION, self._buffers["curvature_subdivision"]),
         ]
 
 

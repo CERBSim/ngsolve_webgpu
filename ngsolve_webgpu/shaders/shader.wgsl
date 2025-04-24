@@ -1,3 +1,4 @@
+#import eval/trig
 
 @group(0) @binding(55) var<storage> u_function_component: i32;
 
@@ -39,14 +40,42 @@ fn vertexEdgeP1(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) e
 }
 
 fn calcTrig(p: array<vec3<f32>, 3>, vertexId: u32, trigId: u32) -> VertexOutput2d {
-    var lam: vec3<f32> = vec3<f32>(0.);
-    lam[vertexId] = 1.0;
+    let subdivision = u_curvature_subdivision;
+    let h = 1.0 / f32(subdivision);
 
-    let position = cameraMapPoint(p[vertexId]);
-    let normal = cross(p[1] - p[0], p[2] - p[0]);
+    var lam = vec2f(0.0, 0.0);
+    if (vertexId % 3) < 2 {
+        lam[vertexId % 3] += h;
+    }
 
-    return VertexOutput2d(position, p[vertexId], lam.xy, trigId, normal);
+    var position: vec3f;
+    var normal: vec3f;
+
+    if subdivision == 1 {
+        position = p[vertexId];
+        normal = cross(p[1] - p[0], p[2] - p[0]);
+    } else {
+        var subTrigId: u32 = vertexId / 3;
+        var ix = subTrigId % subdivision;
+        var iy = subTrigId / subdivision;
+        lam += h * vec2f(f32(ix), f32(iy));
+
+        if ix + iy >= subdivision {
+            lam[0] = 1.0 - lam[0];
+            lam[1] = 1.0 - lam[1];
+        }
+
+        let data = &u_curvature_values_2d;
+        let pos_and_gradients = evalTrigVec3Grad(data, trigId, u_function_component, lam);
+        position = pos_and_gradients[0];
+        normal = normalize(cross(pos_and_gradients[1], pos_and_gradients[2]));
+    }
+
+    let mapped_position = cameraMapPoint(position);
+
+    return VertexOutput2d(mapped_position, position, lam, trigId, normal);
 }
+
 
 @vertex
 fn vertexTrigP1Indexed(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) trigId: u32) -> VertexOutput2d {
@@ -62,16 +91,16 @@ fn vertexTrigP1Indexed(@builtin(vertex_index) vertexId: u32, @builtin(instance_i
         vec3<f32>(vertices[vid[2] ], vertices[vid[2] + 1], vertices[vid[2] + 2])
     );
     // % 3 is here to allow same shader usage for wireframe for line strip
-    return calcTrig(p, vertexId%3, trigId);
+    return calcTrig(p, vertexId, trigId);
 }
 
 
 @fragment
 fn fragmentTrig(input: VertexOutput2d) -> @location(0) vec4<f32> {
     checkClipping(input.p);
-    let p = &trig_function_values;
+    let p = &u_function_values_2d;
     let value = evalTrig(p, input.id, u_function_component, input.lam);
-    return getColor(value);
+    return lightCalcColor(input.n, getColor(value));
 }
 
 @fragment

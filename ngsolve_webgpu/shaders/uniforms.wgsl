@@ -8,9 +8,6 @@
 
 // legacy uniforms
 @group(0) @binding(8) var<storage> edges_p1 : array<EdgeP1>;
-@group(0) @binding(9) var<storage> trigs_p1 : array<TrigP1>;
-@group(0) @binding(10) var<storage> trig_function_values : array<f32>;
-@group(0) @binding(11) var<storage> seg_function_values : array<f32>;
 @group(0) @binding(12) var<storage> vertices : array<f32>;
 @group(0) @binding(13) var<storage> trigs : array<u32>;
 
