@@ -6,8 +6,12 @@ import numpy as np
 from webgpu.clipping import Clipping
 from webgpu.colormap import Colormap
 from webgpu.render_object import RenderObject
-from webgpu.utils import (BufferBinding, UniformBinding, buffer_from_array,
-                          read_shader_file)
+from webgpu.utils import (
+    BufferBinding,
+    UniformBinding,
+    buffer_from_array,
+    read_shader_file,
+)
 from webgpu.vectors import BaseVectorRenderObject, VectorRenderer
 from webgpu.webgpu_api import Buffer
 
@@ -21,23 +25,37 @@ class Binding:
     CURVATURE_SUBDIVISION = 15
     COMPONENT = 55
 
+
 _intrules_3d = {}
+
+
 def get_3d_intrules(order):
     if order in _intrules_3d:
         return _intrules_3d[order]
-    ref_pts = [[(order-i-j-k)/order, k/order, j/order] for i in range(order+1) for j in range(order+1 - i) for k in range(order+1 - i - j)]
-    p1_tets = {ngs.ET.TET: [[(1,0,0), (0,1,0), (0,0,1), (0,0,0)]]}
-    p1_tets[ngs.ET.PYRAMID]=[[(1,0,0), (0,1,0), (0,0,1), (0,0,0)],
-                             [(1,0,0), (0,1,0), (0,0,1), (1,1,0)]]
-    p1_tets[ngs.ET.PRISM] = [[(1,0,0), (0,1,0), (0,0,1), (0,0,0)],
-                             [(0,0,1), (0,1,0), (0,1,1), (1,0,0)],
-                             [(1,0,1), (0,1,1), (1,0,0), (0,0,1)]]
-    p1_tets[ngs.ET.HEX]   = [[(1,0,0), (0,1,0), (0,0,1), (0,0,0)],
-                             [(0,1,1), (1,1,1), (1,1,0), (1,0,1)],
-                             [(1,0,1), (0,1,1), (1,0,0), (0,0,1)],
-                             [(0,1,1), (1,1,0), (0,1,0), (1,0,0)],
-                             [(0,0,1), (0,1,0), (0,1,1), (1,0,0)],
-                             [(1,0,1), (1,1,0), (0,1,1), (1,0,0)]]
+    ref_pts = [
+        [(order - i - j - k) / order, k / order, j / order]
+        for i in range(order + 1)
+        for j in range(order + 1 - i)
+        for k in range(order + 1 - i - j)
+    ]
+    p1_tets = {ngs.ET.TET: [[(1, 0, 0), (0, 1, 0), (0, 0, 1), (0, 0, 0)]]}
+    p1_tets[ngs.ET.PYRAMID] = [
+        [(1, 0, 0), (0, 1, 0), (0, 0, 1), (0, 0, 0)],
+        [(1, 0, 0), (0, 1, 0), (0, 0, 1), (1, 1, 0)],
+    ]
+    p1_tets[ngs.ET.PRISM] = [
+        [(1, 0, 0), (0, 1, 0), (0, 0, 1), (0, 0, 0)],
+        [(0, 0, 1), (0, 1, 0), (0, 1, 1), (1, 0, 0)],
+        [(1, 0, 1), (0, 1, 1), (1, 0, 0), (0, 0, 1)],
+    ]
+    p1_tets[ngs.ET.HEX] = [
+        [(1, 0, 0), (0, 1, 0), (0, 0, 1), (0, 0, 0)],
+        [(0, 1, 1), (1, 1, 1), (1, 1, 0), (1, 0, 1)],
+        [(1, 0, 1), (0, 1, 1), (1, 0, 0), (0, 0, 1)],
+        [(0, 1, 1), (1, 1, 0), (0, 1, 0), (1, 0, 0)],
+        [(0, 0, 1), (0, 1, 0), (0, 1, 1), (1, 0, 0)],
+        [(1, 0, 1), (1, 1, 0), (0, 1, 1), (1, 0, 0)],
+    ]
     rules = {}
     if order > 1:
         ho_tets = {}
@@ -45,14 +63,17 @@ def get_3d_intrules(order):
             for tet in p1_tets[eltype]:
                 ho_tets[eltype] = []
                 for lam in ref_pts:
-                    lami = [*lam, 1-sum(lam)]
-                    ho_tets[eltype].append([sum([lami[j]*tet[j][i] for j in range(4)]) for i in range(3)])
+                    lami = [*lam, 1 - sum(lam)]
+                    ho_tets[eltype].append(
+                        [sum([lami[j] * tet[j][i] for j in range(4)]) for i in range(3)]
+                    )
             rules[eltype] = ngs.IntegrationRule(ho_tets[eltype])
     else:
         for eltype in p1_tets:
-            rules[eltype] = ngs.IntegrationRule( sum(p1_tets[eltype], []) )
+            rules[eltype] = ngs.IntegrationRule(sum(p1_tets[eltype], []))
     _intrules_3d[order] = rules
     return rules
+
 
 def _get_bernstein_matrix_trig(n, intrule):
     """Create inverse vandermonde matrix for the Bernstein basis functions on a triangle of degree n and given integration points"""
@@ -120,6 +141,7 @@ def evaluate_cf(cf, mesh, order):
     # print("ret = ", ret)
     return ret, minval, maxval
 
+
 class FunctionData:
     mesh_data: MeshData
     data_2d: np.ndarray | None = None
@@ -133,8 +155,13 @@ class FunctionData:
     minval: float = 1e99
     maxval: float = -1e99
 
-    def __init__(self, mesh_data: MeshData, cf: ngs.CoefficientFunction, order: int,
-                 order3d:int = -1):
+    def __init__(
+        self,
+        mesh_data: MeshData,
+        cf: ngs.CoefficientFunction,
+        order: int,
+        order3d: int = -1,
+    ):
         self.mesh_data = mesh_data
         self.cf = cf
         self.order = order
@@ -157,7 +184,9 @@ class FunctionData:
             self.cf, self.mesh_data.ngs_mesh, self.order
         )
         if self.need_3d:
-            self.data_3d, minval, maxval = self.evaluate_3d(self.cf, self.mesh_data.ngs_mesh, self.order_3d)
+            self.data_3d, minval, maxval = self.evaluate_3d(
+                self.cf, self.mesh_data.ngs_mesh, self.order_3d
+            )
             self.minval = min(self.minval, minval)
             self.maxval = max(self.maxval, maxval)
 
@@ -185,23 +214,45 @@ class FunctionData:
         V_inv = vandermonde_3d(order).T
         vals = cf(pts).reshape(-1, len(intrules[ngs.ET.TET])).dot(V_inv)
         vmin, vmax = vals.min(), vals.max()
-        ret = np.concatenate(([np.float32(cf.dim), np.float32(order)], vals.reshape(-1)), dtype=np.float32)
+        ret = np.concatenate(
+            ([np.float32(cf.dim), np.float32(order)], vals.reshape(-1)),
+            dtype=np.float32,
+        )
         return ret, vmin, vmax
 
 
 _vandermonde_mats = {}
+
+
 def vandermonde_3d(order):
     if order in _vandermonde_mats:
         return _vandermonde_mats[order]
-    basis_indices = [(order-i-j-k, k, j, i) for i in range(order+1) for j in range(order+1 - i) for k in range(order+1 - i - j)]
+    basis_indices = [
+        (order - i - j - k, k, j, i)
+        for i in range(order + 1)
+        for j in range(order + 1 - i)
+        for k in range(order + 1 - i - j)
+    ]
     n = len(basis_indices)
     V = np.zeros((n, n))
     for r, (i, j, k, l) in enumerate(basis_indices):
         for c, (a, b, c2, d) in enumerate(basis_indices):
-            multinom_coef = math.factorial(order) / (math.factorial(a) * math.factorial(b) * math.factorial(c2) * math.factorial(d))
-            V[r, c] = multinom_coef * (i/order)**a * (j/order)**b * (k/order)**c2 * (l/order)**d
+            multinom_coef = math.factorial(order) / (
+                math.factorial(a)
+                * math.factorial(b)
+                * math.factorial(c2)
+                * math.factorial(d)
+            )
+            V[r, c] = (
+                multinom_coef
+                * (i / order) ** a
+                * (j / order) ** b
+                * (k / order) ** c2
+                * (l / order) ** d
+            )
     _vandermonde_mats[order] = np.linalg.inv(V)
     return _vandermonde_mats[order]
+
 
 class CFRenderer(RenderObject):
     """Use "vertices", "index" and "trig_function_values" buffers to render a mesh"""
@@ -229,7 +280,7 @@ class CFRenderer(RenderObject):
         self.colormap.options = self.options
 
         self.curvature_subdivision = self.data.mesh_data.curvature_subdivision
-        self.n_vertices = 3*self.curvature_subdivision**2
+        self.n_vertices = 3 * self.curvature_subdivision**2
         if self.colormap.autoupdate:
             self.colormap.set_min_max(
                 self.data.minval, self.data.maxval, set_autoupdate=False
@@ -248,9 +299,7 @@ class CFRenderer(RenderObject):
             options = {"Norm": 0}
             for d in range(self.data.cf.dim):
                 options[str(d)] = d + 1
-            gui.dropdown(
-                func=self.change_cf_dim, label="Component", values=options
-            )
+            gui.dropdown(func=self.change_cf_dim, label="Component", values=options)
 
     def change_cf_dim(self, value):
         self.component = value
@@ -284,7 +333,9 @@ class CFRenderer(RenderObject):
             BufferBinding(MeshBinding.TRIGS_INDEX, self._buffers[ElType.TRIG]),
             BufferBinding(Binding.COMPONENT, self.component_buffer),
             BufferBinding(Binding.CURVATURE_VALUES_2D, self._buffers["curvature_2d"]),
-            UniformBinding(Binding.CURVATURE_SUBDIVISION, self._buffers["curvature_subdivision"]),
+            UniformBinding(
+                Binding.CURVATURE_SUBDIVISION, self._buffers["curvature_subdivision"]
+            ),
         ]
 
 

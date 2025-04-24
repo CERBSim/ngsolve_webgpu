@@ -8,7 +8,12 @@ from webgpu.render_object import (
 
 # from webgpu.uniforms import Binding
 from webgpu.uniforms import UniformBase, ct
-from webgpu.utils import BufferBinding, read_shader_file, buffer_from_array, uniform_from_array
+from webgpu.utils import (
+    BufferBinding,
+    read_shader_file,
+    buffer_from_array,
+    uniform_from_array,
+)
 from webgpu.webgpu_api import *
 from webgpu.clipping import Clipping
 
@@ -127,7 +132,7 @@ class MeshData:
                 self.curvature_data.update(self.mesh._timestamp)
                 self.elements["curvature_2d"] = self.curvature_data.data_2d
             else:
-                self.elements["curvature_2d"] = np.array([0],dtype=np.float32) 
+                self.elements["curvature_2d"] = np.array([0], dtype=np.float32)
 
     def _create_data(self):
         # TODO: implement other element types than triangles
@@ -183,9 +188,10 @@ class MeshData:
         if curve_order > 1:
             from .cf import FunctionData
             import ngsolve as ngs
+
             cf = ngs.CF((ngs.x, ngs.y, ngs.z))
             self.curvature_data = FunctionData(self, cf, curve_order)
-            self.curvature_subdivision = curve_order + 3 
+            self.curvature_subdivision = curve_order + 3
 
         self._last_mesh_timestamp = mesh._timestamp
 
@@ -194,10 +200,16 @@ class MeshData:
 
     def get_buffers(self):
         if not self.gpu_elements:
-            self.gpu_elements = { eltype: buffer_from_array(self.elements[eltype]) for eltype in self.elements }
-            self.gpu_elements['curvature_subdivision'] = uniform_from_array(np.array([self.curvature_subdivision], dtype=np.uint32))
+            self.gpu_elements = {
+                eltype: buffer_from_array(self.elements[eltype])
+                for eltype in self.elements
+            }
+            self.gpu_elements["curvature_subdivision"] = uniform_from_array(
+                np.array([self.curvature_subdivision], dtype=np.uint32)
+            )
 
         return self.gpu_elements
+
 
 class Mesh2dElementsRenderer(RenderObject):
     n_vertices: int = 3

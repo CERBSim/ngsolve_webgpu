@@ -1,6 +1,7 @@
 from webgpu.render_object import RenderObject
 import ngsolve as ngs
 
+
 class Animation(RenderObject):
     def __init__(self, child):
         super().__init__()

@@ -1,4 +1,3 @@
-
 import numpy as np
 from webgpu import (
     BufferBinding,
@@ -10,10 +9,12 @@ from webgpu.utils import UniformBinding, uniform_from_array
 from .clipping import ClippingCF
 from .cf import CFRenderer
 
+
 class IsoSurfaceRenderObject(ClippingCF):
     compute_shader = "isosurface/compute.wgsl"
     vertex_entry_point = "vertex_isosurface"
     fragment_entry_point = "fragment_isosurface"
+
     def __init__(self, func_data, levelset_data):
         super().__init__(func_data)
         self.levelset = levelset_data
@@ -31,7 +32,9 @@ class IsoSurfaceRenderObject(ClippingCF):
     def update(self, timestamp):
         if timestamp == self._timestamp:
             return
-        self.uniform_subdiv = uniform_from_array(np.array([self.subdivision], dtype=np.uint32))
+        self.uniform_subdiv = uniform_from_array(
+            np.array([self.subdivision], dtype=np.uint32)
+        )
         self.levelset.update(timestamp)
         self.levelset_buffer = self.levelset.get_buffers()["data_3d"]
         super().update(timestamp)
@@ -44,6 +47,7 @@ class IsoSurfaceRenderObject(ClippingCF):
             BufferBinding(26, self.levelset_buffer),
         ]
         return bindings
+
 
 class NegativeSurfaceRenderer(CFRenderer):
     def __init__(self, functiondata, levelsetdata):
@@ -67,8 +71,10 @@ class NegativeSurfaceRenderer(CFRenderer):
             "isosurface/negative_surface.wgsl", __file__
         )
 
+
 class NegativeClippingRenderer(ClippingCF):
     fragment_entry_point = "fragment_neg_clip"
+
     def __init__(self, data, levelsetdata):
         super().__init__(data)
         self.levelset = levelsetdata
@@ -91,8 +97,5 @@ class NegativeClippingRenderer(ClippingCF):
     def get_shader_code(self, compute=False):
         code = super().get_shader_code(compute)
         if not compute:
-            code += read_shader_file(
-            "isosurface/negative_clipping.wgsl", __file__
-            )
+            code += read_shader_file("isosurface/negative_clipping.wgsl", __file__)
         return code
-    
