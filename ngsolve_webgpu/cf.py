@@ -288,7 +288,7 @@ class CFRenderer(RenderObject):
         self.colormap.update(timestamp)
         self.clipping.update(timestamp)
         self.n_instances = self.data.mesh_data.num_elements[ElType.TRIG]
-        self.component_buffer = buffer_from_array(np.array([self.component], np.uint32))
+        self.component_buffer = buffer_from_array(np.array([self.component], np.int32))
         self.create_render_pipeline()
 
     def get_bounding_box(self):
@@ -303,7 +303,7 @@ class CFRenderer(RenderObject):
 
     def change_cf_dim(self, value):
         self.component = value
-        self.component_buffer = buffer_from_array(np.array([self.component], np.uint32))
+        self.component_buffer = buffer_from_array(np.array([self.component], np.int32))
         self.options.render_function()
 
     def get_shader_code(self):
