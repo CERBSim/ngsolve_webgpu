@@ -15,16 +15,13 @@ from webgpu.utils import (
 from webgpu.vectors import BaseVectorRenderObject, VectorRenderer
 from webgpu.webgpu_api import Buffer
 
-from .mesh import Binding as MeshBinding
+from .mesh import Binding as MeshBinding, Mesh2dElementsRenderer
 from .mesh import ElType, MeshData
 
 
 class Binding:
     FUNCTION_VALUES_2D = 10
-    CURVATURE_VALUES_2D = 14
-    CURVATURE_SUBDIVISION = 15
     COMPONENT = 55
-
 
 _intrules_3d = {}
 
@@ -254,21 +251,14 @@ def vandermonde_3d(order):
     return _vandermonde_mats[order]
 
 
-class CFRenderer(RenderObject):
+class CFRenderer(Mesh2dElementsRenderer):
     """Use "vertices", "index" and "trig_function_values" buffers to render a mesh"""
+    fragment_entry_point = "fragmentTrig"
 
-    def __init__(self, data: FunctionData, component=0, label=None):
-        super().__init__(label=label)
-
+    def __init__(self, data: FunctionData, component=0, label="CFRenderer"):
+        super().__init__(data=data.mesh_data, label=label)
         self.data = data
         self.colormap = Colormap()
-        self.clipping = Clipping()
-
-        # shift trigs behind to ensure that edges are rendered properly
-        self.depthBias = 1
-        self.depthBiasSlopeScale = 1.0
-        self.vertex_entry_point = "vertexTrigP1Indexed"
-        self.fragment_entry_point = "fragmentTrig"
         self.component = component
 
     def update(self, timestamp):
@@ -324,20 +314,10 @@ class CFRenderer(RenderObject):
         return shader_code
 
     def get_bindings(self):
-        return [
-            *self.options.get_bindings(),
-            *self.colormap.get_bindings(),
-            *self.clipping.get_bindings(),
-            BufferBinding(Binding.FUNCTION_VALUES_2D, self._buffers["data_2d"]),
-            BufferBinding(MeshBinding.VERTICES, self._buffers["vertices"]),
-            BufferBinding(MeshBinding.TRIGS_INDEX, self._buffers[ElType.TRIG]),
-            BufferBinding(Binding.COMPONENT, self.component_buffer),
-            BufferBinding(Binding.CURVATURE_VALUES_2D, self._buffers["curvature_2d"]),
-            UniformBinding(
-                Binding.CURVATURE_SUBDIVISION, self._buffers["curvature_subdivision"]
-            ),
-        ]
-
+        return [*super().get_bindings(),
+                *self.colormap.get_bindings(),
+                BufferBinding(Binding.FUNCTION_VALUES_2D, self._buffers["data_2d"]),
+                BufferBinding(Binding.COMPONENT, self.component_buffer)]
 
 class VectorCFRenderer(VectorRenderer):
     def __init__(

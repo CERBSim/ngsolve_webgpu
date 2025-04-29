@@ -10,6 +10,7 @@ from webgpu.render_object import (
 from webgpu.uniforms import UniformBase, ct
 from webgpu.utils import (
     BufferBinding,
+    UniformBinding,
     read_shader_file,
     buffer_from_array,
     uniform_from_array,
@@ -26,6 +27,8 @@ class Binding:
     SEG_FUNCTION_VALUES = 11
     VERTICES = 12
     TRIGS_INDEX = 13
+    CURVATURE_VALUES_2D = 14
+    CURVATURE_SUBDIVISION = 15
 
     MESH = 20
     EDGE = 21
@@ -212,20 +215,24 @@ class MeshData:
 
 
 class Mesh2dElementsRenderer(RenderObject):
-    n_vertices: int = 3
     depthBias: int = 1
     depthBiasSlopeScale: float = 1.0
     vertex_entry_point: str = "vertexTrigP1Indexed"
     fragment_entry_point: str = "fragment2dElement"
     color = (0, 1, 0, 1)
 
-    def __init__(self, data: MeshData):
-        super().__init__(label="Mesh2dElementsRenderer")
+    def __init__(self, data: MeshData, label="Mesh2dElementsRenderer"):
+        super().__init__(label=label)
         self.data = data
         self.clipping = Clipping()
 
-    def update(self):
-        self.clipping.update()
+    def update(self, timestamp: float):
+        if self._timestamp == timestamp:
+            return
+        self.clipping.update(timestamp)
+        self.curvature_subdivision = self.data.curvature_subdivision
+        self.n_vertices = 3 * self.curvature_subdivision**2
+
         self._buffers = self.data.get_buffers()
         self.n_instances = self.data.num_elements[ElType.TRIG]
         self.color_uniform = buffer_from_array(np.array(self.color, dtype=np.float32))
@@ -235,13 +242,20 @@ class Mesh2dElementsRenderer(RenderObject):
         return self.data.get_bounding_box()
 
     def get_bindings(self):
-        return [
+        bindings = [
             *self.options.get_bindings(),
             *self.clipping.get_bindings(),
             BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
-            BufferBinding(Binding.TRIGS_INDEX, self._buffers["trigs"]),
-            BufferBinding(54, self.color_uniform),
+            BufferBinding(Binding.TRIGS_INDEX, self._buffers[ElType.TRIG]),
+            BufferBinding(Binding.CURVATURE_VALUES_2D, self._buffers["curvature_2d"]),
+            UniformBinding(
+                Binding.CURVATURE_SUBDIVISION, self._buffers["curvature_subdivision"]
+            ),
         ]
+        if hasattr(self, "color_uniform"):
+            bindings.append(BufferBinding(54, self.color_uniform))
+        return bindings
+
 
     def get_shader_code(self):
         shader_code = ""
