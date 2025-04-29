@@ -243,6 +243,15 @@ fn fragment2dElement(input: VertexOutput2d) -> @location(0) vec4<f32> {
   return lightCalcColor(-input.n, u_mesh_color);
 }
 
+@fragment
+fn fragmentWireframe2d(input: VertexOutput2d) -> @location(0) vec4<f32> {
+  checkClipping(input.p);
+  if (input.lam[0] > 0.001 && input.lam[1] > 0.001 && input.lam[0] + input.lam[1] < 0.999) {
+    discard;
+  }
+  return lightCalcColor(-input.n, u_mesh_color);
+}
+
 
 const TET_FACES = array(
     vec3i(0, 2, 1),

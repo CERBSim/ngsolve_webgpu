@@ -1,6 +1,5 @@
 #import eval/trig
 
-@group(0) @binding(55) var<storage> u_function_component: i32;
 
 struct VertexOutput1d {
   @builtin(position) fragPosition: vec4<f32>,
@@ -66,7 +65,10 @@ fn calcTrig(p: array<vec3<f32>, 3>, vertexId: u32, trigId: u32) -> VertexOutput2
         }
 
         let data = &u_curvature_values_2d;
-        let pos_and_gradients = evalTrigVec3Grad(data, trigId, u_function_component, lam);
+        var pos_and_gradients = evalTrigVec3Grad(data, trigId, lam);
+        if (u_deformation_values_2d[0] != -1.) {
+          pos_and_gradients += u_deformation_scale * evalTrigVec3Grad(&u_deformation_values_2d, trigId, lam);
+        }
         position = pos_and_gradients[0];
         normal = normalize(cross(pos_and_gradients[1], pos_and_gradients[2]));
     }
@@ -90,7 +92,6 @@ fn vertexTrigP1Indexed(@builtin(vertex_index) vertexId: u32, @builtin(instance_i
         vec3<f32>(vertices[vid[1] ], vertices[vid[1] + 1], vertices[vid[1] + 2]),
         vec3<f32>(vertices[vid[2] ], vertices[vid[2] + 1], vertices[vid[2] + 2])
     );
-    // % 3 is here to allow same shader usage for wireframe for line strip
     return calcTrig(p, vertexId, trigId);
 }
 

@@ -14,6 +14,7 @@ from webgpu.utils import (
     read_shader_file,
     buffer_from_array,
     uniform_from_array,
+    get_device,
 )
 from webgpu.webgpu_api import *
 from webgpu.clipping import Clipping
@@ -29,6 +30,8 @@ class Binding:
     TRIGS_INDEX = 13
     CURVATURE_VALUES_2D = 14
     CURVATURE_SUBDIVISION = 15
+    DEFORMATION_VALUES = 16
+    DEFORMATION_SCALE = 17
 
     MESH = 20
     EDGE = 21
@@ -88,7 +91,6 @@ class ElType(Enum):
 ElTypes2D = [ElType.TRIG, ElType.QUAD]
 ElTypes3D = [ElType.TET, ElType.HEX, ElType.PRISM, ElType.PYRAMID]
 
-
 class MeshData:
     # only for drawing the mesh, not needed for function values
     num_elements: dict[str | ElType, int]
@@ -98,8 +100,10 @@ class MeshData:
 
     mesh: netgen.meshing.Mesh
     curvature_data = None
+    deformation_data = None
     _ngs_mesh = None
     _last_mesh_timestamp: int = -1
+    _timestamp = -1
 
     def __init__(self, mesh):
         self.on_region = False
@@ -118,6 +122,19 @@ class MeshData:
         self.elements = {}
         self.gpu_elements = {}
         self.curvature_subdivision = 1
+        self._deformation_scale = 1
+
+    @property
+    def deformation_scale(self):
+        return self._deformation_scale
+
+    @deformation_scale.setter
+    def deformation_scale(self, value):
+        self._deformation_scale = value
+        if self.gpu_elements and "deformation_scale" in self.gpu_elements:
+            get_device().queue.writeBuffer(
+                self.gpu_elements["deformation_scale"],
+                0, np.array([self._deformation_scale], dtype=np.float32).tobytes())
 
     @property
     def ngs_mesh(self):
@@ -127,15 +144,28 @@ class MeshData:
             self._ngs_mesh = ngsolve.Mesh(self.mesh)
         return self._ngs_mesh
 
-    def update(self):
+    def update(self, timestamp):
         if self._last_mesh_timestamp != self.mesh._timestamp:
             self._create_data()
+        if timestamp == self._timestamp:
+            return
+        if "curvature_2d" in self.gpu_elements:
+            self.gpu_elements.pop("curvature_2d")
+        if "deformation_2d" in self.gpu_elements:
+            self.gpu_elements.pop("deformation_2d")
+        if self.curvature_data:
+            self.curvature_data.update(self.mesh._timestamp)
+            self.elements["curvature_2d"] = self.curvature_data.data_2d
+        else:
+            self.elements["curvature_2d"] = np.array([0], dtype=np.float32)
 
-            if self.curvature_data:
-                self.curvature_data.update(self.mesh._timestamp)
-                self.elements["curvature_2d"] = self.curvature_data.data_2d
-            else:
-                self.elements["curvature_2d"] = np.array([0], dtype=np.float32)
+        if self.deformation_data:
+            self.deformation_data.update(self.mesh._timestamp)
+            self.elements["deformation_2d"] = self.deformation_data.data_2d
+        else:
+            self.elements["deformation_2d"] = np.array([-1], dtype=np.float32)
+        self._timestamp = timestamp
+
 
     def _create_data(self):
         # TODO: implement other element types than triangles
@@ -202,13 +232,17 @@ class MeshData:
         return (self.pmin, self.pmax)
 
     def get_buffers(self):
-        if not self.gpu_elements:
-            self.gpu_elements = {
-                eltype: buffer_from_array(self.elements[eltype])
-                for eltype in self.elements
-            }
+        for eltype in self.elements:
+            if eltype not in self.gpu_elements:
+                self.gpu_elements[eltype] = buffer_from_array(
+                    self.elements[eltype])
+        if "curvature_subdivision" not in self.gpu_elements:
             self.gpu_elements["curvature_subdivision"] = uniform_from_array(
                 np.array([self.curvature_subdivision], dtype=np.uint32)
+            )
+        if "deformation_scale" not in self.gpu_elements:
+            self.gpu_elements["deformation_scale"] = uniform_from_array(
+                np.array([self.deformation_scale], dtype=np.float32)
             )
 
         return self.gpu_elements
@@ -230,6 +264,7 @@ class Mesh2dElementsRenderer(RenderObject):
         if self._timestamp == timestamp:
             return
         self.clipping.update(timestamp)
+        self.data.update(timestamp)
         self.curvature_subdivision = self.data.curvature_subdivision
         self.n_vertices = 3 * self.curvature_subdivision**2
 
@@ -248,6 +283,8 @@ class Mesh2dElementsRenderer(RenderObject):
             BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
             BufferBinding(Binding.TRIGS_INDEX, self._buffers[ElType.TRIG]),
             BufferBinding(Binding.CURVATURE_VALUES_2D, self._buffers["curvature_2d"]),
+            BufferBinding(Binding.DEFORMATION_VALUES, self._buffers["deformation_2d"]),
+            UniformBinding(Binding.DEFORMATION_SCALE, self._buffers["deformation_scale"]),
             UniformBinding(
                 Binding.CURVATURE_SUBDIVISION, self._buffers["curvature_subdivision"]
             ),
@@ -277,10 +314,10 @@ class Mesh2dElementsRenderer(RenderObject):
 
 
 class Mesh2dWireframeRenderer(Mesh2dElementsRenderer):
-    n_vertices: int = 4
     depthBias: int = 0
     topology: PrimitiveTopology = PrimitiveTopology.line_strip
     color = (0, 0, 0, 1)
+    fragment_entry_point: str = "fragmentWireframe2d"
 
 
 class El3dUniform(UniformBase):

@@ -171,7 +171,7 @@ class FunctionData:
         self._timestamp = timestamp
         if self.need_3d:
             self.mesh_data.need_3d = True
-        self.mesh_data.update()
+        self.mesh_data.update(timestamp)
         self._create_data()
 
     def _create_data(self):
@@ -321,7 +321,7 @@ class CFRenderer(Mesh2dElementsRenderer):
 
 class VectorCFRenderer(VectorRenderer):
     def __init__(
-        self, cf: ngs.CoefficientFunction, mesh: ngs.Mesh, grid_size=20, size=None
+            self, cf: ngs.CoefficientFunction, mesh: ngs.Mesh, grid_size=20, size=None,
     ):
         # calling super-super class to not create points and vectors
         BaseVectorRenderObject.__init__(self)
@@ -336,15 +336,9 @@ class VectorCFRenderer(VectorRenderer):
             timestamp=timestamp, cf=self.cf, mesh=self.mesh, grid_size=self.grid_size
         )
 
-    def update(self, cf=None, mesh=None, grid_size=None, size=None):
-        if cf is not None:
-            self.cf = cf
-        if mesh is not None:
-            self.mesh = mesh
-        if grid_size is not None:
-            self.gridsize = grid_size
-        if size is not None:
-            self.size = size
+    def update(self, timestamp: float):
+        if self._timestamp == timestamp:
+            return
         bb = self.mesh.ngmesh.bounding_box
         self.bounding_box = np.array(
             [[bb[0][0], bb[0][1], bb[0][2]], [bb[1][0], bb[1][1], bb[1][2]]]
@@ -372,4 +366,4 @@ class VectorCFRenderer(VectorRenderer):
         self.vectors = np.array(
             [values[:, 0], values[:, 1], np.zeros_like(values[:, 0])], dtype=np.float32
         ).T.reshape(-1)
-        super().update()
+        super().update(timestamp)
