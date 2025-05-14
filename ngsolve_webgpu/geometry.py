@@ -3,7 +3,7 @@ from webgpu.render_object import MultipleRenderObject, RenderObject
 from webgpu.utils import (
     buffer_from_array,
     create_bind_group,
-    ReadBuffer,
+    read_buffer,
     uniform_from_array,
 )
 from webgpu.webgpu_api import *
@@ -353,11 +353,10 @@ class GeometryRenderObject(MultipleRenderObject):
             usage=TextureUsage.RENDER_ATTACHMENT,
             sampleCount=1,
         )
-        read_buffer = self.device.createBuffer(
-            read_size, BufferUsage.MAP_READ | BufferUsage.COPY_DST
+        rbuffer = self.device.createBuffer(
+            read_size, BufferUsage.COPY_DST | BufferUsage.MAP_READ
         )
         encoder = self.device.createCommandEncoder()
-
         load_op = LoadOp.clear
         for ro in self.render_objects:
             if ro.active:
@@ -365,12 +364,9 @@ class GeometryRenderObject(MultipleRenderObject):
                 load_op = LoadOp.load
         encoder.copyTextureToBuffer(
             TexelCopyTextureInfo(texture, origin=Origin3d(mouseX, mouseY, 0)),
-            TexelCopyBufferInfo(TexelCopyBufferLayout(1), read_buffer),
+            TexelCopyBufferInfo(rbuffer),
             [1, 1, 1],
         )
         self.device.queue.submit([encoder.finish()])
-        read_buffer.handle.mapAsync(MapMode.READ, 0, read_size)
-        result = np.frombuffer(
-            read_buffer.handle.getMappedRange(0, read_size), dtype=np.uint32
-        )
+        result = read_buffer(rbuffer, np.uint32, size=read_size)
         return result
