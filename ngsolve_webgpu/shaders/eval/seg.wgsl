@@ -1,4 +1,4 @@
-#import eval/common
+#import ngsolve/eval/common
 
 fn evalSeg(data: ptr<storage, array<f32>, read>, id: u32, icomp: u32, lam: f32) -> f32 {
     let order: u32 = u32((*data)[1]);

@@ -1,17 +1,18 @@
 import numpy as np
 from webgpu import (
     BufferBinding,
-    Colormap,
     Clipping,
+    Colormap,
     read_shader_file,
 )
 from webgpu.utils import UniformBinding, uniform_from_array
-from .clipping import ClippingCF
+
 from .cf import CFRenderer
+from .clipping import ClippingCF
 
 
 class IsoSurfaceRenderObject(ClippingCF):
-    compute_shader = "isosurface/compute.wgsl"
+    compute_shader = "ngsolve/isosurface/compute.wgsl"
     vertex_entry_point = "vertex_isosurface"
     fragment_entry_point = "fragment_isosurface"
 
@@ -23,18 +24,13 @@ class IsoSurfaceRenderObject(ClippingCF):
         self.clipping = Clipping()
         self.subdivision = 0
 
-    def get_shader_code(self, compute=False):
-        code = super().get_shader_code(compute=compute)
-        if not compute:
-            code += read_shader_file("isosurface/render.wgsl", __file__)
-        return code
+    def get_shader_code(self):
+        return read_shader_file("ngsolve/isosurface/render.wgsl")
 
     def update(self, timestamp):
         if timestamp == self._timestamp:
             return
-        self.uniform_subdiv = uniform_from_array(
-            np.array([self.subdivision], dtype=np.uint32)
-        )
+        self.uniform_subdiv = uniform_from_array(np.array([self.subdivision], dtype=np.uint32))
         self.levelset.update(timestamp)
         self.levelset_buffer = self.levelset.get_buffers()["data_3d"]
         super().update(timestamp)
@@ -67,9 +63,7 @@ class NegativeSurfaceRenderer(CFRenderer):
         return super().get_bindings() + [BufferBinding(80, self.levelset_buffer)]
 
     def get_shader_code(self):
-        return super().get_shader_code() + read_shader_file(
-            "isosurface/negative_surface.wgsl", __file__
-        )
+        return read_shader_file("ngsolve/isosurface/negative_surface.wgsl")
 
 
 class NegativeClippingRenderer(ClippingCF):
@@ -94,8 +88,5 @@ class NegativeClippingRenderer(ClippingCF):
             bindings += [BufferBinding(80, self.levelset_buffer)]
         return bindings
 
-    def get_shader_code(self, compute=False):
-        code = super().get_shader_code(compute)
-        if not compute:
-            code += read_shader_file("isosurface/negative_clipping.wgsl", __file__)
-        return code
+    def get_shader_code(self):
+        return read_shader_file("ngsolve/isosurface/negative_clipping.wgsl")

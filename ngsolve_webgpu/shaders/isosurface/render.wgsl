@@ -1,3 +1,4 @@
+#import ngsolve/clipping/render
 
 struct MeshFragmentInput {
   @builtin(position) fragPosition: vec4<f32>,
@@ -45,6 +46,6 @@ fn vertex_isosurface(@builtin(vertex_index) vertId: u32,
 fn fragment_isosurface(input: VertexOutputClip) -> @location(0) vec4<f32>
 {
   checkClipping(input.p);
-  let value = evalTet(&function_values_3d, input.elnr, 0, input.lam);
+  let value = evalTet(&u_function_values_3d, input.elnr, 0, input.lam);
   return lightCalcColor(input.n, getColor(value));
 }

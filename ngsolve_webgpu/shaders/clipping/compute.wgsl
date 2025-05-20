@@ -1,3 +1,6 @@
+#import clipping
+#import ngsolve/clipping/common
+#import ngsolve/eval/tet
 
 @group(0) @binding(21) var<storage, read_write> count_trigs: atomic<u32>;
 @group(0) @binding(22) var<uniform> u_ntets: u32;

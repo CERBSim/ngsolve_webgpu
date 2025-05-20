@@ -1,3 +1,4 @@
+#import ngsolve/eval/tet
 
 @group(0) @binding(12) var<storage> vertices : array<f32>;
 @group(0) @binding(25) var<storage> u_tets : array<Tet>;

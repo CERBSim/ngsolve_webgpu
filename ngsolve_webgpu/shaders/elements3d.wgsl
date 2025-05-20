@@ -1,3 +1,6 @@
+#import clipping
+#import camera
+#import light
 
 @group(0) @binding(12) var<storage> vertices : array<f32>;
 @group(0) @binding(20) var<uniform> u_mesh : MeshUniforms;
@@ -32,7 +35,7 @@ fn calcMeshFace(p: array<vec3<f32>, 3>,
                 vertId: u32, nr: u32, index: u32,
                 lams: array<vec3<f32>,3>) -> MeshFragmentInput
 {
-    let n = cross(p[1] - p[0], p[2] - p[0]);
+    let n = cross(p[2] - p[0], p[1] - p[0]);
     let point = p[vertId % 3];
     let position = cameraMapPoint(point);
     return MeshFragmentInput(position, point, n, nr, index);

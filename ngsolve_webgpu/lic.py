@@ -46,9 +46,7 @@ class LineIntegralConvolutionRenderObject(RenderObject):
 
     def _create_evaluate_pipeline(self):
         device = self.device
-        layout, self.bind_group = device.create_bind_group(
-            self.get_bindings(), "LIC evaluate"
-        )
+        layout, self.bind_group = device.create_bind_group(self.get_bindings(), "LIC evaluate")
 
         self.evaluate_pipeline = device.create_compute_pipeline(
             layout,
@@ -64,9 +62,7 @@ class LineIntegralConvolutionRenderObject(RenderObject):
 
     def _create_compute_pipeline(self):
         device = self.device
-        layout, self.bind_group = device.create_bind_group(
-            self.get_bindings(), "LIC compute"
-        )
+        layout, self.bind_group = device.create_bind_group(self.get_bindings(), "LIC compute")
 
         self.compute_pipeline = device.create_compute_pipeline(
             layout,

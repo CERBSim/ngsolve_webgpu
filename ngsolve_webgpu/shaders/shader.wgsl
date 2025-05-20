@@ -1,4 +1,4 @@
-#import eval/trig
+#import ngsolve/eval/trig
 
 
 struct VertexOutput1d {

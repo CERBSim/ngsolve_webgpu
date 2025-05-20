@@ -1,4 +1,4 @@
-#import eval/common
+#import ngsolve/eval/common
 
 fn evalTrig(data: ptr<storage, array<f32>, read>, id: u32, icomp: i32, lam: vec2<f32>) -> f32 {
     var order: i32 = i32((*data)[1]);

@@ -37,9 +37,7 @@ class GeometryFaceRenderer(RenderObject):
         """colors is numpy float32 array with 4 times number indices entries"""
         self.colors = colors
         if "colors" in self._buffers:
-            self.device.queue.writeBuffer(
-                self._buffers["colors"], 0, self.colors.tobytes()
-            )
+            self.device.queue.writeBuffer(self._buffers["colors"], 0, self.colors.tobytes())
 
     def update(self, vis_data):
         self.bounding_box = (vis_data["min"], vis_data["max"])
@@ -67,12 +65,7 @@ class GeometryFaceRenderer(RenderObject):
         ]
 
     def get_shader_code(self):
-        shader_code = ""
-        shader_code += webgpu.read_shader_file(f"geo_face.wgsl", __file__)
-        shader_code += self.options.camera.get_shader_code()
-        shader_code += self.options.light.get_shader_code()
-        shader_code += self.clipping.get_shader_code()
-        return shader_code
+        return webgpu.read_shader_file("ngsolve/geo_face.wgsl")
 
     def pick_index_render(self, encoder, texture, depth_texture, load_op):
         texture_format = TextureFormat.rg32uint
@@ -82,9 +75,7 @@ class GeometryFaceRenderer(RenderObject):
         playout = self.device.createPipelineLayout([layout])
         pipeline = self.device.createRenderPipeline(
             layout=playout,
-            vertex=VertexState(
-                module=shader_module, entryPoint=self.vertex_entry_point
-            ),
+            vertex=VertexState(module=shader_module, entryPoint=self.vertex_entry_point),
             fragment=FragmentState(
                 module=shader_module,
                 entryPoint="fragmentQueryIndex",
@@ -132,17 +123,13 @@ class GeometryEdgeRenderer(RenderObject):
         """colors is numpy float32 array with 4 times number indices entries"""
         self.colors = colors
         if "colors" in self._buffers:
-            self.device.queue.writeBuffer(
-                self._buffers["colors"], 0, self.colors.tobytes()
-            )
+            self.device.queue.writeBuffer(self._buffers["colors"], 0, self.colors.tobytes())
 
     def update(self, vis_data):
         verts = vis_data["edges"]
         self.colors = vis_data["edge_colors"]
         self.n_instances = len(verts) // 6
-        self.thickness_uniform = uniform_from_array(
-            np.array([self.thickness], dtype=np.float32)
-        )
+        self.thickness_uniform = uniform_from_array(np.array([self.thickness], dtype=np.float32))
         self._buffers = {}
         self._buffers["vertices"] = buffer_from_array(verts)
         self._buffers["colors"] = buffer_from_array(self.colors)
@@ -150,11 +137,7 @@ class GeometryEdgeRenderer(RenderObject):
         self.create_render_pipeline()
 
     def get_shader_code(self):
-        shader_code = ""
-        shader_code += webgpu.read_shader_file(f"geo_edge.wgsl", __file__)
-        shader_code += self.options.camera.get_shader_code()
-        shader_code += self.clipping.get_shader_code()
-        return shader_code
+        return webgpu.read_shader_file("ngsolve/geo_edge.wgsl")
 
     def get_bindings(self):
         return [
@@ -173,9 +156,7 @@ class GeometryEdgeRenderer(RenderObject):
         playout = self.device.createPipelineLayout([layout])
         pipeline = self.device.createRenderPipeline(
             layout=playout,
-            vertex=VertexState(
-                module=shader_module, entryPoint=self.vertex_entry_point
-            ),
+            vertex=VertexState(module=shader_module, entryPoint=self.vertex_entry_point),
             fragment=FragmentState(
                 module=shader_module,
                 entryPoint="fragmentQueryIndex",
@@ -224,16 +205,10 @@ class GeometryVertexRenderer(RenderObject):
         """colors is numpy float32 array with 4 times number indices entries"""
         self.colors = colors
         if "colors" in self._buffers:
-            self.device.queue.writeBuffer(
-                self._buffers["colors"], 0, self.colors.tobytes()
-            )
+            self.device.queue.writeBuffer(self._buffers["colors"], 0, self.colors.tobytes())
 
     def get_shader_code(self):
-        shader_code = ""
-        shader_code += webgpu.read_shader_file(f"geo_vertex.wgsl", __file__)
-        shader_code += self.clipping.get_shader_code()
-        shader_code += self.options.camera.get_shader_code()
-        return shader_code
+        return webgpu.read_shader_file("ngsolve/geo_vertex.wgsl")
 
     def update(self, vis_data):
         verts = set(self.geo.shape.vertices)
@@ -242,15 +217,11 @@ class GeometryVertexRenderer(RenderObject):
             dtype=np.float32,
         ).flatten()
         self.n_instances = len(verts)
-        vert_values = np.array(
-            [[pi for pi in v.p] for v in verts], dtype=np.float32
-        ).flatten()
+        vert_values = np.array([[pi for pi in v.p] for v in verts], dtype=np.float32).flatten()
         self._buffers = {}
         self._buffers["vertices"] = buffer_from_array(vert_values)
         self._buffers["colors"] = buffer_from_array(self.colors)
-        self.thickness_uniform = uniform_from_array(
-            np.array([self.thickness], dtype=np.float32)
-        )
+        self.thickness_uniform = uniform_from_array(np.array([self.thickness], dtype=np.float32))
         self.create_render_pipeline()
 
     def get_bindings(self):
@@ -269,9 +240,7 @@ class GeometryVertexRenderer(RenderObject):
         playout = self.device.createPipelineLayout([layout])
         pipeline = self.device.createRenderPipeline(
             layout=playout,
-            vertex=VertexState(
-                module=shader_module, entryPoint=self.vertex_entry_point
-            ),
+            vertex=VertexState(module=shader_module, entryPoint=self.vertex_entry_point),
             fragment=FragmentState(
                 module=shader_module,
                 entryPoint="fragmentQueryIndex",
@@ -353,9 +322,7 @@ class GeometryRenderObject(MultipleRenderObject):
             usage=TextureUsage.RENDER_ATTACHMENT,
             sampleCount=1,
         )
-        rbuffer = self.device.createBuffer(
-            read_size, BufferUsage.COPY_DST | BufferUsage.MAP_READ
-        )
+        rbuffer = self.device.createBuffer(read_size, BufferUsage.COPY_DST | BufferUsage.MAP_READ)
         encoder = self.device.createCommandEncoder()
         load_op = LoadOp.clear
         for ro in self.render_objects:

@@ -1,3 +1,4 @@
+#import ngsolve/mesh
 
 @group(0) @binding(80) var<storage> levelset_values : array<f32>;
 
@@ -8,8 +9,8 @@ fn fragmentCheckLevelset(input: VertexOutput2d) -> @location(0) vec4<f32> {
     let value = evalTrig(p, input.id, 0, input.lam);
     let pl = &levelset_values;
     let levelset = evalTrig(pl, input.id, 0, input.lam);
-    if (levelset > 0.0) {
+    if (levelset < 0.0) {
       discard;
     }
-    return lightCalcColor(-input.n, getColor(value));
+    return lightCalcColor(input.n, getColor(value));
 }

@@ -1,3 +1,10 @@
+#import clipping
+#import colormap
+#import camera
+#import light
+#import ngsolve/shader
+#import ngsolve/uniforms
+
 struct MeshFragmentInput {
   @builtin(position) fragPosition: vec4<f32>,
   @location(0) color: vec4<f32>,

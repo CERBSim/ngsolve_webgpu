@@ -4,6 +4,7 @@ import numpy as np
 from webgpu.font import Font
 from webgpu.render_object import (
     RenderObject,
+    check_timestamp,
 )
 
 # from webgpu.uniforms import Binding
@@ -91,6 +92,7 @@ class ElType(Enum):
 ElTypes2D = [ElType.TRIG, ElType.QUAD]
 ElTypes3D = [ElType.TET, ElType.HEX, ElType.PRISM, ElType.PYRAMID]
 
+
 class MeshData:
     # only for drawing the mesh, not needed for function values
     num_elements: dict[str | ElType, int]
@@ -134,7 +136,9 @@ class MeshData:
         if self.gpu_elements and "deformation_scale" in self.gpu_elements:
             get_device().queue.writeBuffer(
                 self.gpu_elements["deformation_scale"],
-                0, np.array([self._deformation_scale], dtype=np.float32).tobytes())
+                0,
+                np.array([self._deformation_scale], dtype=np.float32).tobytes(),
+            )
 
     @property
     def ngs_mesh(self):
@@ -144,6 +148,7 @@ class MeshData:
             self._ngs_mesh = ngsolve.Mesh(self.mesh)
         return self._ngs_mesh
 
+    @check_timestamp
     def update(self, timestamp):
         if self._last_mesh_timestamp != self.mesh._timestamp:
             self._create_data()
@@ -165,7 +170,6 @@ class MeshData:
         else:
             self.elements["deformation_2d"] = np.array([-1], dtype=np.float32)
         self._timestamp = timestamp
-
 
     def _create_data(self):
         # TODO: implement other element types than triangles
@@ -234,8 +238,7 @@ class MeshData:
     def get_buffers(self):
         for eltype in self.elements:
             if eltype not in self.gpu_elements:
-                self.gpu_elements[eltype] = buffer_from_array(
-                    self.elements[eltype])
+                self.gpu_elements[eltype] = buffer_from_array(self.elements[eltype])
         if "curvature_subdivision" not in self.gpu_elements:
             self.gpu_elements["curvature_subdivision"] = uniform_from_array(
                 np.array([self.curvature_subdivision], dtype=np.uint32)
@@ -260,6 +263,7 @@ class Mesh2dElementsRenderer(RenderObject):
         self.data = data
         self.clipping = Clipping()
 
+    @check_timestamp
     def update(self, timestamp: float):
         if self._timestamp == timestamp:
             return
@@ -285,32 +289,14 @@ class Mesh2dElementsRenderer(RenderObject):
             BufferBinding(Binding.CURVATURE_VALUES_2D, self._buffers["curvature_2d"]),
             BufferBinding(Binding.DEFORMATION_VALUES, self._buffers["deformation_2d"]),
             UniformBinding(Binding.DEFORMATION_SCALE, self._buffers["deformation_scale"]),
-            UniformBinding(
-                Binding.CURVATURE_SUBDIVISION, self._buffers["curvature_subdivision"]
-            ),
+            UniformBinding(Binding.CURVATURE_SUBDIVISION, self._buffers["curvature_subdivision"]),
         ]
         if hasattr(self, "color_uniform"):
             bindings.append(BufferBinding(54, self.color_uniform))
         return bindings
 
-
     def get_shader_code(self):
-        shader_code = ""
-        shader_code += self.clipping.get_shader_code()
-        for file_name in [
-            "eval.wgsl",
-            "mesh.wgsl",
-            "shader.wgsl",
-            "uniforms.wgsl",
-        ]:
-            shader_code += read_shader_file(file_name, __file__)
-        # for now as shaders are not seperated well
-        import webgpu.colormap
-
-        shader_code += webgpu.colormap.Colormap().get_shader_code()
-        shader_code += self.options.camera.get_shader_code()
-        shader_code += self.options.light.get_shader_code()
-        return shader_code
+        return read_shader_file("ngsolve/mesh.wgsl")
 
 
 class Mesh2dWireframeRenderer(Mesh2dElementsRenderer):
@@ -344,11 +330,12 @@ class Mesh3dElementsRenderObject(RenderObject):
     def get_bounding_box(self) -> tuple[list[float], list[float]] | None:
         return self.data.get_bounding_box()
 
+    @check_timestamp
     def update(self, timestamp):
         if timestamp == self._timestamp:
             return
         self._timestamp = timestamp
-        self.data.update()
+        self.data.update(timestamp)
         self.uniforms = El3dUniform(self.device)
         self.clipping.options = self.options
         self.clipping.update(timestamp)
@@ -362,9 +349,7 @@ class Mesh3dElementsRenderObject(RenderObject):
             self.uniforms.shrink = value
             self.uniforms.update_buffer()
 
-        gui.slider(
-            label="Shrink", value=1.0, min=0.0, max=1.0, step=0.01, func=set_shrink
-        )
+        gui.slider(label="Shrink", value=1.0, min=0.0, max=1.0, step=0.01, func=set_shrink)
 
     def get_bindings(self):
         return [
@@ -376,11 +361,7 @@ class Mesh3dElementsRenderObject(RenderObject):
         ]
 
     def get_shader_code(self):
-        code = read_shader_file("elements3d.wgsl", __file__)
-        code += self.clipping.get_shader_code()
-        code += self.options.camera.get_shader_code()
-        code += self.options.light.get_shader_code()
-        return code
+        return read_shader_file("ngsolve/elements3d.wgsl")
 
 
 class PointNumbersRenderObject(RenderObject):
@@ -399,6 +380,7 @@ class PointNumbersRenderObject(RenderObject):
         self.font_size = font_size
         self.clipping = Clipping()
 
+    @check_timestamp
     def update(self, timestamp):
         if timestamp == self._timestamp:
             return
@@ -410,7 +392,7 @@ class PointNumbersRenderObject(RenderObject):
         self.create_render_pipeline()
 
     def get_shader_code(self):
-        return read_shader_file("numbers.wgsl", __file__)
+        return read_shader_file("ngsolve/numbers.wgsl")
 
     def get_bounding_box(self):
         return self.data.get_bounding_box()

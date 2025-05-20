@@ -1,3 +1,5 @@
+#import camera
+#import clipping
 
 @group(0) @binding(90) var<storage> u_vertices: array<f32>;
 @group(0) @binding(91) var<storage> u_vertex_color: array<f32>;

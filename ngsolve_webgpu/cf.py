@@ -10,7 +10,6 @@ from webgpu.utils import (
     BufferBinding,
     UniformBinding,
     buffer_from_array,
-    read_shader_file,
 )
 from webgpu.vectors import BaseVectorRenderObject, VectorRenderer
 from webgpu.webgpu_api import Buffer
@@ -22,6 +21,7 @@ from .mesh import ElType, MeshData
 class Binding:
     FUNCTION_VALUES_2D = 10
     COMPONENT = 55
+
 
 _intrules_3d = {}
 
@@ -119,13 +119,9 @@ def evaluate_cf(cf, mesh, order):
         region = mesh.Materials(".*")
         if mesh.dim == 3:
             region = mesh.Boundaries(".*")
-    pts = region.mesh.MapToAllElements(
-        {ngs.ET.TRIG: intrule, ngs.ET.QUAD: intrule}, region
-    )
+    pts = region.mesh.MapToAllElements({ngs.ET.TRIG: intrule, ngs.ET.QUAD: intrule}, region)
     pmat = cf(pts)
-    minval, maxval = (
-        (min(pmat.reshape(-1)), max(pmat.reshape(-1))) if len(pmat) else (0, 1)
-    )
+    minval, maxval = (min(pmat.reshape(-1)), max(pmat.reshape(-1))) if len(pmat) else (0, 1)
     pmat = pmat.reshape(-1, ndof, comps)
 
     values = np.zeros((ndof, pmat.shape[0], comps), dtype=np.float32)
@@ -235,10 +231,7 @@ def vandermonde_3d(order):
     for r, (i, j, k, l) in enumerate(basis_indices):
         for c, (a, b, c2, d) in enumerate(basis_indices):
             multinom_coef = math.factorial(order) / (
-                math.factorial(a)
-                * math.factorial(b)
-                * math.factorial(c2)
-                * math.factorial(d)
+                math.factorial(a) * math.factorial(b) * math.factorial(c2) * math.factorial(d)
             )
             V[r, c] = (
                 multinom_coef
@@ -253,6 +246,7 @@ def vandermonde_3d(order):
 
 class CFRenderer(Mesh2dElementsRenderer):
     """Use "vertices", "index" and "trig_function_values" buffers to render a mesh"""
+
     fragment_entry_point = "fragmentTrig"
 
     def __init__(self, data: FunctionData, component=0, label="CFRenderer"):
@@ -272,9 +266,7 @@ class CFRenderer(Mesh2dElementsRenderer):
         self.curvature_subdivision = self.data.mesh_data.curvature_subdivision
         self.n_vertices = 3 * self.curvature_subdivision**2
         if self.colormap.autoupdate:
-            self.colormap.set_min_max(
-                self.data.minval, self.data.maxval, set_autoupdate=False
-            )
+            self.colormap.set_min_max(self.data.minval, self.data.maxval, set_autoupdate=False)
         self.colormap.update(timestamp)
         self.clipping.update(timestamp)
         self.n_instances = self.data.mesh_data.num_elements[ElType.TRIG]
@@ -296,32 +288,22 @@ class CFRenderer(Mesh2dElementsRenderer):
         self.component_buffer = buffer_from_array(np.array([self.component], np.int32))
         self.options.render_function()
 
-    def get_shader_code(self):
-        shader_code = ""
-
-        for file_name in [
-            "eval.wgsl",
-            "mesh.wgsl",
-            "shader.wgsl",
-            "uniforms.wgsl",
-        ]:
-            shader_code += read_shader_file(file_name, __file__)
-
-        shader_code += self.colormap.get_shader_code()
-        shader_code += self.clipping.get_shader_code()
-        shader_code += self.options.camera.get_shader_code()
-        shader_code += self.options.light.get_shader_code()
-        return shader_code
-
     def get_bindings(self):
-        return [*super().get_bindings(),
-                *self.colormap.get_bindings(),
-                BufferBinding(Binding.FUNCTION_VALUES_2D, self._buffers["data_2d"]),
-                BufferBinding(Binding.COMPONENT, self.component_buffer)]
+        return [
+            *super().get_bindings(),
+            *self.colormap.get_bindings(),
+            BufferBinding(Binding.FUNCTION_VALUES_2D, self._buffers["data_2d"]),
+            BufferBinding(Binding.COMPONENT, self.component_buffer),
+        ]
+
 
 class VectorCFRenderer(VectorRenderer):
     def __init__(
-            self, cf: ngs.CoefficientFunction, mesh: ngs.Mesh, grid_size=20, size=None,
+        self,
+        cf: ngs.CoefficientFunction,
+        mesh: ngs.Mesh,
+        grid_size=20,
+        size=None,
     ):
         # calling super-super class to not create points and vectors
         BaseVectorRenderObject.__init__(self)
@@ -332,9 +314,7 @@ class VectorCFRenderer(VectorRenderer):
         self.size = size
 
     def redraw(self, timestamp=None):
-        super().redraw(
-            timestamp=timestamp, cf=self.cf, mesh=self.mesh, grid_size=self.grid_size
-        )
+        super().redraw(timestamp=timestamp, cf=self.cf, mesh=self.mesh, grid_size=self.grid_size)
 
     def update(self, timestamp: float):
         if self._timestamp == timestamp:

@@ -1,4 +1,3 @@
-
 @group(0) @binding(13) var<storage> u_function_values_3d : array<f32>;
 @group(0) @binding(10) var<storage> u_function_values_2d : array<f32>;
 @group(0) @binding(14) var<storage> u_curvature_values_2d : array<f32>;

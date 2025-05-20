@@ -1,3 +1,4 @@
+#import ngsolve/eval/common
 
 fn factorial(n: u32) -> u32 {
     var result: u32 = 1u;

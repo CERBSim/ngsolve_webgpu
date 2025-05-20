@@ -1,3 +1,8 @@
+#import camera
+#import light
+#import colormap
+#import clipping
+#import ngsolve/clipping/common
 
 @group(0) @binding(24) var<storage> subtrigs: array<SubTrig>;
 
@@ -23,14 +28,14 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
     p = p + lam[i] * points[i];
   }
   
-  return VertexOutputClip(cameraMapPoint(p), p, -u_clipping.plane.xyz, lam.xyz,
+  return VertexOutputClip(cameraMapPoint(p), p, u_clipping.plane.xyz, lam.xyz,
                       trig.id);
 }
 
 @fragment
 fn fragment_main(input: VertexOutputClip) -> @location(0) vec4<f32>
 {
-  let value = evalTet(&function_values_3d, input.elnr, 0, input.lam);
+  let value = evalTet(&u_function_values_3d, input.elnr, 0, input.lam);
   return lightCalcColor(input.n, getColor(value));
 }
 
