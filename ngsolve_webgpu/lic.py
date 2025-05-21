@@ -3,12 +3,12 @@ import typing
 import js
 
 from .gpu import WebGPU
-from .mesh import RenderObject
+from .mesh import Renderer
 from .uniforms import Binding, LineIntegralConvolutionUniforms
 from .utils import ShaderStage, StorageTextureBinding, TextureBinding
 
 
-class LineIntegralConvolutionRenderObject(RenderObject):
+class LineIntegralConvolutionRenderer(Renderer):
     """Line Integral Convolution (LIC) render object"""
 
     texture_input: typing.Any

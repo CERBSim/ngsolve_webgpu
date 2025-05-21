@@ -1,5 +1,5 @@
 import webgpu
-from webgpu.render_object import MultipleRenderObject, RenderObject
+from webgpu.renderer import MultipleRenderer, Renderer, RenderOptions
 from webgpu.utils import (
     buffer_from_array,
     create_bind_group,
@@ -19,7 +19,55 @@ class Binding:
     COLORS = 93
 
 
-class GeometryFaceRenderer(RenderObject):
+class BaseGeometryRenderer(Renderer):
+    def create_render_pipeline(self, options):
+        super().create_render_pipeline(options)
+        self.create_pick_pipeline(options)
+
+    def create_pick_pipeline(self, options):
+        texture_format = TextureFormat.rg32uint
+        target = ColorTargetState(format=texture_format)
+        shader_module = self.device.createShaderModule(self._get_preprocessed_shader_code())
+        layout, self.pick_group = create_bind_group(self.device, self.get_bindings(options))
+        playout = self.device.createPipelineLayout([layout])
+        self.pick_pipeline = self.device.createRenderPipeline(
+            layout=playout,
+            vertex=VertexState(module=shader_module, entryPoint=self.vertex_entry_point),
+            fragment=FragmentState(
+                module=shader_module,
+                entryPoint="fragmentQueryIndex",
+                targets=[target],
+            ),
+            primitive=PrimitiveState(topology=self.topology),
+            depthStencil=DepthStencilState(
+                format=options.canvas.depth_format,
+                depthWriteEnabled=True,
+                depthCompare=CompareFunction.less,
+                depthBias=self.depthBias,
+            ),
+            multisample=MultisampleState(count=1),
+        )
+
+    def pick_index_render(self, encoder, texture, depth_texture, load_op):
+        render_pass = encoder.beginRenderPass(
+            colorAttachments=[
+                RenderPassColorAttachment(
+                    view=texture.createView(), clearValue=Color(0, 3), loadOp=load_op
+                )
+            ],
+            depthStencilAttachment=RenderPassDepthStencilAttachment(
+                view=depth_texture.createView(),
+                depthClearValue=1.0,
+                depthLoadOp=load_op,
+            ),
+        )
+        render_pass.setPipeline(self.pick_pipeline)
+        render_pass.setBindGroup(0, self.pick_group)
+        render_pass.draw(self.n_vertices, self.n_instances)
+        render_pass.end()
+
+
+class GeometryFaceRenderer(BaseGeometryRenderer):
     n_vertices: int = 3
     depthBias: int = 1
     clipping: Clipping | None = None
@@ -39,7 +87,7 @@ class GeometryFaceRenderer(RenderObject):
         if "colors" in self._buffers:
             self.device.queue.writeBuffer(self._buffers["colors"], 0, self.colors.tobytes())
 
-    def update(self, vis_data):
+    def update(self, options, vis_data):
         self.bounding_box = (vis_data["min"], vis_data["max"])
         verts = vis_data["vertices"]
         self.n_instances = len(verts) // 6
@@ -53,11 +101,10 @@ class GeometryFaceRenderer(RenderObject):
             (verts, normals, indices, self.colors),
         ):
             self._buffers[key] = buffer_from_array(data)
-        self.create_render_pipeline()
 
-    def get_bindings(self):
+    def get_bindings(self, options: RenderOptions):
         return [
-            *self.options.camera.get_bindings(),
+            *options.get_bindings(),
             webgpu.BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
             webgpu.BufferBinding(Binding.NORMALS, self._buffers["normals"]),
             webgpu.BufferBinding(Binding.INDICES, self._buffers["indices"]),
@@ -67,48 +114,8 @@ class GeometryFaceRenderer(RenderObject):
     def get_shader_code(self):
         return webgpu.read_shader_file("ngsolve/geo_face.wgsl")
 
-    def pick_index_render(self, encoder, texture, depth_texture, load_op):
-        texture_format = TextureFormat.rg32uint
-        target = ColorTargetState(format=texture_format)
-        shader_module = self.device.createShaderModule(self.get_shader_code())
-        layout, group = create_bind_group(self.device, self.get_bindings())
-        playout = self.device.createPipelineLayout([layout])
-        pipeline = self.device.createRenderPipeline(
-            layout=playout,
-            vertex=VertexState(module=shader_module, entryPoint=self.vertex_entry_point),
-            fragment=FragmentState(
-                module=shader_module,
-                entryPoint="fragmentQueryIndex",
-                targets=[target],
-            ),
-            primitive=PrimitiveState(topology=self.topology),
-            depthStencil=DepthStencilState(
-                format=self.options.canvas.depth_format,
-                depthWriteEnabled=True,
-                depthCompare=CompareFunction.less,
-                depthBias=self.depthBias,
-            ),
-            multisample=MultisampleState(count=1),
-        )
-        render_pass = encoder.beginRenderPass(
-            colorAttachments=[
-                RenderPassColorAttachment(
-                    view=texture.createView(), clearValue=Color(0, 3), loadOp=load_op
-                )
-            ],
-            depthStencilAttachment=RenderPassDepthStencilAttachment(
-                view=depth_texture.createView(),
-                depthClearValue=1.0,
-                depthLoadOp=load_op,
-            ),
-        )
-        render_pass.setPipeline(pipeline)
-        render_pass.setBindGroup(0, group)
-        render_pass.draw(self.n_vertices, self.n_instances)
-        render_pass.end()
 
-
-class GeometryEdgeRenderer(RenderObject):
+class GeometryEdgeRenderer(BaseGeometryRenderer):
     n_vertices: int = 4
     topology: PrimitiveTopology = PrimitiveTopology.triangle_strip
     clipping: Clipping | None = None
@@ -125,7 +132,7 @@ class GeometryEdgeRenderer(RenderObject):
         if "colors" in self._buffers:
             self.device.queue.writeBuffer(self._buffers["colors"], 0, self.colors.tobytes())
 
-    def update(self, vis_data):
+    def update(self, options, vis_data):
         verts = vis_data["edges"]
         self.colors = vis_data["edge_colors"]
         self.n_instances = len(verts) // 6
@@ -134,62 +141,21 @@ class GeometryEdgeRenderer(RenderObject):
         self._buffers["vertices"] = buffer_from_array(verts)
         self._buffers["colors"] = buffer_from_array(self.colors)
         self._buffers["index"] = buffer_from_array(vis_data["edge_indices"])
-        self.create_render_pipeline()
 
     def get_shader_code(self):
         return webgpu.read_shader_file("ngsolve/geo_edge.wgsl")
 
-    def get_bindings(self):
+    def get_bindings(self, options: RenderOptions):
         return [
-            *self.options.camera.get_bindings(),
+            *options.get_bindings(),
             webgpu.BufferBinding(90, self._buffers["vertices"]),
             webgpu.BufferBinding(91, self._buffers["colors"]),
             webgpu.UniformBinding(92, self.thickness_uniform),
             webgpu.BufferBinding(93, self._buffers["index"]),
         ]
 
-    def pick_index_render(self, encoder, texture, depth_texture, load_op):
-        texture_format = TextureFormat.rg32uint
-        target = ColorTargetState(format=texture_format)
-        shader_module = self.device.createShaderModule(self.get_shader_code())
-        layout, group = create_bind_group(self.device, self.get_bindings())
-        playout = self.device.createPipelineLayout([layout])
-        pipeline = self.device.createRenderPipeline(
-            layout=playout,
-            vertex=VertexState(module=shader_module, entryPoint=self.vertex_entry_point),
-            fragment=FragmentState(
-                module=shader_module,
-                entryPoint="fragmentQueryIndex",
-                targets=[target],
-            ),
-            primitive=PrimitiveState(topology=self.topology),
-            depthStencil=DepthStencilState(
-                format=self.options.canvas.depth_format,
-                depthWriteEnabled=True,
-                depthCompare=CompareFunction.less,
-                depthBias=self.depthBias,
-            ),
-            multisample=MultisampleState(count=1),
-        )
-        render_pass = encoder.beginRenderPass(
-            colorAttachments=[
-                RenderPassColorAttachment(
-                    view=texture.createView(), clearValue=Color(0, 3), loadOp=load_op
-                )
-            ],
-            depthStencilAttachment=RenderPassDepthStencilAttachment(
-                view=depth_texture.createView(),
-                depthClearValue=1.0,
-                depthLoadOp=load_op,
-            ),
-        )
-        render_pass.setPipeline(pipeline)
-        render_pass.setBindGroup(0, group)
-        render_pass.draw(self.n_vertices, self.n_instances)
-        render_pass.end()
 
-
-class GeometryVertexRenderer(RenderObject):
+class GeometryVertexRenderer(BaseGeometryRenderer):
     n_vertices: int = 4
     topology: PrimitiveTopology = PrimitiveTopology.triangle_strip
     depthBias: int = 0
@@ -210,7 +176,7 @@ class GeometryVertexRenderer(RenderObject):
     def get_shader_code(self):
         return webgpu.read_shader_file("ngsolve/geo_vertex.wgsl")
 
-    def update(self, vis_data):
+    def update(self, options, vis_data):
         verts = set(self.geo.shape.vertices)
         self.colors = np.array(
             [v.col if v.col is not None else [0.3, 0.3, 0.3, 1.0] for v in verts],
@@ -222,58 +188,17 @@ class GeometryVertexRenderer(RenderObject):
         self._buffers["vertices"] = buffer_from_array(vert_values)
         self._buffers["colors"] = buffer_from_array(self.colors)
         self.thickness_uniform = uniform_from_array(np.array([self.thickness], dtype=np.float32))
-        self.create_render_pipeline()
 
-    def get_bindings(self):
+    def get_bindings(self, options: RenderOptions):
         return [
-            *self.options.camera.get_bindings(),
+            *options.get_bindings(),
             webgpu.BufferBinding(90, self._buffers["vertices"]),
             webgpu.BufferBinding(91, self._buffers["colors"]),
             webgpu.UniformBinding(92, self.thickness_uniform),
         ]
 
-    def pick_index_render(self, encoder, texture, depth_texture, load_op):
-        texture_format = TextureFormat.rg32uint
-        target = ColorTargetState(format=texture_format)
-        shader_module = self.device.createShaderModule(self.get_shader_code())
-        layout, group = create_bind_group(self.device, self.get_bindings())
-        playout = self.device.createPipelineLayout([layout])
-        pipeline = self.device.createRenderPipeline(
-            layout=playout,
-            vertex=VertexState(module=shader_module, entryPoint=self.vertex_entry_point),
-            fragment=FragmentState(
-                module=shader_module,
-                entryPoint="fragmentQueryIndex",
-                targets=[target],
-            ),
-            primitive=PrimitiveState(topology=self.topology),
-            depthStencil=DepthStencilState(
-                format=self.options.canvas.depth_format,
-                depthWriteEnabled=True,
-                depthCompare=CompareFunction.less,
-                depthBias=self.depthBias,
-            ),
-            multisample=MultisampleState(count=1),
-        )
-        render_pass = encoder.beginRenderPass(
-            colorAttachments=[
-                RenderPassColorAttachment(
-                    view=texture.createView(), clearValue=Color(0, 3), loadOp=load_op
-                )
-            ],
-            depthStencilAttachment=RenderPassDepthStencilAttachment(
-                view=depth_texture.createView(),
-                depthClearValue=1.0,
-                depthLoadOp=load_op,
-            ),
-        )
-        render_pass.setPipeline(pipeline)
-        render_pass.setBindGroup(0, group)
-        render_pass.draw(self.n_vertices, self.n_instances)
-        render_pass.end()
 
-
-class GeometryRenderObject(MultipleRenderObject):
+class GeometryRenderer(MultipleRenderer):
     def __init__(self, geo, label="Geometry"):
         self.geo = geo
         self.faces = GeometryFaceRenderer(geo)
@@ -285,16 +210,14 @@ class GeometryRenderObject(MultipleRenderObject):
         self.vertices.clipping = self.clipping
         super().__init__([self.vertices, self.edges, self.faces])
 
-    def update(self, timestamp):
-        if timestamp == self._timestamp:
-            return
-        self._timestamp = timestamp
+    def update(self, options: RenderOptions):
         vis_data = self.geo._visualizationData()
         self.bounding_box = (vis_data["min"] + 1e-7, vis_data["max"] - 1e-7)
 
         for ro in self.render_objects:
-            ro.options = self.options
-            ro.update(vis_data)
+            ro.update(options, vis_data)
+
+        self.canvas = options.canvas
 
     def get_bounding_box(self):
         return self.bounding_box

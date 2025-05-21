@@ -1,8 +1,8 @@
-from webgpu.render_object import RenderObject
+from webgpu.renderer import BaseRenderer
 import ngsolve as ngs
 
 
-class Animation(RenderObject):
+class Animation(BaseRenderer):
     def __init__(self, child):
         super().__init__()
         self.child = child
@@ -17,9 +17,8 @@ class Animation(RenderObject):
         self.add_time(initial=True)
         self.store = True
 
-    def update(self, timestamp):
-        self.child.options = self.options
-        self.child.update(timestamp)
+    def update(self, options):
+        self.child.update(options)
 
     def get_bounding_box(self):
         return self.child.get_bounding_box()
@@ -53,8 +52,8 @@ class Animation(RenderObject):
         else:
             self.child.redraw(timestamp)
 
-    def render(self, encoder):
-        self.child.render(encoder)
+    def render(self, options):
+        self.child.render(options)
 
     def add_options_to_gui(self, gui):
         self.slider = gui.slider(

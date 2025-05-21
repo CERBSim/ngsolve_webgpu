@@ -5,16 +5,16 @@ import ngsolve.webgui
 import numpy as np
 from webgpu.clipping import Clipping
 from webgpu.colormap import Colormap
-from webgpu.render_object import RenderObject
+from webgpu.renderer import Renderer, RenderOptions, check_timestamp
 from webgpu.utils import (
     BufferBinding,
     UniformBinding,
     buffer_from_array,
 )
-from webgpu.vectors import BaseVectorRenderObject, VectorRenderer
+from webgpu.vectors import BaseVectorRenderer, VectorRenderer
 from webgpu.webgpu_api import Buffer
 
-from .mesh import Binding as MeshBinding, Mesh2dElementsRenderer
+from .mesh import Binding as MeshBinding, MeshElements2d
 from .mesh import ElType, MeshData
 
 
@@ -145,6 +145,7 @@ class FunctionData:
     order: int
     order_3d: int
     _timestamp: float = -1
+    _needs_update: bool = True
     minval: float = 1e99
     maxval: float = -1e99
 
@@ -161,13 +162,11 @@ class FunctionData:
         self.order_3d = order if order3d == -1 else order3d
         self.need_3d = False
 
-    def update(self, timestamp: float):
-        if self._timestamp == timestamp:
-            return
-        self._timestamp = timestamp
+    @check_timestamp
+    def update(self, options: RenderOptions):
         if self.need_3d:
             self.mesh_data.need_3d = True
-        self.mesh_data.update(timestamp)
+        self.mesh_data.update(options)
         self._create_data()
 
     def _create_data(self):
@@ -186,9 +185,9 @@ class FunctionData:
     def get_buffers(self):
         buffers = self.mesh_data.get_buffers().copy()
         if self.gpu_2d is None:
-            self.gpu_2d = buffer_from_array(self.data_2d)
+            self.gpu_2d = buffer_from_array(self.data_2d, label="function_data_2d")
             if self.data_3d is not None:
-                self.gpu_3d = buffer_from_array(self.data_3d)
+                self.gpu_3d = buffer_from_array(self.data_3d, label="function_data_3d")
         buffers["data_2d"] = self.gpu_2d
         if self.gpu_3d is not None:
             buffers["data_3d"] = self.gpu_3d
@@ -244,34 +243,36 @@ def vandermonde_3d(order):
     return _vandermonde_mats[order]
 
 
-class CFRenderer(Mesh2dElementsRenderer):
+class CFRenderer(MeshElements2d):
     """Use "vertices", "index" and "trig_function_values" buffers to render a mesh"""
 
     fragment_entry_point = "fragmentTrig"
 
-    def __init__(self, data: FunctionData, component=0, label="CFRenderer"):
-        super().__init__(data=data.mesh_data, label=label)
+    def __init__(
+        self,
+        data: FunctionData,
+        component=0,
+        label="CFRenderer",
+        clipping: Clipping = None,
+        colormap: Colormap = None,
+    ):
+        super().__init__(data=data.mesh_data, label=label, clipping=clipping)
         self.data = data
-        self.colormap = Colormap()
+        self.colormap = colormap or Colormap()
         self.component = component
 
-    def update(self, timestamp):
-        if timestamp == self._timestamp:
-            return
-        self._timestamp = timestamp
-        self.data.update(timestamp)
+    def update(self, options: RenderOptions):
+        self.data.update(options)
         self._buffers = self.data.get_buffers()
-        self.colormap.options = self.options
 
         self.curvature_subdivision = self.data.mesh_data.curvature_subdivision
         self.n_vertices = 3 * self.curvature_subdivision**2
         if self.colormap.autoupdate:
             self.colormap.set_min_max(self.data.minval, self.data.maxval, set_autoupdate=False)
-        self.colormap.update(timestamp)
-        self.clipping.update(timestamp)
+        self.colormap.update(options)
+        self.clipping.update(options)
         self.n_instances = self.data.mesh_data.num_elements[ElType.TRIG]
         self.component_buffer = buffer_from_array(np.array([self.component], np.int32))
-        self.create_render_pipeline()
 
     def get_bounding_box(self):
         return self.data.get_bounding_box()
@@ -286,12 +287,11 @@ class CFRenderer(Mesh2dElementsRenderer):
     def change_cf_dim(self, value):
         self.component = value
         self.component_buffer = buffer_from_array(np.array([self.component], np.int32))
-        self.options.render_function()
 
-    def get_bindings(self):
+    def get_bindings(self, options: RenderOptions):
         return [
-            *super().get_bindings(),
-            *self.colormap.get_bindings(),
+            *super().get_bindings(options),
+            *self.colormap.get_bindings(options),
             BufferBinding(Binding.FUNCTION_VALUES_2D, self._buffers["data_2d"]),
             BufferBinding(Binding.COMPONENT, self.component_buffer),
         ]
@@ -306,7 +306,7 @@ class VectorCFRenderer(VectorRenderer):
         size=None,
     ):
         # calling super-super class to not create points and vectors
-        BaseVectorRenderObject.__init__(self)
+        BaseVectorRenderer.__init__(self)
         self.cf = cf
         self.mesh = mesh
         # this somehow segfaults in pyodide?
@@ -316,9 +316,7 @@ class VectorCFRenderer(VectorRenderer):
     def redraw(self, timestamp=None):
         super().redraw(timestamp=timestamp, cf=self.cf, mesh=self.mesh, grid_size=self.grid_size)
 
-    def update(self, timestamp: float):
-        if self._timestamp == timestamp:
-            return
+    def update(self, options: RenderOptions):
         bb = self.mesh.ngmesh.bounding_box
         self.bounding_box = np.array(
             [[bb[0][0], bb[0][1], bb[0][2]], [bb[1][0], bb[1][1], bb[1][2]]]
@@ -346,4 +344,4 @@ class VectorCFRenderer(VectorRenderer):
         self.vectors = np.array(
             [values[:, 0], values[:, 1], np.zeros_like(values[:, 0])], dtype=np.float32
         ).T.reshape(-1)
-        super().update(timestamp)
+        super().update(options)

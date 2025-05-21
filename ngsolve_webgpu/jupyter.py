@@ -141,12 +141,12 @@ def Draw(
                 mesh = mesh.space.mesh
             else:
                 raise ValueError("If obj is a CoefficientFunction, mesh is required.")
-        from .cf import CoefficientFunctionRenderObject, FunctionData
+        from .cf import CoefficientFunctionRenderer, FunctionData
         from .mesh import MeshData, Mesh2dWireframeRenderer
 
         mesh_data = MeshData(mesh)
         function_data = FunctionData(mesh_data, obj, order)
-        r_cf = CoefficientFunctionRenderObject(function_data)
+        r_cf = CoefficientFunctionRenderer(function_data)
         wf = Mesh2dWireframeRenderer(mesh_data)
         render_objects.append(r_cf)
         render_objects.append(wf)

@@ -2,10 +2,7 @@ from enum import Enum
 import netgen.meshing
 import numpy as np
 from webgpu.font import Font
-from webgpu.render_object import (
-    RenderObject,
-    check_timestamp,
-)
+from webgpu.renderer import Renderer, RenderOptions
 
 # from webgpu.uniforms import Binding
 from webgpu.uniforms import UniformBase, ct
@@ -105,7 +102,8 @@ class MeshData:
     deformation_data = None
     _ngs_mesh = None
     _last_mesh_timestamp: int = -1
-    _timestamp = -1
+    _timestamp: float = -1
+    _needs_update: bool = True
 
     def __init__(self, mesh):
         self.on_region = False
@@ -148,12 +146,9 @@ class MeshData:
             self._ngs_mesh = ngsolve.Mesh(self.mesh)
         return self._ngs_mesh
 
-    @check_timestamp
-    def update(self, timestamp):
+    def update(self, options: RenderOptions):
         if self._last_mesh_timestamp != self.mesh._timestamp:
             self._create_data()
-        if timestamp == self._timestamp:
-            return
         if "curvature_2d" in self.gpu_elements:
             self.gpu_elements.pop("curvature_2d")
         if "deformation_2d" in self.gpu_elements:
@@ -169,7 +164,6 @@ class MeshData:
             self.elements["deformation_2d"] = self.deformation_data.data_2d
         else:
             self.elements["deformation_2d"] = np.array([-1], dtype=np.float32)
-        self._timestamp = timestamp
 
     def _create_data(self):
         # TODO: implement other element types than triangles
@@ -238,52 +232,53 @@ class MeshData:
     def get_buffers(self):
         for eltype in self.elements:
             if eltype not in self.gpu_elements:
-                self.gpu_elements[eltype] = buffer_from_array(self.elements[eltype])
+                self.gpu_elements[eltype] = buffer_from_array(
+                    self.elements[eltype], label="mesh_" + str(eltype)
+                )
         if "curvature_subdivision" not in self.gpu_elements:
             self.gpu_elements["curvature_subdivision"] = uniform_from_array(
-                np.array([self.curvature_subdivision], dtype=np.uint32)
+                np.array([self.curvature_subdivision], dtype=np.uint32),
+                label="curvature_subdivision",
             )
         if "deformation_scale" not in self.gpu_elements:
             self.gpu_elements["deformation_scale"] = uniform_from_array(
-                np.array([self.deformation_scale], dtype=np.float32)
+                np.array([self.deformation_scale], dtype=np.float32), label="deformation_scale"
             )
 
         return self.gpu_elements
 
 
-class Mesh2dElementsRenderer(RenderObject):
+class MeshElements2d(Renderer):
     depthBias: int = 1
     depthBiasSlopeScale: float = 1.0
     vertex_entry_point: str = "vertexTrigP1Indexed"
     fragment_entry_point: str = "fragment2dElement"
     color = (0, 1, 0, 1)
 
-    def __init__(self, data: MeshData, label="Mesh2dElementsRenderer"):
+    def __init__(self, data: MeshData, label="MeshElements2d", clipping=None):
         super().__init__(label=label)
         self.data = data
-        self.clipping = Clipping()
+        self.clipping = clipping or Clipping()
 
-    @check_timestamp
-    def update(self, timestamp: float):
-        if self._timestamp == timestamp:
-            return
-        self.clipping.update(timestamp)
-        self.data.update(timestamp)
+    def update(self, options: RenderOptions):
+        self.clipping.update(options)
+        self.data.update(options)
         self.curvature_subdivision = self.data.curvature_subdivision
         self.n_vertices = 3 * self.curvature_subdivision**2
 
         self._buffers = self.data.get_buffers()
         self.n_instances = self.data.num_elements[ElType.TRIG]
-        self.color_uniform = buffer_from_array(np.array(self.color, dtype=np.float32))
-        self.create_render_pipeline()
+        self.color_uniform = buffer_from_array(
+            np.array(self.color, dtype=np.float32), label="color_uniform"
+        )
 
     def get_bounding_box(self):
         return self.data.get_bounding_box()
 
-    def get_bindings(self):
+    def get_bindings(self, options: RenderOptions):
         bindings = [
-            *self.options.get_bindings(),
-            *self.clipping.get_bindings(),
+            *options.get_bindings(),
+            *self.clipping.get_bindings(options),
             BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
             BufferBinding(Binding.TRIGS_INDEX, self._buffers[ElType.TRIG]),
             BufferBinding(Binding.CURVATURE_VALUES_2D, self._buffers["curvature_2d"]),
@@ -299,7 +294,7 @@ class Mesh2dElementsRenderer(RenderObject):
         return read_shader_file("ngsolve/mesh.wgsl")
 
 
-class Mesh2dWireframeRenderer(Mesh2dElementsRenderer):
+class MeshWireframe2d(MeshElements2d):
     depthBias: int = 0
     topology: PrimitiveTopology = PrimitiveTopology.line_strip
     color = (0, 0, 0, 1)
@@ -314,35 +309,29 @@ class El3dUniform(UniformBase):
         ("padding", ct.c_float * 2),
     ]
 
-    def __init__(self, device, subdivision=0, shrink=1.0):
-        super().__init__(device, subdivision=subdivision, shrink=shrink)
+    def __init__(self, subdivision=0, shrink=1.0):
+        super().__init__(subdivision=subdivision, shrink=shrink)
 
 
-class Mesh3dElementsRenderObject(RenderObject):
+class MeshElements3d(Renderer):
     n_vertices: int = 3 * 4
 
-    def __init__(self, data: MeshData):
-        super().__init__(label="Mesh3dElementsRenderObject")
+    def __init__(self, data: MeshData, clipping=None):
+        super().__init__(label="MeshElements3d")
         data.need_3d = True
         self.data = data
-        self.clipping = Clipping()
+        self.clipping = clipping or Clipping()
 
     def get_bounding_box(self) -> tuple[list[float], list[float]] | None:
         return self.data.get_bounding_box()
 
-    @check_timestamp
-    def update(self, timestamp):
-        if timestamp == self._timestamp:
-            return
-        self._timestamp = timestamp
-        self.data.update(timestamp)
-        self.uniforms = El3dUniform(self.device)
-        self.clipping.options = self.options
-        self.clipping.update(timestamp)
+    def update(self, options: RenderOptions):
+        self.data.update(options)
+        self.uniforms = El3dUniform()
+        self.clipping.update(options)
         self._buffers = self.data.get_buffers()
         self.uniforms.update_buffer()
         self.n_instances = self.data.num_elements[ElType.TET]
-        self.create_render_pipeline()
 
     def add_options_to_gui(self, gui):
         def set_shrink(value):
@@ -351,25 +340,25 @@ class Mesh3dElementsRenderObject(RenderObject):
 
         gui.slider(label="Shrink", value=1.0, min=0.0, max=1.0, step=0.01, func=set_shrink)
 
-    def get_bindings(self):
+    def get_bindings(self, options: RenderOptions):
         return [
-            *self.clipping.get_bindings(),
+            *self.clipping.get_bindings(options),
             BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
             BufferBinding(Binding.TET, self._buffers[ElType.TET]),
-            *self.uniforms.get_bindings(),
-            *self.options.get_bindings(),
+            *self.uniforms.get_bindings(options),
+            *options.get_bindings(),
         ]
 
     def get_shader_code(self):
         return read_shader_file("ngsolve/elements3d.wgsl")
 
 
-class PointNumbersRenderObject(RenderObject):
+class PointNumbers(Renderer):
     """Render a point numbers of a mesh"""
 
     _buffers: dict
 
-    def __init__(self, data, font_size=20, label=None):
+    def __init__(self, data, font_size=20, label=None, clipping=None):
         super().__init__(label=label)
         self.n_digits = 6
         self.data = data
@@ -378,18 +367,13 @@ class PointNumbersRenderObject(RenderObject):
         self.fragment_entry_point = "fragmentFont"
         self.n_vertices = self.n_digits * 6
         self.font_size = font_size
-        self.clipping = Clipping()
+        self.clipping = clipping or Clipping()
 
-    @check_timestamp
-    def update(self, timestamp):
-        if timestamp == self._timestamp:
-            return
-        self._timestamp = timestamp
-        self.clipping.update(timestamp)
-        self.font = Font(self.canvas, self.font_size)
+    def update(self, options: RenderOptions):
+        self.clipping.update(options)
+        self.font = Font(options.canvas, self.font_size)
         self._buffers = self.data.get_buffers()
         self.n_instances = self.data.num_elements["vertices"]
-        self.create_render_pipeline()
 
     def get_shader_code(self):
         return read_shader_file("ngsolve/numbers.wgsl")
@@ -397,10 +381,10 @@ class PointNumbersRenderObject(RenderObject):
     def get_bounding_box(self):
         return self.data.get_bounding_box()
 
-    def get_bindings(self):
+    def get_bindings(self, options):
         return [
-            *self.clipping.get_bindings(),
-            *self.options.get_bindings(),
-            *self.font.get_bindings(),
+            *self.clipping.get_bindings(options),
+            *options.get_bindings(),
+            *self.font.get_bindings(options),
             BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
         ]
