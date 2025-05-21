@@ -275,10 +275,9 @@ class MeshElements2d(Renderer):
     def get_bounding_box(self):
         return self.data.get_bounding_box()
 
-    def get_bindings(self, options: RenderOptions):
+    def get_bindings(self):
         bindings = [
-            *options.get_bindings(),
-            *self.clipping.get_bindings(options),
+            *self.clipping.get_bindings(),
             BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
             BufferBinding(Binding.TRIGS_INDEX, self._buffers[ElType.TRIG]),
             BufferBinding(Binding.CURVATURE_VALUES_2D, self._buffers["curvature_2d"]),
@@ -340,13 +339,12 @@ class MeshElements3d(Renderer):
 
         gui.slider(label="Shrink", value=1.0, min=0.0, max=1.0, step=0.01, func=set_shrink)
 
-    def get_bindings(self, options: RenderOptions):
+    def get_bindings(self):
         return [
-            *self.clipping.get_bindings(options),
+            *self.clipping.get_bindings(),
             BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
             BufferBinding(Binding.TET, self._buffers[ElType.TET]),
-            *self.uniforms.get_bindings(options),
-            *options.get_bindings(),
+            *self.uniforms.get_bindings(),
         ]
 
     def get_shader_code(self):
@@ -381,10 +379,9 @@ class PointNumbers(Renderer):
     def get_bounding_box(self):
         return self.data.get_bounding_box()
 
-    def get_bindings(self, options):
+    def get_bindings(self):
         return [
-            *self.clipping.get_bindings(options),
-            *options.get_bindings(),
-            *self.font.get_bindings(options),
+            *self.clipping.get_bindings(),
+            *self.font.get_bindings(),
             BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
         ]

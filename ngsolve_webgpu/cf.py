@@ -288,10 +288,10 @@ class CFRenderer(MeshElements2d):
         self.component = value
         self.component_buffer = buffer_from_array(np.array([self.component], np.int32))
 
-    def get_bindings(self, options: RenderOptions):
+    def get_bindings(self):
         return [
-            *super().get_bindings(options),
-            *self.colormap.get_bindings(options),
+            *super().get_bindings(),
+            *self.colormap.get_bindings(),
             BufferBinding(Binding.FUNCTION_VALUES_2D, self._buffers["data_2d"]),
             BufferBinding(Binding.COMPONENT, self.component_buffer),
         ]

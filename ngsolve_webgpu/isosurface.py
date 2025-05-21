@@ -38,8 +38,8 @@ class IsoSurfaceRenderer(ClippingCF):
         self.levelset_buffer = self.levelset.get_buffers()["data_3d"]
         super().update(options)
 
-    def get_bindings(self, options: RenderOptions, compute=False):
-        bindings = super().get_bindings(options, compute)
+    def get_bindings(self, compute=False):
+        bindings = super().get_bindings(compute)
         if compute:
             bindings.append(UniformBinding(27, self.uniform_subdiv))
         bindings += [
@@ -64,8 +64,8 @@ class NegativeSurfaceRenderer(CFRenderer):
         self.levelset_buffer = buffers["data_2d"]
         super().update(options)
 
-    def get_bindings(self, options: RenderOptions):
-        return super().get_bindings(options) + [BufferBinding(80, self.levelset_buffer)]
+    def get_bindings(self):
+        return super().get_bindings() + [BufferBinding(80, self.levelset_buffer)]
 
     def get_shader_code(self):
         return read_shader_file("ngsolve/isosurface/negative_surface.wgsl")
@@ -85,8 +85,8 @@ class NegativeClippingRenderer(ClippingCF):
         self.levelset_buffer = buffers["data_3d"]
         super().update(options)
 
-    def get_bindings(self, options: RenderOptions, compute=False):
-        bindings = super().get_bindings(options, compute)
+    def get_bindings(self, compute=False):
+        bindings = super().get_bindings(compute)
         if not compute:
             bindings += [BufferBinding(80, self.levelset_buffer)]
         return bindings

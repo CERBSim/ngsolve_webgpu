@@ -32,10 +32,10 @@ class VolumeCF(MeshElements3d):
         super().update(options)
         self.colormap.update(options)
 
-    def get_bindings(self, options: RenderOptions):
-        return super().get_bindings(options) + [
+    def get_bindings(self):
+        return super().get_bindings() + [
             BufferBinding(10, self._buffers["data_3d"]),
-            *self.colormap.get_bindings(options),
+            *self.colormap.get_bindings(),
         ]
 
     def get_shader_code(self):
@@ -54,13 +54,14 @@ class ClippingCF(Renderer):
         self.clipping.callbacks.append(self.set_needs_update)
         self.data = data
         self.data.need_3d = True
+        self.options = None
 
     def update(self, options: RenderOptions):
         self.data.update(options)
         self.clipping.update(options)
         self.colormap.update(options)
         self._buffers = self.data.get_buffers()
-        self.build_clip_plane(options)
+        self.build_clip_plane()
 
     def get_bounding_box(self):
         return self.data.get_bounding_box()
@@ -68,15 +69,14 @@ class ClippingCF(Renderer):
     def get_shader_code(self):
         return read_shader_file("ngsolve/clipping/render.wgsl")
 
-    def get_bindings(self, options, compute=False):
+    def get_bindings(self, compute=False):
         bindings = [
-            *options.get_bindings(),
             BufferBinding(MeshBinding.VERTICES, self._buffers["vertices"]),
             UniformBinding(22, self.n_tets),
             UniformBinding(23, self.only_count),
             BufferBinding(MeshBinding.TET, self._buffers[ElType.TET]),
             BufferBinding(13, self._buffers["data_3d"]),
-            *self.clipping.get_bindings(options),
+            *self.clipping.get_bindings(),
         ]
         if compute:
             bindings += [
@@ -90,12 +90,12 @@ class ClippingCF(Renderer):
             ]
         else:
             bindings += [
-                *self.colormap.get_bindings(options),
+                *self.colormap.get_bindings(),
                 BufferBinding(24, self.cut_trigs),
             ]
         return bindings
 
-    def build_clip_plane(self, options: RenderOptions):
+    def build_clip_plane(self):
         for count in [True, False]:
             ntets = self.data.mesh_data.num_elements[ElType.TET] * 4**self.subdivision
             self.trig_counter = buffer_from_array(
@@ -118,8 +118,7 @@ class ClippingCF(Renderer):
 
             shader_code = read_shader_file(self.compute_shader)
             run_compute_shader(
-                shader_code, self.get_bindings(options, compute=True), 1024, "build_clip_plane"
+                shader_code, self.get_bindings(compute=True), 1024, "build_clip_plane"
             )
             if count:
                 self.n_instances = int(read_buffer(self.trig_counter, np.uint32)[0])
-        self.create_render_pipeline(options)

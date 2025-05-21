@@ -28,7 +28,7 @@ class BaseGeometryRenderer(Renderer):
         texture_format = TextureFormat.rg32uint
         target = ColorTargetState(format=texture_format)
         shader_module = self.device.createShaderModule(self._get_preprocessed_shader_code())
-        layout, self.pick_group = create_bind_group(self.device, self.get_bindings(options))
+        layout, self.pick_group = create_bind_group(self.device, self.get_bindings())
         playout = self.device.createPipelineLayout([layout])
         self.pick_pipeline = self.device.createRenderPipeline(
             layout=playout,
@@ -102,9 +102,8 @@ class GeometryFaceRenderer(BaseGeometryRenderer):
         ):
             self._buffers[key] = buffer_from_array(data)
 
-    def get_bindings(self, options: RenderOptions):
+    def get_bindings(self):
         return [
-            *options.get_bindings(),
             webgpu.BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
             webgpu.BufferBinding(Binding.NORMALS, self._buffers["normals"]),
             webgpu.BufferBinding(Binding.INDICES, self._buffers["indices"]),
@@ -145,9 +144,8 @@ class GeometryEdgeRenderer(BaseGeometryRenderer):
     def get_shader_code(self):
         return webgpu.read_shader_file("ngsolve/geo_edge.wgsl")
 
-    def get_bindings(self, options: RenderOptions):
+    def get_bindings(self):
         return [
-            *options.get_bindings(),
             webgpu.BufferBinding(90, self._buffers["vertices"]),
             webgpu.BufferBinding(91, self._buffers["colors"]),
             webgpu.UniformBinding(92, self.thickness_uniform),
@@ -189,9 +187,8 @@ class GeometryVertexRenderer(BaseGeometryRenderer):
         self._buffers["colors"] = buffer_from_array(self.colors)
         self.thickness_uniform = uniform_from_array(np.array([self.thickness], dtype=np.float32))
 
-    def get_bindings(self, options: RenderOptions):
+    def get_bindings(self):
         return [
-            *options.get_bindings(),
             webgpu.BufferBinding(90, self._buffers["vertices"]),
             webgpu.BufferBinding(91, self._buffers["colors"]),
             webgpu.UniformBinding(92, self.thickness_uniform),
