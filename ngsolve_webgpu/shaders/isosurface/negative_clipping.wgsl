@@ -10,5 +10,5 @@ fn fragment_neg_clip(input: VertexOutputClip) -> @location(0) vec4<f32>
     discard;
   }
   let value = evalTet(&u_function_values_3d, input.elnr, 0, input.lam);
-  return lightCalcColor(input.n, getColor(value));
+  return lightCalcColor(input.p, input.n, getColor(value));
 }

@@ -36,7 +36,7 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
 fn fragment_main(input: VertexOutputClip) -> @location(0) vec4<f32>
 {
   let value = evalTet(&u_function_values_3d, input.elnr, 0, input.lam);
-  return lightCalcColor(input.n, getColor(value));
+  return lightCalcColor(input.p, input.n, getColor(value));
 }
 
 

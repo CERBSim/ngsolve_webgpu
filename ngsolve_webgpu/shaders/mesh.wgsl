@@ -104,7 +104,7 @@ fn calcMeshFace(color: vec4<f32>, p: array<vec3<f32>, 3>, vertId: u32, nr: u32, 
 
 @fragment
 fn fragmentMesh(input: MeshFragmentInput) -> @location(0) vec4<f32> {
-    return lightCalcColor(input.n, input.color);
+    return lightCalcColor(input.p, input.n, input.color);
     // checkClipping(input.p);
     // let n4 = cameraMapNormal(input.n);
     // let n = normalize(n4.xyz);
@@ -247,7 +247,7 @@ fn vertexMeshHex(@builtin(vertex_index) vertId: u32, @builtin(instance_index) el
 @fragment
 fn fragment2dElement(input: VertexOutput2d) -> @location(0) vec4<f32> {
   checkClipping(input.p);
-  return lightCalcColor(-input.n, u_mesh_color);
+  return lightCalcColor(input.p, input.n, u_mesh_color);
 }
 
 @fragment
@@ -256,7 +256,7 @@ fn fragmentWireframe2d(input: VertexOutput2d) -> @location(0) vec4<f32> {
   if (input.lam[0] > 0.001 && input.lam[1] > 0.001 && input.lam[0] + input.lam[1] < 0.999) {
     discard;
   }
-  return lightCalcColor(-input.n, u_mesh_color);
+  return lightCalcColor(input.p, input.n, u_mesh_color);
 }
 
 

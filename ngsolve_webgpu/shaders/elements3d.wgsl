@@ -82,5 +82,5 @@ fn fragment_main(input: MeshFragmentInput) -> @location(0) vec4<f32>
 {
   checkClipping(input.p);
   let color = vec4<f32>(1., 0., 0., 1.);
-  return lightCalcColor(input.n, color);
+  return lightCalcColor(input.p, input.n, color);
 }

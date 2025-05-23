@@ -40,7 +40,7 @@ fn fragment_main(input: GeoFragmentInput) -> @location(0) vec4<f32> {
   if (color.a == 0.) {
     discard;
   }
-  return lightCalcColor(input.n, color);
+  return lightCalcColor(input.p, input.n, color);
 }
 
 @fragment

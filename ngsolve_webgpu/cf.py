@@ -251,7 +251,7 @@ class CFRenderer(MeshElements2d):
     def __init__(
         self,
         data: FunctionData,
-        component=0,
+        component=-1,
         label="CFRenderer",
         clipping: Clipping = None,
         colormap: Colormap = None,
@@ -259,7 +259,7 @@ class CFRenderer(MeshElements2d):
         super().__init__(data=data.mesh_data, label=label, clipping=clipping)
         self.data = data
         self.colormap = colormap or Colormap()
-        self.component = component
+        self.component = component if self.data.cf.dim > 1 else 0
 
     def update(self, options: RenderOptions):
         self.data.update(options)
@@ -279,14 +279,15 @@ class CFRenderer(MeshElements2d):
 
     def add_options_to_gui(self, gui):
         if self.data.cf.dim > 1:
-            options = {"Norm": 0}
+            options = {"Norm": -1}
             for d in range(self.data.cf.dim):
-                options[str(d)] = d + 1
+                options[str(d)] = d
             gui.dropdown(func=self.change_cf_dim, label="Component", values=options)
 
     def change_cf_dim(self, value):
         self.component = value
         self.component_buffer = buffer_from_array(np.array([self.component], np.int32))
+        self.set_needs_update()
 
     def get_bindings(self):
         return [
@@ -295,6 +296,10 @@ class CFRenderer(MeshElements2d):
             BufferBinding(Binding.FUNCTION_VALUES_2D, self._buffers["data_2d"]),
             BufferBinding(Binding.COMPONENT, self.component_buffer),
         ]
+
+    def set_needs_update(self):
+        self.data._timestamp = -1
+        super().set_needs_update()
 
 
 class VectorCFRenderer(VectorRenderer):

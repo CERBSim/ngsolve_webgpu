@@ -101,7 +101,7 @@ fn fragmentTrig(input: VertexOutput2d) -> @location(0) vec4<f32> {
     checkClipping(input.p);
     let p = &u_function_values_2d;
     let value = evalTrig(p, input.id, u_function_component, input.lam);
-    return lightCalcColor(input.n, getColor(value));
+    return lightCalcColor(input.p, input.n, getColor(value));
 }
 
 @fragment

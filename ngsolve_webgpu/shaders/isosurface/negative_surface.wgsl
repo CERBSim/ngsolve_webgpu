@@ -12,5 +12,5 @@ fn fragmentCheckLevelset(input: VertexOutput2d) -> @location(0) vec4<f32> {
     if (levelset < 0.0) {
       discard;
     }
-    return lightCalcColor(input.n, getColor(value));
+    return lightCalcColor(input.p, input.n, getColor(value));
 }

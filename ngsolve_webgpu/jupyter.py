@@ -3,7 +3,7 @@ import webgpu.jupyter as wj
 
 _local_path = None  # change this to local path of pyodide compiled zip files
 
-if not wj._is_pyodide:
+if False and not wj._is_pyodide:
     from IPython.display import Javascript, display
 
     def run_on_pyodide_ready(code):
@@ -128,11 +128,11 @@ def Draw(
     render_objects = []
     if isinstance(obj, ngs.Mesh | ngs.Region):
         mesh = obj
-        from .mesh import MeshData, Mesh2dElementsRenderer, Mesh2dWireframeRenderer
+        from .mesh import MeshData, MeshElements2d, MeshWireframe2d
 
         mesh_data = MeshData(mesh)
-        m2d = Mesh2dElementsRenderer(mesh_data)
-        wf = Mesh2dWireframeRenderer(mesh_data)
+        m2d = MeshElements2d(mesh_data)
+        wf = MeshWireframe2d(mesh_data)
         render_objects.append(m2d)
         render_objects.append(wf)
     if isinstance(obj, ngs.CoefficientFunction):
@@ -141,13 +141,13 @@ def Draw(
                 mesh = mesh.space.mesh
             else:
                 raise ValueError("If obj is a CoefficientFunction, mesh is required.")
-        from .cf import CoefficientFunctionRenderer, FunctionData
-        from .mesh import MeshData, Mesh2dWireframeRenderer
+        from .cf import CFRenderer, FunctionData
+        from .mesh import MeshData, MeshWireframe2d
 
         mesh_data = MeshData(mesh)
         function_data = FunctionData(mesh_data, obj, order)
-        r_cf = CoefficientFunctionRenderer(function_data)
-        wf = Mesh2dWireframeRenderer(mesh_data)
+        r_cf = CFRenderer(function_data)
+        wf = MeshWireframe2d(mesh_data)
         render_objects.append(r_cf)
         render_objects.append(wf)
         render_objects.append(r_cf.colormap)
@@ -161,8 +161,7 @@ def Draw(
             vcf.colormap = r_cf.colormap
             render_objects.append(vcf)
 
-    scene = wj.Scene(render_objects)
-    scene = wj.Draw(scene, width, height, modules=["ngsolve_webgpu"])
+    scene = wj.Draw(render_objects, width, height)
     for r in render_objects:
         r.add_options_to_gui(scene.gui)
     return scene

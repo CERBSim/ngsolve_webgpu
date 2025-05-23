@@ -15,11 +15,10 @@ class Animation(BaseRenderer):
         self.crawl_function(f)
         # initial solution
         self.store = True
+        self._last_rendered_time_index = -1
 
     def update(self, options):
         self.child.update(options)
-        if self.store:
-            self.add_time(options)
 
     def create_render_pipeline(self, options):
         self.child.create_render_pipeline(options)
@@ -38,7 +37,7 @@ class Animation(BaseRenderer):
             for c in f.data["childs"]:
                 self.crawl_function(c)
 
-    def add_time(self, options):
+    def add_time(self):
         self.max_time += 1
         self.time_index = self.max_time
         for gf in self.gfs:
@@ -51,7 +50,17 @@ class Animation(BaseRenderer):
             # self.slider.setValue(self.time_index)
 
     def render(self, options):
+        time_index = self.time_index
+        if self._last_rendered_time_index != time_index:
+            for gf in self.gfs:
+                gf.vec.data = gf.vecs[time_index + 1]
+            for p, vals in self.parameters.items():
+                p.Set(vals[time_index])
+            self.child.data._timestamp = -1
+            self.child.set_needs_update()
+            self.child._update_and_create_render_pipeline(options)
         self.child.render(options)
+        self._last_rendered_time_index = time_index
 
     def add_options_to_gui(self, gui):
         self.slider = gui.slider(
@@ -66,8 +75,8 @@ class Animation(BaseRenderer):
 
     def set_time_index(self, time_index):
         self.time_index = time_index
-        for gf in self.gfs:
-            gf.vec.data = gf.vecs[time_index + 1]
-        for p, vals in self.parameters.items():
-            p.Set(vals[time_index])
         # how to trigger update and re-render here?
+
+    @property
+    def needs_update(self):
+        return self.child.needs_update() or super().needs_update()

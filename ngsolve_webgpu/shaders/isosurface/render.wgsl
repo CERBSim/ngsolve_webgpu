@@ -47,5 +47,5 @@ fn fragment_isosurface(input: VertexOutputClip) -> @location(0) vec4<f32>
 {
   checkClipping(input.p);
   let value = evalTet(&u_function_values_3d, input.elnr, 0, input.lam);
-  return lightCalcColor(input.n, getColor(value));
+  return lightCalcColor(input.p, input.n, getColor(value));
 }
