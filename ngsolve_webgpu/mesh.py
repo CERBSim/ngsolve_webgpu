@@ -2,7 +2,7 @@ from enum import Enum
 import netgen.meshing
 import numpy as np
 from webgpu.font import Font
-from webgpu.renderer import Renderer, RenderOptions
+from webgpu.renderer import Renderer, RenderOptions, check_timestamp
 
 # from webgpu.uniforms import Binding
 from webgpu.uniforms import UniformBase, ct
@@ -121,7 +121,7 @@ class MeshData:
         self.num_elements = {}
         self.elements = {}
         self.gpu_elements = {}
-        self.curvature_subdivision = 1
+        self.curvature_subdivision = None
         self._deformation_scale = 1
 
     @property
@@ -146,6 +146,7 @@ class MeshData:
             self._ngs_mesh = ngsolve.Mesh(self.mesh)
         return self._ngs_mesh
 
+    @check_timestamp
     def update(self, options: RenderOptions):
         if self._last_mesh_timestamp != self.mesh._timestamp:
             self._create_data()
@@ -153,14 +154,16 @@ class MeshData:
             self.gpu_elements.pop("curvature_2d")
         if "deformation_2d" in self.gpu_elements:
             self.gpu_elements.pop("deformation_2d")
+        # prevent recursion
+        self._timestamp = options.timestamp
         if self.curvature_data:
-            self.curvature_data.update(self.mesh._timestamp)
+            self.curvature_data.update(options)
             self.elements["curvature_2d"] = self.curvature_data.data_2d
         else:
             self.elements["curvature_2d"] = np.array([0], dtype=np.float32)
 
         if self.deformation_data:
-            self.deformation_data.update(self.mesh._timestamp)
+            self.deformation_data.update(options)
             self.elements["deformation_2d"] = self.deformation_data.data_2d
         else:
             self.elements["deformation_2d"] = np.array([-1], dtype=np.float32)
@@ -216,13 +219,25 @@ class MeshData:
                 self.num_elements[eltype] = len(filtered)
 
         curve_order = mesh.GetCurveOrder()
+        if self.deformation_data is not None:
+            curve_order = max(curve_order, self.deformation_data.order)
         if curve_order > 1:
             from .cf import FunctionData
             import ngsolve as ngs
 
             cf = ngs.CF((ngs.x, ngs.y, ngs.z))
             self.curvature_data = FunctionData(self, cf, curve_order)
-            self.curvature_subdivision = curve_order + 3
+        else:
+            if self.curvature_subdivision is None:
+                self.curvature_subdivision = 1
+        if self.curvature_subdivision is None:
+            deformation_order = 1
+            if self.deformation_data:
+                deformation_order = self.deformation_data.order
+            subdiv = max(curve_order, deformation_order)
+            if subdiv > 1:
+                subdiv *= 2
+            self.curvature_subdivision = subdiv
 
         self._last_mesh_timestamp = mesh._timestamp
 
