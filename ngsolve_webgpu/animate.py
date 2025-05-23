@@ -14,11 +14,15 @@ class Animation(BaseRenderer):
         f = self.data.cf
         self.crawl_function(f)
         # initial solution
-        self.add_time(initial=True)
         self.store = True
 
     def update(self, options):
         self.child.update(options)
+        if self.store:
+            self.add_time(options)
+
+    def create_render_pipeline(self, options):
+        self.child.create_render_pipeline(options)
 
     def get_bounding_box(self):
         return self.child.get_bounding_box()
@@ -34,23 +38,17 @@ class Animation(BaseRenderer):
             for c in f.data["childs"]:
                 self.crawl_function(c)
 
-    def add_time(self, initial=False):
+    def add_time(self, options):
         self.max_time += 1
         self.time_index = self.max_time
         for gf in self.gfs:
             gf.AddMultiDimComponent(gf.vec)
         for par, vals in self.parameters.items():
             vals.append(par.Get())
-        if not initial:
+        if hasattr(self, "slider"):
             self.slider.max(self.max_time)
             # set value triggers set_time_index
-            self.slider.setValue(self.time_index)
-
-    def redraw(self, timestamp: float | None = None):
-        if self.store:
-            self.add_time()
-        else:
-            self.child.redraw(timestamp)
+            # self.slider.setValue(self.time_index)
 
     def render(self, options):
         self.child.render(options)
@@ -72,4 +70,4 @@ class Animation(BaseRenderer):
             gf.vec.data = gf.vecs[time_index + 1]
         for p, vals in self.parameters.items():
             p.Set(vals[time_index])
-        self.child.redraw()
+        # how to trigger update and re-render here?
