@@ -340,12 +340,25 @@ class MeshElements3d(Renderer):
         data.need_3d = True
         self.data = data
         self.clipping = clipping or Clipping()
-        self.uniforms = El3dUniform()
+        self._shrink = 1.
+        self.uniforms = None
+
+    @property
+    def shrink(self):
+        return self._shrink
+
+    @shrink.setter
+    def shrink(self, value):
+        self._shrink = value
+        if self.uniforms is not None:
+            self.uniforms.shrink = value
 
     def get_bounding_box(self) -> tuple[list[float], list[float]] | None:
         return self.data.get_bounding_box()
 
     def update(self, options: RenderOptions):
+        if self.uniforms is None:
+            self.uniforms = El3dUniform()
         self.data.update(options)
         self.clipping.update(options)
         self._buffers = self.data.get_buffers()
