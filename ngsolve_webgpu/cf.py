@@ -169,6 +169,14 @@ class FunctionData:
         self.mesh_data.update(options)
         self._create_data()
 
+    @property
+    def num_elements(self):
+        return self.mesh_data.num_elements
+
+    @property
+    def curvature_subdivision(self):
+        return self.mesh_data.curvature_subdivision
+
     def _create_data(self):
         self.gpu_2d = None
         self.gpu_3d = None
@@ -263,15 +271,10 @@ class CFRenderer(MeshElements2d):
 
     def update(self, options: RenderOptions):
         self.data.update(options)
-        self._buffers = self.data.get_buffers()
-
-        self.curvature_subdivision = self.data.mesh_data.curvature_subdivision
-        self.n_vertices = 3 * self.curvature_subdivision**2
+        super().update(options)
         if self.colormap.autoupdate:
             self.colormap.set_min_max(self.data.minval, self.data.maxval, set_autoupdate=False)
         self.colormap.update(options)
-        self.clipping.update(options)
-        self.n_instances = self.data.mesh_data.num_elements[ElType.TRIG]
         self.component_buffer = buffer_from_array(np.array([self.component], np.int32))
 
     def get_bounding_box(self):
