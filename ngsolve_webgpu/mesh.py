@@ -30,6 +30,7 @@ class Binding:
     CURVATURE_SUBDIVISION = 15
     DEFORMATION_VALUES = 16
     DEFORMATION_SCALE = 17
+    DRAW_TYPE = 18
 
     MESH = 20
     EDGE = 21
@@ -269,6 +270,7 @@ class MeshElements2d(Renderer):
     vertex_entry_point: str = "vertexTrigP1Indexed"
     fragment_entry_point: str = "fragment2dElement"
     color = (0, 1, 0, 1)
+    draw_type: np.uint32 = np.uint32(1)
 
     def __init__(self, data: MeshData, label="MeshElements2d", clipping=None):
         super().__init__(label=label)
@@ -279,6 +281,8 @@ class MeshElements2d(Renderer):
         self.clipping.update(options)
         self.data.update(options)
         self.curvature_subdivision = self.data.curvature_subdivision
+        self.gpu_draw_type = uniform_from_array(
+            np.array([self.draw_type], dtype=np.uint32))
         self.n_vertices = 3 * self.curvature_subdivision**2
 
         self._buffers = self.data.get_buffers()
@@ -299,6 +303,7 @@ class MeshElements2d(Renderer):
             BufferBinding(Binding.DEFORMATION_VALUES, self._buffers["deformation_2d"]),
             UniformBinding(Binding.DEFORMATION_SCALE, self._buffers["deformation_scale"]),
             UniformBinding(Binding.CURVATURE_SUBDIVISION, self._buffers["curvature_subdivision"]),
+            UniformBinding(Binding.DRAW_TYPE, self.gpu_draw_type),
         ]
         if hasattr(self, "color_uniform"):
             bindings.append(BufferBinding(54, self.color_uniform))
@@ -313,7 +318,11 @@ class MeshWireframe2d(MeshElements2d):
     topology: PrimitiveTopology = PrimitiveTopology.line_strip
     color = (0, 0, 0, 1)
     fragment_entry_point: str = "fragmentWireframe2d"
+    draw_type: np.uint32 = np.uint32(2)
 
+    def update(self, options: RenderOptions):
+        super().update(options)
+        self.n_vertices = 4 * self.curvature_subdivision**2
 
 class El3dUniform(UniformBase):
     _binding = Binding.MESH

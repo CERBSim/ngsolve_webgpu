@@ -1,5 +1,6 @@
 #import ngsolve/eval/trig
 
+@group(0) @binding(18) var<uniform> u_draw_type: u32;
 
 struct VertexOutput1d {
   @builtin(position) fragPosition: vec4<f32>,
@@ -51,10 +52,14 @@ fn calcTrig(p: array<vec3<f32>, 3>, vertexId: u32, trigId: u32) -> VertexOutput2
     var normal: vec3f;
 
     if subdivision == 1 {
-        position = p[vertexId];
+        position = p[vertexId % 3];
         normal = cross(p[1] - p[0], p[2] - p[0]);
     } else {
-        var subTrigId: u32 = vertexId / 3;
+      var div_factor: u32 = 3u;
+      if(u_draw_type == 2u) {
+        div_factor = 4u;
+      }
+        var subTrigId: u32 = vertexId / div_factor;
         var ix = subTrigId % subdivision;
         var iy = subTrigId / subdivision;
         lam += h * vec2f(f32(ix), f32(iy));
