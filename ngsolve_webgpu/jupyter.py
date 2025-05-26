@@ -1,5 +1,6 @@
 import ngsolve as ngs
 import webgpu.jupyter as wj
+from webgpu.colormap import Colorbar
 
 _local_path = None  # change this to local path of pyodide compiled zip files
 
@@ -150,7 +151,7 @@ def Draw(
         wf = MeshWireframe2d(mesh_data)
         render_objects.append(r_cf)
         render_objects.append(wf)
-        render_objects.append(r_cf.colormap)
+        render_objects.append(Colorbar(r_cf.colormap))
         if vectors:
             options = vectors if isinstance(vectors, dict) else {}
             if mesh.dim != 2:

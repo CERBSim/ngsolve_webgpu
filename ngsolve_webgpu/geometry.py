@@ -1,4 +1,6 @@
+import numpy as np
 import webgpu
+from webgpu.clipping import Clipping
 from webgpu.renderer import MultipleRenderer, Renderer, RenderOptions
 from webgpu.utils import (
     buffer_from_array,
@@ -7,9 +9,6 @@ from webgpu.utils import (
     uniform_from_array,
 )
 from webgpu.webgpu_api import *
-from webgpu.clipping import Clipping
-
-import numpy as np
 
 
 class Binding:
@@ -28,7 +27,9 @@ class BaseGeometryRenderer(Renderer):
         texture_format = TextureFormat.rg32uint
         target = ColorTargetState(format=texture_format)
         shader_module = self.device.createShaderModule(self._get_preprocessed_shader_code())
-        layout, self.pick_group = create_bind_group(self.device, self.get_bindings())
+        layout, self.pick_group = create_bind_group(
+            self.device, self.get_bindings() + options.get_bindings()
+        )
         playout = self.device.createPipelineLayout([layout])
         self.pick_pipeline = self.device.createRenderPipeline(
             layout=playout,

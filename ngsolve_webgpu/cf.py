@@ -272,9 +272,9 @@ class CFRenderer(MeshElements2d):
     def update(self, options: RenderOptions):
         self.data.update(options)
         super().update(options)
-        if self.colormap.autoupdate:
-            self.colormap.set_min_max(self.data.minval, self.data.maxval, set_autoupdate=False)
-        self.colormap.update(options)
+        if self.colormap.autoscale:
+            self.colormap.set_min_max(self.data.minval, self.data.maxval, set_autoscale=False)
+        self.colormap._update_and_create_render_pipeline(options)
         self.component_buffer = buffer_from_array(np.array([self.component], np.int32))
 
     def get_bounding_box(self):

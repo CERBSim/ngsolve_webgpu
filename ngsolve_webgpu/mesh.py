@@ -319,6 +319,7 @@ class MeshWireframe2d(MeshElements2d):
         super().update(options)
         self.n_vertices = 3 * self.curvature_subdivision + 1
 
+
 class El3dUniform(UniformBase):
     _binding = Binding.MESH
     _fields_ = [
@@ -354,11 +355,14 @@ class MeshElements3d(Renderer):
     def add_options_to_gui(self, gui):
         if gui is None:
             return
+
         def set_shrink(value):
             self.uniforms.shrink = value
             self.uniforms.update_buffer()
 
-        gui.slider(label="Shrink", value=self.uniforms.shrink, min=0.0, max=1.0, step=0.01, func=set_shrink)
+        gui.slider(
+            label="Shrink", value=self.uniforms.shrink, min=0.0, max=1.0, step=0.01, func=set_shrink
+        )
 
     def get_bindings(self):
         return [
