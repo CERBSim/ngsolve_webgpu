@@ -6,6 +6,7 @@ from webgpu.utils import (
     buffer_from_array,
     create_bind_group,
     read_buffer,
+    read_shader_file,
     uniform_from_array,
 )
 from webgpu.webgpu_api import *
@@ -78,6 +79,7 @@ class GeometryFaceRenderer(BaseGeometryRenderer):
         self.geo = geo
         self.colors = None
         self.active = True
+        self._buffers = {}
 
     def get_bounding_box(self):
         return self.bounding_box
@@ -112,7 +114,7 @@ class GeometryFaceRenderer(BaseGeometryRenderer):
         ]
 
     def get_shader_code(self):
-        return webgpu.read_shader_file("ngsolve/geo_face.wgsl")
+        return read_shader_file("ngsolve/geo_face.wgsl")
 
 
 class GeometryEdgeRenderer(BaseGeometryRenderer):
@@ -125,6 +127,7 @@ class GeometryEdgeRenderer(BaseGeometryRenderer):
         super().__init__(label="GeometryEdges")
         self.active = True
         self.thickness = 0.02
+        self._buffers = {}
 
     def set_colors(self, colors):
         """colors is numpy float32 array with 4 times number indices entries"""
@@ -143,7 +146,7 @@ class GeometryEdgeRenderer(BaseGeometryRenderer):
         self._buffers["index"] = buffer_from_array(vis_data["edge_indices"])
 
     def get_shader_code(self):
-        return webgpu.read_shader_file("ngsolve/geo_edge.wgsl")
+        return read_shader_file("ngsolve/geo_edge.wgsl")
 
     def get_bindings(self):
         return [
@@ -165,6 +168,7 @@ class GeometryVertexRenderer(BaseGeometryRenderer):
         super().__init__(label="GeometryVertices")
         self.active = True
         self.thickness = 0.05
+        self._buffers = {}
 
     def set_colors(self, colors):
         """colors is numpy float32 array with 4 times number indices entries"""
@@ -173,7 +177,7 @@ class GeometryVertexRenderer(BaseGeometryRenderer):
             self.device.queue.writeBuffer(self._buffers["colors"], 0, self.colors.tobytes())
 
     def get_shader_code(self):
-        return webgpu.read_shader_file("ngsolve/geo_vertex.wgsl")
+        return read_shader_file("ngsolve/geo_vertex.wgsl")
 
     def update(self, options, vis_data):
         verts = set(self.geo.shape.vertices)
