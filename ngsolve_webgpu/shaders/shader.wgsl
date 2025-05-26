@@ -1,7 +1,5 @@
 #import ngsolve/eval/trig
 
-@group(0) @binding(18) var<uniform> u_draw_type: u32;
-
 struct VertexOutput1d {
   @builtin(position) fragPosition: vec4<f32>,
   @location(0) p: vec3<f32>,
@@ -44,30 +42,33 @@ fn calcTrig(p: array<vec3<f32>, 3>, vertexId: u32, trigId: u32) -> VertexOutput2
     let h = 1.0 / f32(subdivision);
 
     var lam = vec2f(0.0, 0.0);
-    if (vertexId % 3) < 2 {
-        lam[vertexId % 3] += h;
+    if (vertexId % 3u) < 2 {
+        lam[vertexId % 3u] += h;
     }
 
     var position: vec3f;
     var normal: vec3f;
 
     if subdivision == 1 {
-        position = p[vertexId % 3];
+        position = p[vertexId];
         normal = cross(p[1] - p[0], p[2] - p[0]);
+        if (u_deformation_values_2d[0] != -1.) {
+          let pos_and_gradients = u_deformation_scale * evalTrigVec3Grad(&u_deformation_values_2d, trigId, lam);
+          position += pos_and_gradients[0];
+          var v1 = p[1] - p[0] + pos_and_gradients[1];
+          var v2 = p[2] - p[0] + pos_and_gradients[2];
+          normal = normalize(cross(v1, v2));
+        }
     } else {
-      var div_factor: u32 = 3u;
-      if(u_draw_type == 2u) {
-        div_factor = 4u;
-      }
-        var subTrigId: u32 = vertexId / div_factor;
+        var subTrigId: u32 = vertexId / 3u;
         var ix = subTrigId % subdivision;
         var iy = subTrigId / subdivision;
         lam += h * vec2f(f32(ix), f32(iy));
-
         if ix + iy >= subdivision {
             lam[0] = 1.0 - lam[0];
             lam[1] = 1.0 - lam[1];
         }
+
 
         let data = &u_curvature_values_2d;
         var pos_and_gradients = evalTrigVec3Grad(data, trigId, lam);
@@ -98,6 +99,64 @@ fn vertexTrigP1Indexed(@builtin(vertex_index) vertexId: u32, @builtin(instance_i
         vec3<f32>(vertices[vid[2] ], vertices[vid[2] + 1], vertices[vid[2] + 2])
     );
     return calcTrig(p, vertexId, trigId);
+}
+
+@vertex
+fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) trigId: u32) -> VertexOutput2d {
+    var vid = 3 * vec3u(
+        trigs[4 * trigId + 0],
+        trigs[4 * trigId + 1],
+        trigs[4 * trigId + 2]
+    );
+
+    var p = array<vec3<f32>, 3>(
+        vec3<f32>(vertices[vid[0] ], vertices[vid[0] + 1], vertices[vid[0] + 2]),
+        vec3<f32>(vertices[vid[1] ], vertices[vid[1] + 1], vertices[vid[1] + 2]),
+        vec3<f32>(vertices[vid[2] ], vertices[vid[2] + 1], vertices[vid[2] + 2])
+    );
+
+    let subdivision = u_curvature_subdivision;
+    let h = 1./ f32(subdivision);
+    var lam = vec2f(0.0, 0.0);
+    var position: vec3f;
+    if(subdivision == 1)
+      {
+        position = p[vertexId % 3];
+        if (u_deformation_values_2d[0] != -1.) {
+          position += u_deformation_scale * evalTrigVec3(&u_deformation_values_2d, trigId, lam);
+        }
+      }
+    else
+      {
+        var side = vertexId / subdivision;
+        if (side >= 2u) {
+          side = 2u;
+        }
+        var subId = vertexId - subdivision * side;
+        if(side == 0u)
+          {
+            lam[0] = h * f32(subId);
+            lam[1] = 0.;
+          }
+        else {
+          if(side == 1u)
+          {
+            lam[0] = 1.0 - h * f32(subId);
+            lam[1] = h * f32(subId);
+          }
+        else
+          {
+            lam[0] = 0.;
+            lam[1] = 1. - h * f32(subId);
+          }
+        }
+        position = evalTrigVec3(&u_curvature_values_2d, trigId, lam);
+        if (u_deformation_values_2d[0] != -1.) {
+          position += u_deformation_scale * evalTrigVec3(&u_deformation_values_2d, trigId, lam);
+        }
+      }
+    return VertexOutput2d(cameraMapPoint(position), position, lam, trigId,
+                          normalize(cross(p[1] - p[0], p[2] - p[0])));
 }
 
 

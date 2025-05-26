@@ -281,6 +281,8 @@ class CFRenderer(MeshElements2d):
         return self.data.get_bounding_box()
 
     def add_options_to_gui(self, gui):
+        if gui is None:
+            return
         if self.data.cf.dim > 1:
             options = {"Norm": -1}
             for d in range(self.data.cf.dim):

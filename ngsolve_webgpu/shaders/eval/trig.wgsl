@@ -57,7 +57,7 @@ fn _evalTrigVec3Data(order: i32, data: array<vec3f, 28>, lam: vec2f, dy: i32) ->
     return v[0];
 }
 
-fn evalTrigVec3(data: ptr<storage, array<f32>, read>, id: u32, icomp: i32, lam: vec2<f32>) -> vec3f {
+fn evalTrigVec3(data: ptr<storage, array<f32>, read>, id: u32, lam: vec2<f32>) -> vec3f {
     var order: i32 = i32((*data)[1]);
     let ncomp: u32 = u32((*data)[0]);
     var ndof: u32 = u32((order + 1) * (order + 2) / 2);
@@ -67,9 +67,9 @@ fn evalTrigVec3(data: ptr<storage, array<f32>, read>, id: u32, icomp: i32, lam: 
     let stride: u32 = ncomp;
 
     for (var i: u32 = 0u; i < ndof; i++) {
-        v[i].x = (*data)[offset + u32(icomp) + i * stride + 0];
-        v[i].y = (*data)[offset + u32(icomp) + i * stride + 1];
-        v[i].z = (*data)[offset + u32(icomp) + i * stride + 2];
+        v[i].x = (*data)[offset + i * stride + 0];
+        v[i].y = (*data)[offset + i * stride + 1];
+        v[i].z = (*data)[offset + i * stride + 2];
     }
 
     return _evalTrigVec3Data(order, v, lam, order+1);

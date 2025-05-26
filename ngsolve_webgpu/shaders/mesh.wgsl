@@ -253,9 +253,6 @@ fn fragment2dElement(input: VertexOutput2d) -> @location(0) vec4<f32> {
 @fragment
 fn fragmentWireframe2d(input: VertexOutput2d) -> @location(0) vec4<f32> {
   checkClipping(input.p);
-  if (input.lam[0] > 0.001 && input.lam[1] > 0.001 && input.lam[0] + input.lam[1] < 0.999) {
-    discard;
-  }
   return lightCalcColor(input.p, input.n, u_mesh_color);
 }
 

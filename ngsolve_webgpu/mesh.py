@@ -30,7 +30,6 @@ class Binding:
     CURVATURE_SUBDIVISION = 15
     DEFORMATION_VALUES = 16
     DEFORMATION_SCALE = 17
-    DRAW_TYPE = 18
 
     MESH = 20
     EDGE = 21
@@ -270,7 +269,6 @@ class MeshElements2d(Renderer):
     vertex_entry_point: str = "vertexTrigP1Indexed"
     fragment_entry_point: str = "fragment2dElement"
     color = (0, 1, 0, 1)
-    draw_type: np.uint32 = np.uint32(1)
 
     def __init__(self, data: MeshData, label="MeshElements2d", clipping=None):
         super().__init__(label=label)
@@ -281,8 +279,6 @@ class MeshElements2d(Renderer):
         self.clipping.update(options)
         self.data.update(options)
         self.curvature_subdivision = self.data.curvature_subdivision
-        self.gpu_draw_type = uniform_from_array(
-            np.array([self.draw_type], dtype=np.uint32))
         self.n_vertices = 3 * self.curvature_subdivision**2
 
         self._buffers = self.data.get_buffers()
@@ -303,7 +299,6 @@ class MeshElements2d(Renderer):
             BufferBinding(Binding.DEFORMATION_VALUES, self._buffers["deformation_2d"]),
             UniformBinding(Binding.DEFORMATION_SCALE, self._buffers["deformation_scale"]),
             UniformBinding(Binding.CURVATURE_SUBDIVISION, self._buffers["curvature_subdivision"]),
-            UniformBinding(Binding.DRAW_TYPE, self.gpu_draw_type),
         ]
         if hasattr(self, "color_uniform"):
             bindings.append(BufferBinding(54, self.color_uniform))
@@ -318,11 +313,11 @@ class MeshWireframe2d(MeshElements2d):
     topology: PrimitiveTopology = PrimitiveTopology.line_strip
     color = (0, 0, 0, 1)
     fragment_entry_point: str = "fragmentWireframe2d"
-    draw_type: np.uint32 = np.uint32(2)
+    vertex_entry_point: str = "vertexWireframe2d"
 
     def update(self, options: RenderOptions):
         super().update(options)
-        self.n_vertices = 4 * self.curvature_subdivision**2
+        self.n_vertices = 3 * self.curvature_subdivision + 1
 
 class El3dUniform(UniformBase):
     _binding = Binding.MESH
@@ -344,24 +339,26 @@ class MeshElements3d(Renderer):
         data.need_3d = True
         self.data = data
         self.clipping = clipping or Clipping()
+        self.uniforms = El3dUniform()
 
     def get_bounding_box(self) -> tuple[list[float], list[float]] | None:
         return self.data.get_bounding_box()
 
     def update(self, options: RenderOptions):
         self.data.update(options)
-        self.uniforms = El3dUniform()
         self.clipping.update(options)
         self._buffers = self.data.get_buffers()
         self.uniforms.update_buffer()
         self.n_instances = self.data.num_elements[ElType.TET]
 
     def add_options_to_gui(self, gui):
+        if gui is None:
+            return
         def set_shrink(value):
             self.uniforms.shrink = value
             self.uniforms.update_buffer()
 
-        gui.slider(label="Shrink", value=1.0, min=0.0, max=1.0, step=0.01, func=set_shrink)
+        gui.slider(label="Shrink", value=self.uniforms.shrink, min=0.0, max=1.0, step=0.01, func=set_shrink)
 
     def get_bindings(self):
         return [
