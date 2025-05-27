@@ -149,6 +149,7 @@ class MeshData:
     def set_needs_update(self):
         """Update GPU data on next render call"""
         self._last_mesh_timestamp = -1
+        self._timestamp = -1
 
     @check_timestamp
     def update(self, options: RenderOptions):
