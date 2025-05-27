@@ -125,6 +125,8 @@ def Draw(
     order : int
         The order which is used to render the CoefficientFunction. Default is 2.
     """
+    if order > 6:
+        raise ValueError("Order must be less than or equal to 6")
     # create gui before calling render
     render_objects = []
     if isinstance(obj, ngs.Mesh | ngs.Region):
