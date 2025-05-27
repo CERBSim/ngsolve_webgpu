@@ -146,6 +146,10 @@ class MeshData:
             self._ngs_mesh = ngsolve.Mesh(self.mesh)
         return self._ngs_mesh
 
+    def set_needs_update(self):
+        """Update GPU data on next render call"""
+        self._last_mesh_timestamp = -1
+
     @check_timestamp
     def update(self, options: RenderOptions):
         if self._last_mesh_timestamp != self.mesh._timestamp:

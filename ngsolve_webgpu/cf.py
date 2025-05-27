@@ -169,6 +169,10 @@ class FunctionData:
         self.mesh_data.update(options)
         self._create_data()
 
+    def set_needs_update(self):
+        """Set this data to be updated on the next render call"""
+        self._timestamp = -1
+
     @property
     def num_elements(self):
         return self.mesh_data.num_elements
