@@ -1,6 +1,7 @@
 import ngsolve as ngs
 import webgpu.jupyter as wj
-from webgpu.colormap import Colorbar
+from webgpu.colormap import Colorbar, Colormap
+from webgpu.clipping import Clipping
 
 from .cf import CFRenderer, FunctionData
 from .mesh import MeshData, MeshElements2d, MeshWireframe2d
@@ -133,6 +134,8 @@ def Draw(
         raise ValueError("Order must be less than or equal to 6")
     # create gui before calling render
     render_objects = []
+    clipping = Clipping()
+    colormap = Colormap()
     if isinstance(obj, ngs.Mesh | ngs.Region):
         mesh = obj
     if isinstance(obj, ngs.CoefficientFunction):
@@ -143,17 +146,17 @@ def Draw(
                 raise ValueError("If obj is a CoefficientFunction, mesh is required.")
 
     mesh_data = MeshData(mesh)
-    wf = MeshWireframe2d(mesh_data)
+    wf = MeshWireframe2d(mesh_data, clipping=clipping)
     render_objects.append(wf)
 
     if isinstance(obj, ngs.Mesh | ngs.Region):
-        render_objects.append(MeshElements2d(mesh_data))
+        render_objects.append(MeshElements2d(mesh_data, clipping=clipping))
 
     if isinstance(obj, ngs.CoefficientFunction):
         function_data = FunctionData(mesh_data, obj, order)
-        r_cf = CFRenderer(function_data)
+        r_cf = CFRenderer(function_data, clipping=clipping, colormap=colormap, **kwargs)
         render_objects.append(r_cf)
-        render_objects.append(Colorbar(r_cf.colormap))
+        render_objects.append(Colorbar(colormap=colormap))
         if vectors:
             options = vectors if isinstance(vectors, dict) else {}
             if mesh.dim != 2:
@@ -168,6 +171,8 @@ def Draw(
         mesh_data.deformation_data = FunctionData(mesh_data, deformation, order=order)
 
     scene = wj.Draw(render_objects, width, height)
+    if mesh.dim == 3:
+        clipping.add_options_to_gui(scene.gui)
     for r in render_objects:
         r.add_options_to_gui(scene.gui)
     return scene
