@@ -2,6 +2,9 @@ import ngsolve as ngs
 import webgpu.jupyter as wj
 from webgpu.colormap import Colorbar
 
+from .cf import CFRenderer, FunctionData
+from .mesh import MeshData, MeshElements2d, MeshWireframe2d
+
 _local_path = None  # change this to local path of pyodide compiled zip files
 
 if False and not wj._is_pyodide:
@@ -102,6 +105,7 @@ def Draw(
     height=600,
     order: int = 2,
     vectors=None,
+    deformation=None,
     **kwargs,
 ):
     """
@@ -131,28 +135,24 @@ def Draw(
     render_objects = []
     if isinstance(obj, ngs.Mesh | ngs.Region):
         mesh = obj
-        from .mesh import MeshData, MeshElements2d, MeshWireframe2d
-
-        mesh_data = MeshData(mesh)
-        m2d = MeshElements2d(mesh_data)
-        wf = MeshWireframe2d(mesh_data)
-        render_objects.append(m2d)
-        render_objects.append(wf)
     if isinstance(obj, ngs.CoefficientFunction):
         if mesh is None:
             if isinstance(mesh, ngs.GridFunction):
                 mesh = mesh.space.mesh
             else:
                 raise ValueError("If obj is a CoefficientFunction, mesh is required.")
-        from .cf import CFRenderer, FunctionData
-        from .mesh import MeshData, MeshWireframe2d
 
-        mesh_data = MeshData(mesh)
+    mesh_data = MeshData(mesh)
+    wf = MeshWireframe2d(mesh_data)
+    render_objects.append(wf)
+
+    if isinstance(obj, ngs.Mesh | ngs.Region):
+        render_objects.append(MeshElements2d(mesh_data))
+
+    if isinstance(obj, ngs.CoefficientFunction):
         function_data = FunctionData(mesh_data, obj, order)
         r_cf = CFRenderer(function_data)
-        wf = MeshWireframe2d(mesh_data)
         render_objects.append(r_cf)
-        render_objects.append(wf)
         render_objects.append(Colorbar(r_cf.colormap))
         if vectors:
             options = vectors if isinstance(vectors, dict) else {}
@@ -164,7 +164,13 @@ def Draw(
             vcf.colormap = r_cf.colormap
             render_objects.append(vcf)
 
+    if deformation:
+        mesh_data.deformation_data = FunctionData(mesh_data, deformation, order=order)
+
     scene = wj.Draw(render_objects, width, height)
     for r in render_objects:
         r.add_options_to_gui(scene.gui)
     return scene
+
+
+__all__ = ["Draw"]

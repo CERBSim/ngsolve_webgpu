@@ -345,7 +345,7 @@ class MeshElements3d(Renderer):
         data.need_3d = True
         self.data = data
         self.clipping = clipping or Clipping()
-        self._shrink = 1.
+        self._shrink = 1.0
         self.uniforms = None
 
     @property
@@ -364,6 +364,7 @@ class MeshElements3d(Renderer):
     def update(self, options: RenderOptions):
         if self.uniforms is None:
             self.uniforms = El3dUniform()
+            self.uniforms.shrink = self._shrink
         self.data.update(options)
         self.clipping.update(options)
         self._buffers = self.data.get_buffers()
