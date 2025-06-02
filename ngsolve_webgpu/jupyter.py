@@ -107,6 +107,7 @@ def Draw(
     order: int = 2,
     vectors=None,
     deformation=None,
+    subdivision: int | None = None,
     **kwargs,
 ):
     """
@@ -171,7 +172,10 @@ def Draw(
             render_objects.append(vcf)
 
     if deformation:
-        mesh_data.deformation_data = FunctionData(mesh_data, deformation, order=order)
+        mesh_data.deformation_data = FunctionData(mesh_data, deformation, order=min(order, 3))
+
+    if subdivision is not None:
+        mesh_data.subdivision = subdivision
 
     scene = wj.Draw(render_objects, width, height)
     if dim == 3:

@@ -1,11 +1,14 @@
 #import ngsolve/eval/common
 
+const N_DOFS_TRIG: u32 = (@MAX_EVAL_ORDER@+1) * (@MAX_EVAL_ORDER@ + 2) / 2;
+const N_DOFS_TRIG_VEC3: u32 = (@MAX_EVAL_ORDER_VEC3@+1) * (@MAX_EVAL_ORDER_VEC3@ + 2) / 2;
+
 fn evalTrig(data: ptr<storage, array<f32>, read>, id: u32, icomp: i32, lam: vec2<f32>) -> f32 {
     var order: i32 = i32((*data)[1]);
     let ncomp: u32 = u32((*data)[0]);
     var ndof: u32 = u32((order + 1) * (order + 2) / 2);
 
-    var v: array<f32, 28>;
+    var v: array<f32, N_DOFS_TRIG>;
     let offset: u32 = ndof * id * ncomp + VALUES_OFFSET;
     let stride: u32 = ncomp;
 
@@ -40,9 +43,9 @@ fn evalTrig(data: ptr<storage, array<f32>, read>, id: u32, icomp: i32, lam: vec2
     return v[0];
 }
 
-fn _evalTrigVec3Data(order: i32, data: array<vec3f, 28>, lam: vec2f, dy: i32) -> vec3f {
+fn _evalTrigVec3Data(order: i32, data: array<vec3f, N_DOFS_TRIG_VEC3>, lam: vec2f, dy: i32) -> vec3f {
     let b = vec3f(lam.x, lam.y, 1.0 - lam.x - lam.y);
-    var v: array<vec3f, 28> = data;
+    var v: array<vec3f, N_DOFS_TRIG_VEC3> = data;
 
     for (var n = order; n > 0; n--) {
         var i0 = 0;
@@ -62,7 +65,7 @@ fn evalTrigVec3(data: ptr<storage, array<f32>, read>, id: u32, lam: vec2<f32>) -
     let ncomp: u32 = u32((*data)[0]);
     var ndof: u32 = u32((order + 1) * (order + 2) / 2);
 
-    var v: array<vec3f, 28>;
+    var v: array<vec3f, N_DOFS_TRIG_VEC3>;
     let offset: u32 = ndof * id * ncomp + VALUES_OFFSET;
     let stride: u32 = ncomp;
 
@@ -81,7 +84,7 @@ fn evalTrigVec3Grad(data: ptr<storage, array<f32>, read>, id: u32, lam: vec2<f32
     var ndof: u32 = u32((order + 1) * (order + 2) / 2);
     let dy = order + 1;
 
-    var v: array<vec3f, 28>;
+    var v: array<vec3f, N_DOFS_TRIG_VEC3>;
     let offset: u32 = ndof * id * ncomp + VALUES_OFFSET;
     let stride: u32 = ncomp;
 
@@ -94,12 +97,12 @@ fn evalTrigVec3Grad(data: ptr<storage, array<f32>, read>, id: u32, lam: vec2<f32
     var result: mat3x3<f32>;
 
     result[0] = _evalTrigVec3Data(order, v, lam, dy);
-    var vd: array<vec3f, 28>;
+    var vd: array<vec3f, N_DOFS_TRIG_VEC3>;
 
     var i0 = 0;
     for (var iy = 0; iy < order; iy++) {
         for (var ix = 0; ix < order - iy; ix++) {
-            vd[i0 + ix] = v[i0 + ix + 1] - v[i0 + ix];
+            vd[i0 + ix] = v[i0 + ix] - v[i0 + ix + dy - iy];
         }
         i0 += dy - iy;
     }
@@ -109,7 +112,7 @@ fn evalTrigVec3Grad(data: ptr<storage, array<f32>, read>, id: u32, lam: vec2<f32
     i0 = 0;
     for (var iy = 0; iy < order; iy++) {
         for (var ix = 0; ix < order - iy; ix++) {
-            vd[i0 + ix] = v[i0 + ix + dy - iy] - v[i0 + ix + 1];
+            vd[i0 + ix] = v[i0 + ix + 1] - v[i0 + ix + dy - iy];
         }
         i0 += dy - iy;
     }

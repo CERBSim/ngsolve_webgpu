@@ -178,8 +178,16 @@ class FunctionData:
         return self.mesh_data.num_elements
 
     @property
-    def curvature_subdivision(self):
-        return self.mesh_data.curvature_subdivision
+    def subdivision(self):
+        return self.mesh_data.subdivision
+
+    @property
+    def curvature_data(self):
+        return self.mesh_data.curvature_data
+
+    @property
+    def deformation_data(self):
+        return self.mesh_data.deformation_data
 
     def _create_data(self):
         self.gpu_2d = None
@@ -280,6 +288,7 @@ class CFRenderer(MeshElements2d):
             self.colormap.set_min_max(self.data.minval, self.data.maxval, set_autoscale=False)
         self.colormap._update_and_create_render_pipeline(options)
         self.component_buffer = buffer_from_array(np.array([self.component], np.int32))
+        self.shader_defines["MAX_EVAL_ORDER"] = self.data.order
 
     def get_bounding_box(self):
         return self.data.get_bounding_box()

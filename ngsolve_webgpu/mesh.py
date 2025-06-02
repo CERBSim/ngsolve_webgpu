@@ -1,6 +1,8 @@
 from enum import Enum
+
 import netgen.meshing
 import numpy as np
+from webgpu.clipping import Clipping
 from webgpu.font import Font
 from webgpu.renderer import Renderer, RenderOptions, check_timestamp
 
@@ -9,13 +11,12 @@ from webgpu.uniforms import UniformBase, ct
 from webgpu.utils import (
     BufferBinding,
     UniformBinding,
-    read_shader_file,
     buffer_from_array,
-    uniform_from_array,
     get_device,
+    read_shader_file,
+    uniform_from_array,
 )
 from webgpu.webgpu_api import *
-from webgpu.clipping import Clipping
 
 
 class Binding:
@@ -27,7 +28,7 @@ class Binding:
     VERTICES = 12
     TRIGS_INDEX = 13
     CURVATURE_VALUES_2D = 14
-    CURVATURE_SUBDIVISION = 15
+    SUBDIVISION = 15
     DEFORMATION_VALUES = 16
     DEFORMATION_SCALE = 17
 
@@ -95,7 +96,7 @@ class MeshData:
     num_elements: dict[str | ElType, int]
     elements: dict[str | ElType, np.ndarray]
     gpu_elements: dict[str | ElType, Buffer]
-    curvature_subdivision: int
+    subdivision: int
 
     mesh: netgen.meshing.Mesh
     curvature_data = None
@@ -121,7 +122,7 @@ class MeshData:
         self.num_elements = {}
         self.elements = {}
         self.gpu_elements = {}
-        self.curvature_subdivision = None
+        self.subdivision = None
         self._deformation_scale = 1
 
     @property
@@ -227,22 +228,27 @@ class MeshData:
         if self.deformation_data is not None:
             curve_order = max(curve_order, self.deformation_data.order)
         if curve_order > 1:
-            from .cf import FunctionData
             import ngsolve as ngs
+
+            from .cf import FunctionData
 
             cf = ngs.CF((ngs.x, ngs.y, ngs.z))
             self.curvature_data = FunctionData(self, cf, curve_order)
         else:
-            if self.curvature_subdivision is None:
-                self.curvature_subdivision = 1
-        if self.curvature_subdivision is None:
+            if self.subdivision is None:
+                self.subdivision = 1
+        if self.subdivision is None:
             deformation_order = 1
             if self.deformation_data:
                 deformation_order = self.deformation_data.order
-            subdiv = max(curve_order, deformation_order)
-            if subdiv > 1:
-                subdiv *= 2
-            self.curvature_subdivision = subdiv
+            order = max(curve_order, deformation_order)
+            if order > 3:
+                subdiv = (order + 2) // 3 + 1
+            elif order > 1:
+                subdiv = 3
+            else:
+                subdiv = 1
+            self.subdivision = subdiv
 
         self._last_mesh_timestamp = mesh._timestamp
 
@@ -255,10 +261,10 @@ class MeshData:
                 self.gpu_elements[eltype] = buffer_from_array(
                     self.elements[eltype], label="mesh_" + str(eltype)
                 )
-        if "curvature_subdivision" not in self.gpu_elements:
-            self.gpu_elements["curvature_subdivision"] = uniform_from_array(
-                np.array([self.curvature_subdivision], dtype=np.uint32),
-                label="curvature_subdivision",
+        if "subdivision" not in self.gpu_elements:
+            self.gpu_elements["subdivision"] = uniform_from_array(
+                np.array([self.subdivision], dtype=np.uint32),
+                label="subdivision",
             )
         if "deformation_scale" not in self.gpu_elements:
             self.gpu_elements["deformation_scale"] = uniform_from_array(
@@ -283,14 +289,22 @@ class MeshElements2d(Renderer):
     def update(self, options: RenderOptions):
         self.clipping.update(options)
         self.data.update(options)
-        self.curvature_subdivision = self.data.curvature_subdivision
-        self.n_vertices = 3 * self.curvature_subdivision**2
+        self.subdivision = self.data.subdivision
+        self.n_vertices = 3 * self.subdivision**2
 
         self._buffers = self.data.get_buffers()
         self.n_instances = self.data.num_elements[ElType.TRIG]
         self.color_uniform = buffer_from_array(
             np.array(self.color, dtype=np.float32), label="color_uniform"
         )
+
+        order = 1
+        if self.data.curvature_data:
+            order = max(order, self.data.curvature_data.order)
+        if self.data.deformation_data:
+            order = max(order, self.data.deformation_data.order)
+
+        self.shader_defines = {"MAX_EVAL_ORDER": 1, "MAX_EVAL_ORDER_VEC3": order + 1}
 
     def get_bounding_box(self):
         return self.data.get_bounding_box()
@@ -303,7 +317,7 @@ class MeshElements2d(Renderer):
             BufferBinding(Binding.CURVATURE_VALUES_2D, self._buffers["curvature_2d"]),
             BufferBinding(Binding.DEFORMATION_VALUES, self._buffers["deformation_2d"]),
             UniformBinding(Binding.DEFORMATION_SCALE, self._buffers["deformation_scale"]),
-            UniformBinding(Binding.CURVATURE_SUBDIVISION, self._buffers["curvature_subdivision"]),
+            UniformBinding(Binding.SUBDIVISION, self._buffers["subdivision"]),
         ]
         if hasattr(self, "color_uniform"):
             bindings.append(BufferBinding(54, self.color_uniform))
@@ -322,7 +336,7 @@ class MeshWireframe2d(MeshElements2d):
 
     def update(self, options: RenderOptions):
         super().update(options)
-        self.n_vertices = 3 * self.curvature_subdivision + 1
+        self.n_vertices = 3 * self.subdivision + 1
 
 
 class El3dUniform(UniformBase):
