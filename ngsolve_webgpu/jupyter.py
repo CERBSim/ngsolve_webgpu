@@ -1,7 +1,7 @@
 import ngsolve as ngs
 import webgpu.jupyter as wj
-from webgpu.colormap import Colorbar, Colormap
 from webgpu.clipping import Clipping
+from webgpu.colormap import Colorbar, Colormap
 
 from .cf import CFRenderer, FunctionData
 from .mesh import MeshData, MeshElements2d, MeshWireframe2d
@@ -138,6 +138,9 @@ def Draw(
     colormap = Colormap()
     if isinstance(obj, ngs.Mesh | ngs.Region):
         mesh = obj
+
+    dim = mesh.mesh.dim if isinstance(mesh, ngs.Region) else mesh.dim
+
     if isinstance(obj, ngs.CoefficientFunction):
         if mesh is None:
             if isinstance(mesh, ngs.GridFunction):
@@ -159,7 +162,7 @@ def Draw(
         render_objects.append(Colorbar(colormap=colormap))
         if vectors:
             options = vectors if isinstance(vectors, dict) else {}
-            if mesh.dim != 2:
+            if dim != 2:
                 raise ValueError("Vectors currently only implemented on 2d meshes")
             from .cf import VectorCFRenderer
 
@@ -171,7 +174,7 @@ def Draw(
         mesh_data.deformation_data = FunctionData(mesh_data, deformation, order=order)
 
     scene = wj.Draw(render_objects, width, height)
-    if mesh.dim == 3:
+    if dim == 3:
         clipping.add_options_to_gui(scene.gui)
     for r in render_objects:
         r.add_options_to_gui(scene.gui)
