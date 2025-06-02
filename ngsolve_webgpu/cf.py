@@ -6,6 +6,7 @@ import numpy as np
 from webgpu.clipping import Clipping
 from webgpu.colormap import Colormap
 from webgpu.renderer import Renderer, RenderOptions, check_timestamp
+from webgpu.shapes import ShapeRenderer, generate_cylinder
 from webgpu.utils import (
     BufferBinding,
     UniformBinding,
@@ -367,4 +368,51 @@ class VectorCFRenderer(VectorRenderer):
         self.vectors = np.array(
             [values[:, 0], values[:, 1], np.zeros_like(values[:, 0])], dtype=np.float32
         ).T.reshape(-1)
+        super().update(options)
+
+
+class FieldLines(ShapeRenderer):
+    def __init__(
+        self,
+        cf,
+        start_region: ngs.Region | ngs.Mesh,
+        num_lines: int = 100,
+        length: float = 0.5,
+        max_points_per_line: float = 500,
+        thickness: float = 0.0015,
+        tolerance: float = 0.0005,
+        direction: int = 0,
+    ):
+        self.fieldline_options = {
+            "thickness": thickness,
+            "num_lines": num_lines,
+            "length": length,
+            "max_points_per_line": max_points_per_line,
+            "tolerance": tolerance,
+            "direction": direction,
+        }
+        self.cf = cf
+        if isinstance(start_region, ngs.Mesh):
+            self.mesh = start_region
+            self.start_region = start_region.Materials(".*")
+        else:
+            self.start_region = start_region
+            self.mesh = start_region.mesh
+
+        bbox = self.mesh.ngmesh.bounding_box
+        thickness = (bbox[1] - bbox[0]).Norm() * thickness
+
+        cyl = generate_cylinder(8, thickness, 1.0, top_face=False, bottom_face=False)
+
+        super().__init__(cyl, None, None)
+        self.scale_mode = ShapeRenderer.SCALE_Z
+
+    def update(self, options):
+        from ngsolve.webgui import FieldLines
+
+        data = FieldLines(self.cf, self.start_region, **self.fieldline_options)
+        self.positions = data["pstart"]
+        self.directions = data["pend"]
+        self.directions = self.directions - self.positions
+        self.values = data["value"]
         super().update(options)
