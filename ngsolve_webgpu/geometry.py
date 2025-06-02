@@ -71,7 +71,6 @@ class BaseGeometryRenderer(Renderer):
 
 class GeometryFaceRenderer(BaseGeometryRenderer):
     n_vertices: int = 3
-    depthBias: int = 1
     clipping: Clipping | None = None
 
     def __init__(self, geo):
@@ -93,7 +92,7 @@ class GeometryFaceRenderer(BaseGeometryRenderer):
     def update(self, options, vis_data):
         self.bounding_box = (vis_data["min"], vis_data["max"])
         verts = vis_data["vertices"]
-        self.n_instances = len(verts) // 6
+        self.n_instances = len(verts) // 9
         normals = vis_data["normals"]
         indices = vis_data["indices"]
         if self.colors is None:
@@ -122,11 +121,15 @@ class GeometryEdgeRenderer(BaseGeometryRenderer):
     topology: PrimitiveTopology = PrimitiveTopology.triangle_strip
     clipping: Clipping | None = None
 
+    # make sure that edges are rendered on top of faces
+    depthBias: int = -5
+    depthBiasSlopeScale: int = -5
+
     def __init__(self, geo):
         self.geo = geo
         super().__init__(label="GeometryEdges")
         self.active = True
-        self.thickness = 0.02
+        self.thickness = 0.015
         self._buffers = {}
 
     def set_colors(self, colors):
@@ -160,7 +163,6 @@ class GeometryEdgeRenderer(BaseGeometryRenderer):
 class GeometryVertexRenderer(BaseGeometryRenderer):
     n_vertices: int = 4
     topology: PrimitiveTopology = PrimitiveTopology.triangle_strip
-    depthBias: int = 0
     clipping: Clipping | None = None
 
     def __init__(self, geo):
