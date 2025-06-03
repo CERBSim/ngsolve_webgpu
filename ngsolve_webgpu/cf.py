@@ -407,6 +407,10 @@ class FieldLines(ShapeRenderer):
         super().__init__(cyl, None, None)
         self.scale_mode = ShapeRenderer.SCALE_Z
 
+    def get_bounding_box(self):
+        pmin, pmax = self.mesh.ngmesh.bounding_box
+        return ([pmin[0], pmin[1], pmin[2]], [pmax[0], pmax[1], pmax[2]])
+
     def update(self, options):
         from ngsolve.webgui import FieldLines
 
