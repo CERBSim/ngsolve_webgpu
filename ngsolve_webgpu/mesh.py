@@ -331,6 +331,7 @@ class MeshElements2d(Renderer):
 
 class MeshWireframe2d(MeshElements2d):
     depthBias: int = 0
+    depthBiasSlopeScale: float = 0.
     topology: PrimitiveTopology = PrimitiveTopology.line_strip
     color = (0, 0, 0, 1)
     fragment_entry_point: str = "fragmentWireframe2d"
