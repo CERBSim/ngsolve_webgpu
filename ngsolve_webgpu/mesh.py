@@ -253,7 +253,9 @@ class MeshData:
         self._last_mesh_timestamp = mesh._timestamp
 
     def get_bounding_box(self):
-        return (self.pmin, self.pmax)
+        pmin, pmax = self.mesh.bounding_box
+        return ([pmin[0], pmin[1], pmin[2]],
+                [pmax[0], pmax[1], pmax[2]])
 
     def get_buffers(self):
         for eltype in self.elements:

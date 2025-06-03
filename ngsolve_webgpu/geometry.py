@@ -216,7 +216,6 @@ class GeometryRenderer(MultipleRenderer):
 
     def update(self, options: RenderOptions):
         vis_data = self.geo._visualizationData()
-        self.bounding_box = (vis_data["min"] + 1e-7, vis_data["max"] - 1e-7)
 
         for ro in self.render_objects:
             ro.update(options, vis_data)
@@ -224,7 +223,9 @@ class GeometryRenderer(MultipleRenderer):
         self.canvas = options.canvas
 
     def get_bounding_box(self):
-        return self.bounding_box
+        pmin, pmax = self.geo.shape.bounding_box
+        return ([pmin[0], pmin[1], pmin[2]],
+                [pmax[0], pmax[1], pmax[2]])
 
     def render(self, encoder):
         for r in self.render_objects:
