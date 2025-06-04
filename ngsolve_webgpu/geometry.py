@@ -129,7 +129,7 @@ class GeometryEdgeRenderer(BaseGeometryRenderer):
         self.geo = geo
         super().__init__(label="GeometryEdges")
         self.active = True
-        self.thickness = 0.015
+        self.thickness = 0.005
         self._buffers = {}
 
     def set_colors(self, colors):
