@@ -20,6 +20,12 @@ class Binding:
 
 
 class BaseGeometryRenderer(Renderer):
+    clipping: Clipping | None = None
+
+    def __init__(self, clipping, *args, **kwargs):
+        self.clipping = clipping
+        super().__init__(*args, **kwargs)
+
     def create_render_pipeline(self, options):
         super().create_render_pipeline(options)
         self.create_pick_pipeline(options)
@@ -71,10 +77,9 @@ class BaseGeometryRenderer(Renderer):
 
 class GeometryFaceRenderer(BaseGeometryRenderer):
     n_vertices: int = 3
-    clipping: Clipping | None = None
 
-    def __init__(self, geo):
-        super().__init__(label="GeometryFaces")
+    def __init__(self, geo, clipping):
+        super().__init__(clipping, label="GeometryFaces")
         self.geo = geo
         self.colors = None
         self.active = True
@@ -119,15 +124,14 @@ class GeometryFaceRenderer(BaseGeometryRenderer):
 class GeometryEdgeRenderer(BaseGeometryRenderer):
     n_vertices: int = 4
     topology: PrimitiveTopology = PrimitiveTopology.triangle_strip
-    clipping: Clipping | None = None
 
     # make sure that edges are rendered on top of faces
     depthBias: int = -5
     depthBiasSlopeScale: int = -5
 
-    def __init__(self, geo):
+    def __init__(self, geo, clipping):
         self.geo = geo
-        super().__init__(label="GeometryEdges")
+        super().__init__(clipping, label="GeometryEdges")
         self.active = True
         self.thickness = 0.005
         self._buffers = {}
@@ -163,11 +167,10 @@ class GeometryEdgeRenderer(BaseGeometryRenderer):
 class GeometryVertexRenderer(BaseGeometryRenderer):
     n_vertices: int = 4
     topology: PrimitiveTopology = PrimitiveTopology.triangle_strip
-    clipping: Clipping | None = None
 
-    def __init__(self, geo):
+    def __init__(self, geo, clipping):
         self.geo = geo
-        super().__init__(label="GeometryVertices")
+        super().__init__(clipping, label="GeometryVertices")
         self.active = True
         self.thickness = 0.05
         self._buffers = {}
@@ -203,12 +206,12 @@ class GeometryVertexRenderer(BaseGeometryRenderer):
 
 
 class GeometryRenderer(MultipleRenderer):
-    def __init__(self, geo, label="Geometry"):
+    def __init__(self, geo, label="Geometry", clipping=None):
         self.geo = geo
-        self.faces = GeometryFaceRenderer(geo)
-        self.edges = GeometryEdgeRenderer(geo)
-        self.vertices = GeometryVertexRenderer(geo)
-        self.clipping = Clipping()
+        self.clipping = clipping or Clipping()
+        self.faces = GeometryFaceRenderer(geo, self.clipping)
+        self.edges = GeometryEdgeRenderer(geo, self.clipping)
+        self.vertices = GeometryVertexRenderer(geo, self.clipping)
         self.faces.clipping = self.clipping
         self.edges.clipping = self.clipping
         self.vertices.clipping = self.clipping

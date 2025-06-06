@@ -13,6 +13,7 @@ struct VertexOutput2d {
   @location(1) lam: vec2<f32>,
   @location(2) @interpolate(flat) id: u32,
   @location(3) n: vec3<f32>,
+  @location(4) @interpolate(flat) index: u32,
 };
 
 struct VertexOutput3d {
@@ -37,7 +38,8 @@ fn vertexEdgeP1(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) e
     return VertexOutput1d(position, p, lam, edgeId);
 }
 
-fn calcTrig(p: array<vec3<f32>, 3>, vertexId: u32, trigId: u32) -> VertexOutput2d {
+fn calcTrig(p: array<vec3<f32>, 3>, vertexId: u32, trigId: u32, index: u32)
+  -> VertexOutput2d {
     let subdivision = u_subdivision;
     let h = 1.0 / f32(subdivision);
 
@@ -83,7 +85,8 @@ fn calcTrig(p: array<vec3<f32>, 3>, vertexId: u32, trigId: u32) -> VertexOutput2
 
     let mapped_position = cameraMapPoint(position);
 
-    return VertexOutput2d(mapped_position, position, lam, trigId, normal);
+    return VertexOutput2d(mapped_position, position, lam, trigId, normal,
+                          index);
 }
 
 
@@ -95,12 +98,13 @@ fn vertexTrigP1Indexed(@builtin(vertex_index) vertexId: u32, @builtin(instance_i
         trigs[4 * trigId + 2]
     );
 
+    let index = trigs[4 * trigId + 3];
     var p = array<vec3<f32>, 3>(
         vec3<f32>(vertices[vid[0] ], vertices[vid[0] + 1], vertices[vid[0] + 2]),
         vec3<f32>(vertices[vid[1] ], vertices[vid[1] + 1], vertices[vid[1] + 2]),
         vec3<f32>(vertices[vid[2] ], vertices[vid[2] + 1], vertices[vid[2] + 2])
     );
-    return calcTrig(p, vertexId, trigId);
+    return calcTrig(p, vertexId, trigId, index);
 }
 
 @vertex
@@ -110,6 +114,7 @@ fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_ind
         trigs[4 * trigId + 1],
         trigs[4 * trigId + 2]
     );
+    let index = trigs[4 * trigId + 3];
 
     var p = array<vec3<f32>, 3>(
         vec3<f32>(vertices[vid[0] ], vertices[vid[0] + 1], vertices[vid[0] + 2]),
@@ -155,7 +160,8 @@ fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_ind
       position += u_deformation_scale * evalTrigVec3(&u_deformation_values_2d, trigId, lam);
     }
     return VertexOutput2d(cameraMapPoint(position), position, lam, trigId,
-                          normalize(cross(p[1] - p[0], p[2] - p[0])));
+                          normalize(cross(p[1] - p[0], p[2] - p[0])),
+                          index);
 }
 
 

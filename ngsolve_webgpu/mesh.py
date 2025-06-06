@@ -5,6 +5,7 @@ import numpy as np
 from webgpu.clipping import Clipping
 from webgpu.font import Font
 from webgpu.renderer import Renderer, RenderOptions, check_timestamp
+from webgpu.colormap import Colormap
 
 # from webgpu.uniforms import Binding
 from webgpu.uniforms import UniformBase, ct
@@ -206,7 +207,7 @@ class MeshData:
         self.num_elements[ElType.TRIG] = len(trigs)
         trigs_data = np.zeros((len(trigs), 4), dtype=np.uint32)
         trigs_data[:, :3] = trigs["nodes"][:, :3] - 1
-        trigs_data[:, 3] = trigs["index"]
+        trigs_data[:, 3] = trigs["index"] - 1
         self.elements[ElType.TRIG] = trigs_data
 
         # 3d Elements
@@ -276,7 +277,7 @@ class MeshData:
         return self.gpu_elements
 
 
-class MeshElements2d(Renderer):
+class BaseMeshElements2d(Renderer):
     depthBias: int = 1
     depthBiasSlopeScale: float = 1.0
     vertex_entry_point: str = "vertexTrigP1Indexed"
@@ -328,8 +329,29 @@ class MeshElements2d(Renderer):
     def get_shader_code(self):
         return read_shader_file("ngsolve/mesh.wgsl")
 
+class MeshElements2d(BaseMeshElements2d):
+    fragment_entry_point = "fragment2dElement"
 
-class MeshWireframe2d(MeshElements2d):
+    def __init__(self, data: MeshData, clipping=None,
+                 colors: list | None = None,
+                 label="MeshElements2d"):
+        super().__init__(data, label=label, clipping=clipping)
+        if colors is None:
+            mesh = data.mesh
+            colors = [[int(ci * 255) for ci in fd.color] for fd in mesh.FaceDescriptors()]
+        self.colormap = Colormap(colormap=colors, minval=-0.5, maxval=len(colors)-0.5)
+        self.colormap.discrete = 0
+        self.colormap.n_colors = 4*len(colors)
+
+    def update(self, options: RenderOptions):
+        super().update(options)
+        self.colormap.update(options)
+
+    def get_bindings(self):
+        return super().get_bindings() + self.colormap.get_bindings()
+
+
+class MeshWireframe2d(BaseMeshElements2d):
     depthBias: int = 0
     depthBiasSlopeScale: float = 0.
     topology: PrimitiveTopology = PrimitiveTopology.line_strip
@@ -374,6 +396,7 @@ class MeshElements3d(Renderer):
         self._shrink = value
         if self.uniforms is not None:
             self.uniforms.shrink = value
+            self.uniforms.update_buffer()
 
     def get_bounding_box(self) -> tuple[list[float], list[float]] | None:
         return self.data.get_bounding_box()

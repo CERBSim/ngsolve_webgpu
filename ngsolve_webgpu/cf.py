@@ -15,7 +15,7 @@ from webgpu.utils import (
 from webgpu.vectors import BaseVectorRenderer, VectorRenderer
 from webgpu.webgpu_api import Buffer
 
-from .mesh import Binding as MeshBinding, MeshElements2d
+from .mesh import Binding as MeshBinding, BaseMeshElements2d
 from .mesh import ElType, MeshData
 
 
@@ -264,7 +264,7 @@ def vandermonde_3d(order):
     return _vandermonde_mats[order]
 
 
-class CFRenderer(MeshElements2d):
+class CFRenderer(BaseMeshElements2d):
     """Use "vertices", "index" and "trig_function_values" buffers to render a mesh"""
 
     fragment_entry_point = "fragmentTrig"
