@@ -255,8 +255,7 @@ class MeshData:
 
     def get_bounding_box(self):
         pmin, pmax = self.mesh.bounding_box
-        return ([pmin[0], pmin[1], pmin[2]],
-                [pmax[0], pmax[1], pmax[2]])
+        return ([pmin[0], pmin[1], pmin[2]], [pmax[0], pmax[1], pmax[2]])
 
     def get_buffers(self):
         for eltype in self.elements:
@@ -329,19 +328,20 @@ class BaseMeshElements2d(Renderer):
     def get_shader_code(self):
         return read_shader_file("ngsolve/mesh.wgsl")
 
+
 class MeshElements2d(BaseMeshElements2d):
     fragment_entry_point = "fragment2dElement"
 
-    def __init__(self, data: MeshData, clipping=None,
-                 colors: list | None = None,
-                 label="MeshElements2d"):
+    def __init__(
+        self, data: MeshData, clipping=None, colors: list | None = None, label="MeshElements2d"
+    ):
         super().__init__(data, label=label, clipping=clipping)
         if colors is None:
             mesh = data.mesh
             colors = [[int(ci * 255) for ci in fd.color] for fd in mesh.FaceDescriptors()]
-        self.colormap = Colormap(colormap=colors, minval=-0.5, maxval=len(colors)-0.5)
+        self.colormap = Colormap(colormap=colors, minval=-0.5, maxval=len(colors) - 0.5)
         self.colormap.discrete = 0
-        self.colormap.n_colors = 4*len(colors)
+        self.colormap.n_colors = 4 * len(colors)
 
     def update(self, options: RenderOptions):
         super().update(options)
@@ -353,7 +353,7 @@ class MeshElements2d(BaseMeshElements2d):
 
 class MeshWireframe2d(BaseMeshElements2d):
     depthBias: int = 0
-    depthBiasSlopeScale: float = 0.
+    depthBiasSlopeScale: float = 0.0
     topology: PrimitiveTopology = PrimitiveTopology.line_strip
     color = (0, 0, 0, 1)
     fragment_entry_point: str = "fragmentWireframe2d"

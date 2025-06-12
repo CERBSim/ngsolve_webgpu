@@ -227,8 +227,7 @@ class GeometryRenderer(MultipleRenderer):
 
     def get_bounding_box(self):
         pmin, pmax = self.geo.shape.bounding_box
-        return ([pmin[0], pmin[1], pmin[2]],
-                [pmax[0], pmax[1], pmax[2]])
+        return ([pmin[0], pmin[1], pmin[2]], [pmax[0], pmax[1], pmax[2]])
 
     def render(self, encoder):
         for r in self.render_objects:
