@@ -221,7 +221,7 @@ class MeshData:
                     continue
                 u32array = np.empty((nels, num_pts + 2), dtype=np.uint32)
                 u32array[:, :num_pts] = filtered["nodes"][:, :num_pts] - 1
-                u32array[:, num_pts] = filtered["index"]
+                u32array[:, num_pts] = filtered["index"] - 1
                 self.elements[eltype] = u32array
                 self.num_elements[eltype] = len(filtered)
 
@@ -379,13 +379,19 @@ class El3dUniform(UniformBase):
 class MeshElements3d(Renderer):
     n_vertices: int = 3 * 4
 
-    def __init__(self, data: MeshData, clipping=None):
+    def __init__(self, data: MeshData, clipping=None,
+                 colors: list | None = None):
         super().__init__(label="MeshElements3d")
         data.need_3d = True
         self.data = data
         self.clipping = clipping or Clipping()
         self._shrink = 1.0
         self.uniforms = None
+        if colors is None:
+            colors = [[255,0,0,255] for _ in range(len(data.ngs_mesh.GetMaterials()))]
+        self.colormap = Colormap(colormap=colors, minval=-0.5, maxval=len(colors) - 0.5)
+        self.colormap.discrete = 0
+        self.colormap.n_colors = 4 * len(colors)
 
     @property
     def shrink(self):
@@ -405,6 +411,7 @@ class MeshElements3d(Renderer):
         if self.uniforms is None:
             self.uniforms = El3dUniform()
             self.uniforms.shrink = self._shrink
+        self.colormap.update(options)
         self.data.update(options)
         self.clipping.update(options)
         self._buffers = self.data.get_buffers()
@@ -429,6 +436,7 @@ class MeshElements3d(Renderer):
             BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
             BufferBinding(Binding.TET, self._buffers[ElType.TET]),
             *self.uniforms.get_bindings(),
+            *self.colormap.get_bindings(),
         ]
 
     def get_shader_code(self):

@@ -1,6 +1,7 @@
 #import clipping
 #import camera
 #import light
+#import colormap
 
 @group(0) @binding(12) var<storage> vertices : array<f32>;
 @group(0) @binding(20) var<uniform> u_mesh : MeshUniforms;
@@ -81,6 +82,9 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
 fn fragment_main(input: MeshFragmentInput) -> @location(0) vec4<f32>
 {
   checkClipping(input.p);
-  let color = vec4<f32>(1., 0., 0., 1.);
+  let color = getColor(f32(input.index));
+  if(color.a < 0.01) {
+    discard;
+  }
   return lightCalcColor(input.p, input.n, color);
 }
