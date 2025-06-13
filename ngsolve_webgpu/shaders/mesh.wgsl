@@ -247,7 +247,11 @@ fn vertexMeshHex(@builtin(vertex_index) vertId: u32, @builtin(instance_index) el
 @fragment
 fn fragment2dElement(input: VertexOutput2d) -> @location(0) vec4<f32> {
   checkClipping(input.p);
-  return lightCalcColor(input.p, input.n, getColor(f32(input.index)));
+  let color = getColor(f32(input.index));
+  if(color.a < 0.01) {
+    discard;
+  }
+  return lightCalcColor(input.p, input.n, color);
 }
 
 @fragment
