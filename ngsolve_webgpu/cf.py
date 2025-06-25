@@ -1,4 +1,5 @@
 import math
+from typing_extensions import deprecated
 
 import ngsolve as ngs
 import ngsolve.webgui
@@ -122,8 +123,12 @@ def evaluate_cf(cf, mesh, order):
             region = mesh.Boundaries(".*")
     pts = region.mesh.MapToAllElements({ngs.ET.TRIG: intrule, ngs.ET.QUAD: intrule}, region)
     pmat = cf(pts)
-    minval, maxval = (min(pmat.reshape(-1)), max(pmat.reshape(-1))) if len(pmat) else (0, 1)
     pmat = pmat.reshape(-1, ndof, comps)
+    minval = np.min(pmat, axis=(0, 1))
+    maxval = np.max(pmat, axis=(0, 1))
+    norm = np.linalg.norm(pmat, axis=2)
+    minval = [float(np.min(norm))] + [float(v) for v in minval]
+    maxval = [float(np.max(norm))] + [float(v) for v in maxval]
 
     values = np.zeros((ndof, pmat.shape[0], comps), dtype=np.float32)
     for i in range(comps):
@@ -147,8 +152,8 @@ class FunctionData:
     order_3d: int
     _timestamp: float = -1
     _needs_update: bool = True
-    minval: float = 1e99
-    maxval: float = -1e99
+    minval: list[float]
+    maxval: list[float]
 
     def __init__(
         self,
@@ -200,8 +205,8 @@ class FunctionData:
             self.data_3d, minval, maxval = self.evaluate_3d(
                 self.cf, self.mesh_data.ngs_mesh, self.order_3d
             )
-            self.minval = min(self.minval, minval)
-            self.maxval = max(self.maxval, maxval)
+            self.minval = [min(v1, v2) for v1, v2 in zip(self.minval, minval)]
+            self.maxval = [max(v1, v2) for v1, v2 in zip(self.maxval, maxval)]
 
     def get_buffers(self):
         buffers = self.mesh_data.get_buffers().copy()
@@ -221,12 +226,23 @@ class FunctionData:
 
     def evaluate_3d(self, cf, region, order):
         intrules = get_3d_intrules(order)
+        ndof = len(intrules[ngs.ET.TET])
         if not isinstance(region, ngs.Region):
             region = region.Materials(".*")
         pts = region.mesh.MapToAllElements(intrules, region)
         V_inv = vandermonde_3d(order).T
-        vals = cf(pts).reshape(-1, len(intrules[ngs.ET.TET])).dot(V_inv)
-        vmin, vmax = vals.min(), vals.max()
+        pmat = cf(pts).reshape(-1, len(intrules[ngs.ET.TET]))
+        comps = cf.dim
+        comp_vals = pmat.reshape(-1, ndof, comps)
+        minval = np.min(comp_vals, axis=(0,1))
+        maxval = np.max(comp_vals, axis=(0,1))
+        if comps > 1:
+            norm = np.linalg.norm(comp_vals, axis=2)
+        else:
+            norm = np.abs(comp_vals)
+        vmin = [float(np.min(norm))] + [float(v) for v in minval]
+        vmax = [float(np.max(norm))] + [float(v) for v in maxval]
+        vals = np.einsum("ijk,jl->ilk", comp_vals, V_inv)
         ret = np.concatenate(
             ([np.float32(cf.dim), np.float32(order)], vals.reshape(-1)),
             dtype=np.float32,
@@ -281,15 +297,21 @@ class CFRenderer(BaseMeshElements2d):
         self.data = data
         self.colormap = colormap or Colormap()
         self.component = component if self.data.cf.dim > 1 else 0
+        self._on_component_change = []
 
     def update(self, options: RenderOptions):
         self.data.update(options)
         super().update(options)
         if self.colormap.autoscale:
-            self.colormap.set_min_max(self.data.minval, self.data.maxval, set_autoscale=False)
+            self.colormap.set_min_max(self.data.minval[self.component+1],
+                                      self.data.maxval[self.component+1],
+                                      set_autoscale=False)
         self.colormap._update_and_create_render_pipeline(options)
         self.component_buffer = buffer_from_array(np.array([self.component], np.int32))
         self.shader_defines["MAX_EVAL_ORDER"] = self.data.order
+
+    def on_component_change(self, callback):
+        self._on_component_change.append(callback)
 
     def get_bounding_box(self):
         return self.data.get_bounding_box()
@@ -301,11 +323,17 @@ class CFRenderer(BaseMeshElements2d):
             options = {"Norm": -1}
             for d in range(self.data.cf.dim):
                 options[str(d)] = d
-            gui.dropdown(func=self.change_cf_dim, label="Component", values=options)
+            gui.dropdown(func=self.set_component, label="Component", values=options)
 
+    @deprecated("Use set_component instead")
     def change_cf_dim(self, value):
-        self.component = value
+        self.set_component(value)
+
+    def set_component(self, component: int):
+        self.component = component
         self.component_buffer = buffer_from_array(np.array([self.component], np.int32))
+        for callback in self._on_component_change:
+            callback(component)
         self.set_needs_update()
 
     def get_bindings(self):

@@ -1,5 +1,5 @@
 from webgpu import create_bind_group, read_shader_file
-from webgpu.utils import buffer_from_array, uniform_from_array
+from webgpu.utils import buffer_from_array, uniform_from_array, write_array_to_buffer
 from webgpu.clipping import Clipping
 from webgpu.colormap import Colormap
 from webgpu.renderer import Renderer, RenderOptions
@@ -10,6 +10,7 @@ from webgpu.webgpu_api import *
 import numpy as np
 
 from .cf import FunctionData
+from .cf import Binding as CFBinding
 
 from .mesh import MeshElements3d, ElType
 from .mesh import Binding as MeshBinding
@@ -47,12 +48,13 @@ class ClippingCF(Renderer):
     n_vertices = 3
     subdivision = 0
 
-    def __init__(self, data: FunctionData, clipping: Clipping = None, colormap: Colormap = None):
+    def __init__(self, data: FunctionData, clipping: Clipping = None, colormap: Colormap = None, component=-1):
         super().__init__()
         self.clipping = clipping or Clipping()
         self.colormap = colormap or Colormap()
         self.clipping.callbacks.append(self.set_needs_update)
         self.data = data
+        self.component = component
         self.data.need_3d = True
         self.options = None
 
@@ -61,6 +63,7 @@ class ClippingCF(Renderer):
         self.clipping.update(options)
         self.colormap.update(options)
         self._buffers = self.data.get_buffers()
+        self.component_buffer = uniform_from_array(np.array([self.component], np.int32))
         self.build_clip_plane()
 
     def get_bounding_box(self):
@@ -69,6 +72,11 @@ class ClippingCF(Renderer):
     def get_shader_code(self):
         return read_shader_file("ngsolve/clipping/render.wgsl")
 
+    def set_component(self, component: int):
+        self.component = component
+        self.component_buffer = uniform_from_array(np.array([self.component], np.int32))
+        self.set_needs_update()
+
     def get_bindings(self, compute=False):
         bindings = [
             BufferBinding(MeshBinding.VERTICES, self._buffers["vertices"]),
@@ -76,6 +84,7 @@ class ClippingCF(Renderer):
             UniformBinding(23, self.only_count),
             BufferBinding(MeshBinding.TET, self._buffers[ElType.TET]),
             BufferBinding(13, self._buffers["data_3d"]),
+            UniformBinding(CFBinding.COMPONENT, self.component_buffer),
             *self.clipping.get_bindings(),
         ]
         if compute:

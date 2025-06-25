@@ -5,6 +5,7 @@
 #import ngsolve/clipping/common
 
 @group(0) @binding(24) var<storage> subtrigs: array<SubTrig>;
+@group(0) @binding(55) var<uniform> u_component: i32;
 
 struct VertexOutputClip {
   @builtin(position) fragPosition: vec4<f32>,
@@ -35,7 +36,7 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
 @fragment
 fn fragment_main(input: VertexOutputClip) -> @location(0) vec4<f32>
 {
-  let value = evalTet(&u_function_values_3d, input.elnr, 0, input.lam);
+  let value = evalTet(&u_function_values_3d, input.elnr, u_component, input.lam);
   return lightCalcColor(input.p, input.n, getColor(value));
 }
 
