@@ -26,6 +26,10 @@ fn evalTet(data: ptr<storage, array<f32>, read>,
 
   let offset: u32 = ndof * id * ncomp + VALUES_OFFSET;
   let stride: u32 = ncomp;
+  var lam_res = clamp(vec4f(lam.xyz, 1.0 - lam.x - lam.y - lam.z),
+                      vec4f(0.0, 0.0, 0.0, 0.0),
+                      vec4f(1.0, 1.0, 1.0, 1.0));
+  lam_res *= 1.0 / (lam_res.x + lam_res.y + lam_res.z + lam_res.w);
 
   var value: f32 = 0.0;
   var j: u32 = 0u;
@@ -38,7 +42,7 @@ fn evalTet(data: ptr<storage, array<f32>, read>,
           {
             var comp_val = 0.;
             for(var k: u32 = 0u; k < ncomp; k++) {
-              comp_val = comp_val + mypow(fac * (*data)[offset + j] * mypow(lam.x, a) * mypow(lam.y, b) * mypow(lam.z, c) * mypow(1.0 - lam.x - lam.y - lam.z, d), 2u);
+              comp_val = comp_val + mypow(fac * (*data)[offset + j] * mypow(lam_res.x, a) * mypow(lam_res.y, b) * mypow(lam_res.z, c) * mypow(lam_res.w, d), 2u);
               j++;
             }
             value = value + sqrt(comp_val);
