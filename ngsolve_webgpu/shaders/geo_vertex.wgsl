@@ -65,9 +65,9 @@ fn fragment_main(input: GeoVertexInput) -> @location(0) vec4<f32> {
 }
 
 @fragment
-fn fragmentQueryIndex(input: GeoVertexInput) -> @location(0) vec2<u32> {
+fn fragmentQueryIndex(input: GeoVertexInput) -> @location(0) vec4<u32> {
   if(length(input.pos.xy - input.pos2.xy) > u_vertex_thickness/2.) {
     discard;
   }
-  return vec2<u32>(input.index, 0u);
+  return vec4<u32>(@RENDER_OBJECT_ID@, input.index, 0u, 0);
 }

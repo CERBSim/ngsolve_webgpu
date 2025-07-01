@@ -379,8 +379,7 @@ class El3dUniform(UniformBase):
 class MeshElements3d(Renderer):
     n_vertices: int = 3 * 4
 
-    def __init__(self, data: MeshData, clipping=None,
-                 colors: list | None = None):
+    def __init__(self, data: MeshData, clipping=None, colors: list | None = None):
         super().__init__(label="MeshElements3d")
         data.need_3d = True
         self.data = data
@@ -388,7 +387,7 @@ class MeshElements3d(Renderer):
         self._shrink = 1.0
         self.uniforms = None
         if colors is None:
-            colors = [[255,0,0,255] for _ in range(len(data.ngs_mesh.GetMaterials()))]
+            colors = [[255, 0, 0, 255] for _ in range(len(data.ngs_mesh.GetMaterials()))]
         self.colormap = Colormap(colormap=colors, minval=-0.5, maxval=len(colors) - 0.5)
         self.colormap.discrete = 0
         self.colormap.n_colors = 4 * len(colors)

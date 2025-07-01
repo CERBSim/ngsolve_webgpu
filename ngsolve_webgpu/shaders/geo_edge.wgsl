@@ -9,6 +9,7 @@
 struct GeoEdgeInput
 {
   @builtin(position) position: vec4<f32>,
+  @location(0) p: vec3<f32>,
   @location(1) @interpolate(flat) index: u32,
 };
 
@@ -28,6 +29,8 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
   // see https://www.iquilezles.org/www/articles/thicklines/thicklines.htm
   var tp1 = cameraMapPoint(p1);
   var tp2 = cameraMapPoint(p2);
+  var p: vec3<f32>;
+
   var sp1 = tp1.xy/tp1.w;
   var sp2 = tp2.xy/tp2.w;
   sp1.x *= u_camera.aspect;
@@ -38,26 +41,31 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
   var pos : vec4<f32>;
   if(vertId == 0) {
     pos = tp1;
+    p = p1;
     normal = -normal;
   }
   else if(vertId == 1) {
     pos = tp1;
+    p = p1;
   }
   else if(vertId == 2) {
     pos = tp2;
+    p = p2;
     normal = -normal;
   }
   else {
+    p = p2;
     pos = tp2;
   }
 
   pos = vec4<f32>(pos.xy + normal*pos.w, pos.zw);
   
-  return GeoEdgeInput(pos, u_indices[instanceId]);
+  return GeoEdgeInput(pos, p, u_indices[instanceId]);
 }
 
 @fragment
 fn fragment_main(input: GeoEdgeInput) -> @location(0) vec4<f32> {
+  checkClipping(input.p);
   if (u_color[input.index*4+3] == 0.0) {
     discard;
   }
@@ -68,6 +76,10 @@ fn fragment_main(input: GeoEdgeInput) -> @location(0) vec4<f32> {
 }
 
 @fragment
-fn fragmentQueryIndex(input: GeoEdgeInput) -> @location(0) vec2<u32> {
-  return vec2<u32>(input.index, 1u);
+fn fragmentQueryIndex(input: GeoEdgeInput) -> @location(0) vec4<u32> {
+  checkClipping(input.p);
+  if (u_color[input.index*4+3] == 0.0) {
+    discard;
+  }
+  return vec4<u32>(@RENDER_OBJECT_ID@, input.index, 1u, 0);
 }

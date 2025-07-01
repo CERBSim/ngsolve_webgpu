@@ -2,9 +2,11 @@ import ngsolve as ngs
 import webgpu.jupyter as wj
 from webgpu.clipping import Clipping
 from webgpu.colormap import Colorbar, Colormap
+import netgen.occ as ngocc
 
 from .cf import CFRenderer, FunctionData
 from .mesh import MeshData, MeshElements2d, MeshWireframe2d
+from .geometry import GeometryRenderer
 
 _local_path = None  # change this to local path of pyodide compiled zip files
 
@@ -99,9 +101,9 @@ waitTillPyodideReady();
 
 
 def Draw(
-    obj: ngs.CoefficientFunction | ngs.Mesh,
+    obj: ngs.CoefficientFunction | ngs.Mesh | ngocc.OCCGeometry | ngocc.TopoDS_Shape,
     mesh: ngs.Mesh | None = None,
-    name: str = None,
+    name: str | None = None,
     width=600,
     height=600,
     order: int = 2,
@@ -131,16 +133,22 @@ def Draw(
     order : int
         The order which is used to render the CoefficientFunction. Default is 2.
     """
-    if order > 6:
-        raise ValueError("Order must be less than or equal to 6")
     # create gui before calling render
     render_objects = []
     clipping = Clipping()
     colormap = Colormap()
     if isinstance(obj, ngs.Mesh | ngs.Region):
         mesh = obj
+    if isinstance(obj, ngocc.TopoDS_Shape):
+        obj = ngocc.OCCGeometry(obj)
+    if isinstance(obj, ngocc.OCCGeometry):
+        render_geo = renderer = GeometryRenderer(obj, clipping=clipping)
+        render_objects.append(render_geo)
 
-    dim = mesh.mesh.dim if isinstance(mesh, ngs.Region) else mesh.dim
+    if mesh is not None:
+        dim = mesh.mesh.dim if isinstance(mesh, ngs.Region) else mesh.dim
+    else:
+        dim = 3
 
     if isinstance(obj, ngs.CoefficientFunction):
         if mesh is None:
@@ -149,9 +157,10 @@ def Draw(
             else:
                 raise ValueError("If obj is a CoefficientFunction, mesh is required.")
 
-    mesh_data = MeshData(mesh)
-    wf = MeshWireframe2d(mesh_data, clipping=clipping)
-    render_objects.append(wf)
+    if mesh is not None:
+        mesh_data = MeshData(mesh)
+        wf = MeshWireframe2d(mesh_data, clipping=clipping)
+        render_objects.append(wf)
 
     if isinstance(obj, ngs.Mesh | ngs.Region):
         render_objects.append(MeshElements2d(mesh_data, clipping=clipping))
@@ -178,6 +187,7 @@ def Draw(
         mesh_data.subdivision = subdivision
 
     scene = wj.Draw(render_objects, width, height)
+    clipping.center = 0.5 * (scene.bounding_box[0] + scene.bounding_box[1])
     if dim == 3:
         clipping.add_options_to_gui(scene.gui)
     for r in render_objects:

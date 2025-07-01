@@ -33,6 +33,7 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
 
 @fragment
 fn fragment_main(input: GeoFragmentInput) -> @location(0) vec4<f32> {
+  checkClipping(input.p);
   let color = vec4<f32>(u_colors[input.index * 4],
                         u_colors[input.index * 4 + 1],
                         u_colors[input.index * 4 + 2],
@@ -44,7 +45,15 @@ fn fragment_main(input: GeoFragmentInput) -> @location(0) vec4<f32> {
 }
 
 @fragment
-fn fragmentQueryIndex(input: GeoFragmentInput) -> @location(0) vec2<u32>
+fn fragmentQueryIndex(input: GeoFragmentInput) -> @location(0) vec4<u32>
 {
-  return vec2<u32>(input.index, 2u);
+  checkClipping(input.p);
+  let color = vec4<f32>(u_colors[input.index * 4],
+                        u_colors[input.index * 4 + 1],
+                        u_colors[input.index * 4 + 2],
+                        u_colors[input.index * 4 + 3]);
+  if (color.a == 0.) {
+    discard;
+  }
+  return vec4<u32>(@RENDER_OBJECT_ID@, input.index, 2u, 0);
 }

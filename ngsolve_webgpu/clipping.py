@@ -48,7 +48,9 @@ class ClippingCF(Renderer):
     n_vertices = 3
     subdivision = 0
 
-    def __init__(self, data: FunctionData, clipping: Clipping = None, colormap: Colormap = None, component=-1):
+    def __init__(
+        self, data: FunctionData, clipping: Clipping = None, colormap: Colormap = None, component=-1
+    ):
         super().__init__()
         self.clipping = clipping or Clipping()
         self.colormap = colormap or Colormap()

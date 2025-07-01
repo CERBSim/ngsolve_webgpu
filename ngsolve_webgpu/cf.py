@@ -234,8 +234,8 @@ class FunctionData:
         pmat = cf(pts).reshape(-1, len(intrules[ngs.ET.TET]))
         comps = cf.dim
         comp_vals = pmat.reshape(-1, ndof, comps)
-        minval = np.min(comp_vals, axis=(0,1))
-        maxval = np.max(comp_vals, axis=(0,1))
+        minval = np.min(comp_vals, axis=(0, 1))
+        maxval = np.max(comp_vals, axis=(0, 1))
         if comps > 1:
             norm = np.linalg.norm(comp_vals, axis=2)
         else:
@@ -303,9 +303,11 @@ class CFRenderer(BaseMeshElements2d):
         self.data.update(options)
         super().update(options)
         if self.colormap.autoscale:
-            self.colormap.set_min_max(self.data.minval[self.component+1],
-                                      self.data.maxval[self.component+1],
-                                      set_autoscale=False)
+            self.colormap.set_min_max(
+                self.data.minval[self.component + 1],
+                self.data.maxval[self.component + 1],
+                set_autoscale=False,
+            )
         self.colormap._update_and_create_render_pipeline(options)
         self.component_buffer = buffer_from_array(np.array([self.component], np.int32))
         self.shader_defines["MAX_EVAL_ORDER"] = self.data.order
