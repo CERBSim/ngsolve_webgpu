@@ -36,7 +36,11 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
   sp1.x *= u_camera.aspect;
   sp2.x *= u_camera.aspect;
   let v = normalize(sp2 - sp1);
-  var normal = vec2<f32>(-v.y, v.x) * u_thickness * 0.5;
+  var thickness = u_thickness * 0.5;
+#ifdef SELECT_PIPELINE
+    thickness = 10*thickness;
+#endif SELECT_PIPELINE
+  var normal = vec2<f32>(-v.y, v.x) * thickness;
   normal.x = normal.x / u_camera.aspect;
   var pos : vec4<f32>;
   if(vertId == 0) {
