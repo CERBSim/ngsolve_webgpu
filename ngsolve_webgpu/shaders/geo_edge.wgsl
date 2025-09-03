@@ -85,5 +85,5 @@ fn fragmentQueryIndex(input: GeoEdgeInput) -> @location(0) vec4<u32> {
   if (u_color[input.index*4+3] == 0.0) {
     discard;
   }
-  return vec4<u32>(@RENDER_OBJECT_ID@, input.index, 1u, 0);
+  return vec4<u32>(@RENDER_OBJECT_ID@, bitcast<u32>(input.position.z), 1u, input.index);
 }

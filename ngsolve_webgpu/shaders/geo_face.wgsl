@@ -55,5 +55,5 @@ fn fragmentQueryIndex(input: GeoFragmentInput) -> @location(0) vec4<u32>
   if (color.a == 0.) {
     discard;
   }
-  return vec4<u32>(@RENDER_OBJECT_ID@, input.index, 2u, 0);
+  return vec4<u32>(@RENDER_OBJECT_ID@, bitcast<u32>(input.position.z), 2u, input.index);
 }
