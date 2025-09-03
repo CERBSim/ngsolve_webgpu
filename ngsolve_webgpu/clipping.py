@@ -45,6 +45,7 @@ class VolumeCF(MeshElements3d):
 
 class ClippingCF(Renderer):
     compute_shader = "ngsolve/clipping/compute.wgsl"
+    select_entry_point = "fragment_select_no_clipping"
     n_vertices = 3
     subdivision = 0
 
