@@ -85,6 +85,8 @@ class ElType(Enum):
                 return ElType.PRISM
             if np == 5:
                 return ElType.PYRAMID
+            if np == 10:
+                return ElType.TET
         raise ValueError(f"Unsupported element type dim={dim} np={np}")
 
 
@@ -100,6 +102,8 @@ class MeshData:
     subdivision: int
 
     mesh: netgen.meshing.Mesh
+    el2d_bitarray = None
+    el3d_bitarray = None
     curvature_data = None
     deformation_data = None
     _ngs_mesh = None
@@ -107,9 +111,11 @@ class MeshData:
     _timestamp: float = -1
     _needs_update: bool = True
 
-    def __init__(self, mesh):
+    def __init__(self, mesh, el2d_bitarray=None, el3d_bitarray=None):
         self.on_region = False
         self.need_3d = False
+        self.el2d_bitarray = el2d_bitarray
+        self.el3d_bitarray = el3d_bitarray
         if isinstance(mesh, netgen.meshing.Mesh):
             self.mesh = mesh
         else:
@@ -196,6 +202,8 @@ class MeshData:
 
         # Trigs TODO: Quads
         trigs = mesh.Elements2D().NumPy()
+        if self.el2d_bitarray is not None:
+            trigs = trigs[np.array(self.el2d_bitarray, dtype=bool)]
         if self.on_region:
             region = self.ngs_mesh
             import ngsolve as ngs
@@ -213,15 +221,18 @@ class MeshData:
         # 3d Elements
         if self.need_3d:
             els = mesh.Elements3D().NumPy()
-            for num_pts in (4, 5, 6, 8):
+            if self.el3d_bitarray is not None:
+                els = els[np.array(self.el3d_bitarray, dtype=bool)]
+            for num_pts in (4, 5, 6, 8, 10):
                 eltype = ElType.from_dim_np(3, num_pts)
                 filtered = els[els["np"] == num_pts]
                 nels = len(filtered)
                 if nels == 0:
                     continue
-                u32array = np.empty((nels, num_pts + 2), dtype=np.uint32)
-                u32array[:, :num_pts] = filtered["nodes"][:, :num_pts] - 1
-                u32array[:, num_pts] = filtered["index"] - 1
+                lo_num_pts = 4 if num_pts == 10 else num_pts
+                u32array = np.empty((nels, lo_num_pts + 2), dtype=np.uint32)
+                u32array[:, :lo_num_pts] = filtered["nodes"][:, :lo_num_pts] - 1
+                u32array[:, lo_num_pts] = filtered["index"] - 1
                 self.elements[eltype] = u32array
                 self.num_elements[eltype] = len(filtered)
 
