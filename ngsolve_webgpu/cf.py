@@ -225,6 +225,10 @@ class FunctionData:
         return self.mesh_data.get_bounding_box()
 
     def evaluate_3d(self, cf, region, order):
+        if isinstance(region, ngs.Mesh):
+            region = region.Materials(".*")
+        if region.mesh.dim != 3 or region.VB() != ngs.VOL:
+            return np.array([]), [1e99, 1e99], [-1e99, -1e99]
         intrules = get_3d_intrules(order)
         ndof = len(intrules[ngs.ET.TET])
         if not isinstance(region, ngs.Region):
