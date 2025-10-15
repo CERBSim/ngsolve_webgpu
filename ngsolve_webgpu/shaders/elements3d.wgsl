@@ -64,6 +64,13 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
 
     for (var i = 0u; i < 4u; i++) {
         p[i] = mix(center, p[i], u_mesh.shrink);
+        if(calcClipping(p[i]) == false) {
+          // one vertex is clipped away, skip rendering this tet
+          return MeshFragmentInput(vec4<f32>(0.0, 0.0, 0.0, 0.0),
+                                   vec3<f32>(0.0, 0.0, 0.0),
+                                   vec3<f32>(0.0, 0.0, 0.0),
+                                   0u, 0u);
+        }
     }
     var lams = array<vec3<f32>, 4>(
         vec3<f32>(1.0, 0.0, 0.0),
