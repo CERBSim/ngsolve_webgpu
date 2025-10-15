@@ -254,6 +254,19 @@ fn fragment2dElement(input: VertexOutput2d) -> @location(0) vec4<f32> {
   return lightCalcColor(input.p, input.n, color);
 }
 
+#ifdef SELECT_PIPELINE
+@fragment fn select2dElement(
+    input: VertexOutput2d
+) -> @location(0) vec4<u32> {
+    checkClipping(input.p);
+    let color = getColor(f32(input.index));
+    if(color.a < 0.01) {
+      discard;
+    }
+    return vec4<u32>(@RENDER_OBJECT_ID@, bitcast<u32>(input.fragPosition.z), 0, 0);
+}
+#endif SELECT_PIPELINE
+
 @fragment
 fn fragmentWireframe2d(input: VertexOutput2d) -> @location(0) vec4<f32> {
   checkClipping(input.p);

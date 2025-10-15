@@ -342,6 +342,7 @@ class BaseMeshElements2d(Renderer):
 
 class MeshElements2d(BaseMeshElements2d):
     fragment_entry_point = "fragment2dElement"
+    select_entry_point: str = "select2dElement"
 
     def __init__(
         self, data: MeshData, clipping=None, colors: list | None = None, label="MeshElements2d"
