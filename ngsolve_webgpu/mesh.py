@@ -113,7 +113,7 @@ class MeshData:
 
     def __init__(self, mesh, el2d_bitarray=None, el3d_bitarray=None):
         self.on_region = False
-        self.need_3d = False
+        self.need_3d = True
         self.el2d_bitarray = el2d_bitarray
         self.el3d_bitarray = el3d_bitarray
         if isinstance(mesh, netgen.meshing.Mesh):

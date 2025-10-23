@@ -8,11 +8,7 @@ from webgpu.clipping import Clipping
 from webgpu.colormap import Colormap
 from webgpu.renderer import Renderer, RenderOptions, check_timestamp
 from webgpu.shapes import ShapeRenderer, generate_cylinder
-from webgpu.utils import (
-    BufferBinding,
-    UniformBinding,
-    buffer_from_array,
-)
+from webgpu.utils import BufferBinding, UniformBinding, buffer_from_array, write_array_to_buffer
 from webgpu.vectors import BaseVectorRenderer, VectorRenderer
 from webgpu.webgpu_api import Buffer
 
@@ -121,8 +117,9 @@ def evaluate_cf(cf, mesh, order):
         region = mesh.Materials(".*")
         if mesh.dim == 3:
             region = mesh.Boundaries(".*")
-    pts = region.mesh.MapToAllElements({ngs.ET.TRIG: intrule, ngs.ET.QUAD: intrule}, region)
-    pmat = cf(pts)
+    with ngs.TaskManager():
+        pts = region.mesh.MapToAllElements({ngs.ET.TRIG: intrule, ngs.ET.QUAD: intrule}, region)
+        pmat = cf(pts)
     pmat = pmat.reshape(-1, ndof, comps)
     minval = np.min(pmat, axis=(0, 1))
     maxval = np.max(pmat, axis=(0, 1))
@@ -131,13 +128,14 @@ def evaluate_cf(cf, mesh, order):
     maxval = [float(np.max(norm))] + [float(v) for v in maxval]
 
     values = np.zeros((ndof, pmat.shape[0], comps), dtype=np.float32)
-    for i in range(comps):
-        ngsmat = ngs.Matrix(pmat[:, :, i].transpose())
-        values[:, :, i] = ibmat * ngsmat
+
+    with ngs.TaskManager():
+        for i in range(comps):
+            ngsmat = ngs.Matrix(pmat[:, :, i].transpose())
+            values[:, :, i] = ibmat * ngsmat
 
     values = values.transpose((1, 0, 2)).flatten()
     ret = np.concatenate(([np.float32(cf.dim), np.float32(order)], values.reshape(-1)))
-    # print("ret = ", ret)
     return ret, minval, maxval
 
 
@@ -211,9 +209,13 @@ class FunctionData:
     def get_buffers(self):
         buffers = self.mesh_data.get_buffers().copy()
         if self.gpu_2d is None:
-            self.gpu_2d = buffer_from_array(self.data_2d, label="function_data_2d")
+            self.gpu_2d = buffer_from_array(
+                self.data_2d, label="function_data_2d", reuse=self.gpu_2d
+            )
             if self.data_3d is not None:
-                self.gpu_3d = buffer_from_array(self.data_3d, label="function_data_3d")
+                self.gpu_3d = buffer_from_array(
+                    self.data_3d, label="function_data_3d", reuse=self.gpu_3d
+                )
         buffers["data_2d"] = self.gpu_2d
         if self.gpu_3d is not None:
             buffers["data_3d"] = self.gpu_3d
@@ -233,11 +235,24 @@ class FunctionData:
         ndof = len(intrules[ngs.ET.TET])
         if not isinstance(region, ngs.Region):
             region = region.Materials(".*")
-        pts = region.mesh.MapToAllElements(intrules, region)
-        V_inv = vandermonde_3d(order).T
-        pmat = cf(pts).reshape(-1, len(intrules[ngs.ET.TET]))
-        comps = cf.dim
-        comp_vals = pmat.reshape(-1, ndof, comps)
+
+        with ngs.TaskManager():
+            pts = region.mesh.MapToAllElements(intrules, region)
+            V_inv = vandermonde_3d(order).T
+            pmat = cf(pts).reshape(-1, len(intrules[ngs.ET.TET]))
+            comps = cf.dim
+            comp_vals = pmat.reshape(-1, ndof, comps)
+
+            I, K, L = comp_vals.shape[0], comp_vals.shape[2], V_inv.shape[1]
+            vals = np.zeros((I, L, K))
+
+            ibmat = ngs.Matrix(V_inv.T)  # note the transpose for matching dimensions
+
+            for k in range(K):
+                ngsmat = ngs.Matrix(comp_vals[:, :, k].T)
+                result = ibmat * ngsmat
+                vals[:, :, k] = np.array(result).T
+
         minval = np.min(comp_vals, axis=(0, 1))
         maxval = np.max(comp_vals, axis=(0, 1))
         if comps > 1:
@@ -246,7 +261,7 @@ class FunctionData:
             norm = np.abs(comp_vals)
         vmin = [float(np.min(norm))] + [float(v) for v in minval]
         vmax = [float(np.max(norm))] + [float(v) for v in maxval]
-        vals = np.einsum("ijk,jl->ilk", comp_vals, V_inv)
+
         ret = np.concatenate(
             ([np.float32(cf.dim), np.float32(order)], vals.reshape(-1)),
             dtype=np.float32,
@@ -337,10 +352,9 @@ class CFRenderer(BaseMeshElements2d):
 
     def set_component(self, component: int):
         self.component = component
-        self.component_buffer = buffer_from_array(np.array([self.component], np.int32))
+        write_array_to_buffer(self.component_buffer, np.array([self.component], np.int32))
         for callback in self._on_component_change:
             callback(component)
-        self.set_needs_update()
 
     def get_bindings(self):
         return [
