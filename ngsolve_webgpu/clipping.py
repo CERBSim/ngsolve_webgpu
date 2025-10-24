@@ -59,7 +59,7 @@ class ClippingCF(Renderer):
         self.colormap = colormap or Colormap()
         self._clipping.callbacks.append(self.set_needs_update)
         self.data = data
-        self.component = component
+        self.component = component if data.cf.dim > 1 else 0
         self.data.need_3d = True
         self.options = None
         self.component_buffer = None
