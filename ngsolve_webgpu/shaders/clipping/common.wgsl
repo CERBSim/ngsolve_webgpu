@@ -19,9 +19,16 @@ fn get_tet_points(elid: u32) -> array<vec3f, 4>
 {
   var p: array<vec3f, 4>;
   for(var i = 0u; i < 4u; i++) {
+    var lam = vec3f(0., 0., 0.);
+    if(i < 3u) {
+      lam[i] = 1.0;
+    }
     for(var j = 0u; j < 3u; j++) {
       p[i][j] = vertices[u_tets[elid].p[i] * 3u + j];
+      if(u_deformation_values_3d[0] != -1.) {
+        p[i][j] += u_deformation_scale * evalTet(&u_deformation_values_3d, elid, i32(j), lam);
     }
+  }
   }
   return p;
 }

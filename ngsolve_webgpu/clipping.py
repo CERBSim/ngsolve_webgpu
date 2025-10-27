@@ -61,6 +61,8 @@ class ClippingCF(Renderer):
         self.data = data
         self.component = component if data.cf.dim > 1 else 0
         self.data.need_3d = True
+        if self.data.mesh_data.deformation_data is not None:
+            self.data.mesh_data.deformation_data.need_3d = True
         self.options = None
         self.component_buffer = None
         self.cut_trigs_counter = None
@@ -110,6 +112,8 @@ class ClippingCF(Renderer):
             UniformBinding(23, self.only_count),
             BufferBinding(MeshBinding.TET, self._buffers[ElType.TET]),
             BufferBinding(13, self._buffers["data_3d"]),
+            UniformBinding(17, self._buffers["deformation_scale"]),
+            BufferBinding(18, self._buffers["deformation_3d"]),
             UniformBinding(CFBinding.COMPONENT, self.component_buffer),
             *self.clipping.get_bindings(),
         ]

@@ -4,6 +4,7 @@
 @group(0) @binding(15) var<uniform> u_subdivision : u32;
 @group(0) @binding(16) var<storage> u_deformation_values_2d : array<f32>;
 @group(0) @binding(17) var<uniform> u_deformation_scale : f32;
+@group(0) @binding(18) var<storage> u_deformation_values_3d : array<f32>;
 @group(0) @binding(55) var<storage> u_function_component: i32;
 
 

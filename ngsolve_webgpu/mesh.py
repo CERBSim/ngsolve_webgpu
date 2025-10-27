@@ -32,6 +32,7 @@ class Binding:
     SUBDIVISION = 15
     DEFORMATION_VALUES = 16
     DEFORMATION_SCALE = 17
+    DEFORMATION_3D_VALUES = 18
 
     MESH = 20
     EDGE = 21
@@ -178,8 +179,13 @@ class MeshData:
         if self.deformation_data:
             self.deformation_data.update(options)
             self.elements["deformation_2d"] = self.deformation_data.data_2d
+            if self.need_3d:
+                self.elements["deformation_3d"] = self.deformation_data.data_3d
+            else:
+                self.elements["deformation_3d"] = np.array([-1], dtype=np.float32)
         else:
             self.elements["deformation_2d"] = np.array([-1], dtype=np.float32)
+            self.elements["deformation_3d"] = np.array([-1], dtype=np.float32)
 
     def _create_data(self):
         # TODO: implement other element types than triangles
@@ -329,6 +335,8 @@ class BaseMeshElements2d(Renderer):
             BufferBinding(Binding.TRIGS_INDEX, self._buffers[ElType.TRIG]),
             BufferBinding(Binding.CURVATURE_VALUES_2D, self._buffers["curvature_2d"]),
             BufferBinding(Binding.DEFORMATION_VALUES, self._buffers["deformation_2d"]),
+            BufferBinding(Binding.DEFORMATION_3D_VALUES,
+                          self._buffers["deformation_3d"]),
             UniformBinding(Binding.DEFORMATION_SCALE, self._buffers["deformation_scale"]),
             UniformBinding(Binding.SUBDIVISION, self._buffers["subdivision"]),
         ]
