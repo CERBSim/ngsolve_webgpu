@@ -18,6 +18,7 @@ from .mesh import ElType, MeshData
 
 class Binding:
     FUNCTION_VALUES_2D = 10
+    FUNCTION_VALUES_3D = 13
     COMPONENT = 55
 
 

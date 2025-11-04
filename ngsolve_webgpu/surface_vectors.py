@@ -1,7 +1,11 @@
 import ngsolve as ngs
 import numpy as np
+import ctypes
+from webgpu.colormap import Colormap
+from webgpu.clipping import Clipping
 from webgpu.shapes import ShapeRenderer, generate_cone, generate_cylinder
 from webgpu.utils import (
+    create_buffer,
     BufferUsage,
     BufferBinding,
     ReadBuffer,
@@ -23,20 +27,23 @@ class SurfaceVectors(ShapeRenderer):
     def __init__(
         self,
         function_data: FunctionData,
-        mesh: MeshData,
         grid_size: float = 0.02,
+        clipping: Clipping = None,
+        colormap: Colormap = None,
     ):
-        self.function_data = function_data
-        self.mesh = mesh
+        self.clipping = clipping or Clipping()
 
-        bbox = mesh.get_bounding_box()
+        self.function_data = function_data
+        self.mesh = function_data.mesh_data
+
+        bbox = self.mesh.get_bounding_box()
         grid_size = np.linalg.norm(np.array(bbox[1]) - np.array(bbox[0])) * grid_size
 
         cyl = generate_cylinder(8, 0.05, 0.5, bottom_face=True)
         cone = generate_cone(8, 0.2, 0.5, bottom_face=True)
         arrow = cyl + cone.move((0, 0, 0.5))
 
-        super().__init__(arrow, None, None)
+        super().__init__(arrow, None, None, colormap=colormap)
         # self.scale_mode = ShapeRenderer.SCALE_Z
 
     def get_bounding_box(self):
@@ -137,6 +144,145 @@ class SurfaceVectors(ShapeRenderer):
         self.mesh.update(options)
         self.function_data.update(options)
         self.colormap.update(options)
+        self.clipping.update(options)
         self.compute_vectors()
         super().update(options)
         return
+
+
+class ClippingVectors(SurfaceVectors):
+    def __init__(
+        self,
+        function_data: FunctionData,
+        grid_size: float = 0.02,
+        clipping: Clipping = None,
+        colormap: Colormap = None,
+    ):
+        super().__init__(
+            function_data=function_data, grid_size=grid_size, clipping=clipping
+        )  # , colormap)
+        function_data.need_3d = True
+
+        self.u_nvectors = None
+        self.u_ntets = None
+
+        self.__buffers = {}
+
+        self.clipping.callbacks.append(self.set_needs_update)
+
+        self.__clipping = Clipping()
+
+    def get_compute_bindings(self, count=False):
+        self.u_ntets = uniform_from_array(
+            np.array([self.function_data.mesh_data.num_elements[ElType.TET]], dtype=np.uint32),
+            label="n_tets",
+            reuse=self.u_ntets,
+        )
+
+        buffers = self.function_data.get_buffers()
+
+        bindings = [
+            *self.colormap.get_bindings(),
+            *self.__clipping.get_bindings(),
+            BufferBinding(MeshBinding.VERTICES, buffers["vertices"]),
+            BufferBinding(MeshBinding.TET, buffers[ElType.TET]),
+            BufferBinding(22, self.__buffers["positions"], read_only=False),
+            BufferBinding(23, self.__buffers["directions"], read_only=False),
+            BufferBinding(29, self.__buffers["values"], read_only=False),
+            BufferBinding(21, self.u_nvectors, read_only=False),
+            UniformBinding(24, self.u_ntets),
+            BufferBinding(MeshBinding.DEFORMATION_3D_VALUES, buffers["deformation_3d"]),
+            UniformBinding(MeshBinding.DEFORMATION_SCALE, buffers["deformation_scale"]),
+            BufferBinding(FunctionBinding.FUNCTION_VALUES_3D, buffers["data_3d"]),
+        ]
+
+        return bindings
+
+    def allocate_buffers(self):
+        print("allocate buffers", self.n_vectors)
+        for name in ["positions", "directions", "values"]:
+            size = 4 * self.n_vectors if name == "values" else 3 * 4 * self.n_vectors
+            self.__buffers[name] = create_buffer(
+                size=size,
+                usage=BufferUsage.STORAGE | BufferUsage.COPY_SRC,
+                label=name,
+                reuse=self.__buffers.get(name, None),
+            )
+
+    def compute_vectors(self):
+        print("Computing clipping vectors...")
+        self.u_nvectors = buffer_from_array(
+            np.array([0], dtype=np.uint32),
+            label="n_vectors",
+            usage=BufferUsage.STORAGE | BufferUsage.COPY_DST | BufferUsage.COPY_SRC,
+            reuse=self.u_nvectors,
+        )
+
+        self.n_vectors = 1
+        self.allocate_buffers()
+
+        n_tets = self.mesh.num_elements[ElType.TET]
+        print("n_tets =", n_tets)
+
+        bindings = self.get_compute_bindings()
+
+        n_work_groups = min(n_tets // 256 + 1, 1024)
+
+        run_compute_shader(
+            read_shader_file("ngsolve/clipping_vectors.wgsl"),
+            bindings,
+            n_work_groups,
+            entry_point="compute_clipping_vectors",
+            defines={
+                "MODE": 0,
+            },
+        )
+
+        self.n_vectors = int(read_buffer(self.u_nvectors, np.uint32)[0])
+        write_array_to_buffer(self.u_nvectors, np.array([0], dtype=np.uint32))
+        print("n_vectors =", self.n_vectors)
+
+        self.allocate_buffers()
+
+        run_compute_shader(
+            read_shader_file("ngsolve/clipping_vectors.wgsl"),
+            bindings,
+            n_work_groups,
+            entry_point="compute_clipping_vectors",
+            defines={
+                "MODE": 1,
+            },
+        )
+
+        self.n_vectors = int(read_buffer(self.u_nvectors, np.uint32)[0])
+        print("n_vectors =", self.n_vectors)
+
+        n = self.n_vectors * 4
+        self.positions = read_buffer(self.__buffers["positions"], np.float32, size=3 * n).reshape(
+            -1
+        )
+        self.values = read_buffer(self.__buffers["values"], np.float32, size=n).reshape(-1)
+        self.directions = read_buffer(self.__buffers["directions"], np.float32, size=3 * n).reshape(
+            -1
+        )
+
+        print("positions", self.positions.shape, sum(self.positions * self.positions))
+
+    def update(self, options):
+        print("Updating clipping vectors...")
+        if not hasattr(self.__clipping, "uniforms"):
+            self.__clipping.update(options)
+
+        ctypes.memmove(
+            ctypes.addressof(self.__clipping.uniforms),
+            ctypes.addressof(self.clipping.uniforms),
+            ctypes.sizeof(self.clipping.uniforms),
+        )
+        self.__clipping.uniforms.update_buffer()
+        super().update(options)
+        return
+
+    def render(self, options) -> None:
+        print("Rendering clipping vectors...")
+        super().render(options)
+        print("render done")

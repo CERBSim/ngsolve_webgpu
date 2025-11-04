@@ -4,6 +4,7 @@ from .clipping import ClippingCF
 from webgpu.colormap import Colorbar, Colormap
 from webgpu.clipping import Clipping
 from .geometry import GeometryRenderer
+from .surface_vectors import SurfaceVectors, ClippingVectors
 
 
 from webgpu.utils import register_shader_directory as _register_shader_directory

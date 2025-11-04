@@ -337,8 +337,7 @@ class BaseMeshElements2d(Renderer):
             BufferBinding(Binding.TRIGS_INDEX, self._buffers[ElType.TRIG]),
             BufferBinding(Binding.CURVATURE_VALUES_2D, self._buffers["curvature_2d"]),
             BufferBinding(Binding.DEFORMATION_VALUES, self._buffers["deformation_2d"]),
-            BufferBinding(Binding.DEFORMATION_3D_VALUES,
-                          self._buffers["deformation_3d"]),
+            BufferBinding(Binding.DEFORMATION_3D_VALUES, self._buffers["deformation_3d"]),
             UniformBinding(Binding.DEFORMATION_SCALE, self._buffers["deformation_scale"]),
             UniformBinding(Binding.SUBDIVISION, self._buffers["subdivision"]),
         ]
