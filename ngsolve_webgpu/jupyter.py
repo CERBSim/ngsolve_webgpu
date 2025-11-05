@@ -196,3 +196,14 @@ def Draw(
 
 
 __all__ = ["Draw"]
+
+
+wj.add_zipped_module_on_export("ngsolve_webgpu")
+# wj.install_wheels_on_export(
+#     [
+#         "https://cdn.jsdelivr.net/gh/mhochsteger/ngsolve_pyodide@0.27.5/pyngcore.zip",
+#         "https://cdn.jsdelivr.net/gh/mhochsteger/ngsolve_pyodide@0.27.5/netgen.zip",
+#         "https://cdn.jsdelivr.net/gh/mhochsteger/ngsolve_pyodide@0.27.5/ngsolve.zip",
+#     ]
+# )
+wj.add_init_js_code("await window.pyodide.loadPackage(['ngsolve'])")

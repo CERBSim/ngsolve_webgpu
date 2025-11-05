@@ -1,6 +1,4 @@
 from webgpu.renderer import BaseRenderer
-import ngsolve as ngs
-
 
 class Animation(BaseRenderer):
     def __init__(self, child):
@@ -29,6 +27,7 @@ class Animation(BaseRenderer):
     def crawl_function(self, f):
         if f is None:
             return
+        import ngsolve as ngs
         if isinstance(f, ngs.GridFunction):
             self.gfs.add(f)
         elif isinstance(f, ngs.Parameter) or isinstance(f, ngs.ParameterC):

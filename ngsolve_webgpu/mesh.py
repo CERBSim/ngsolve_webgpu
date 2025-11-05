@@ -1,11 +1,17 @@
 from enum import Enum
 
 import netgen.meshing
+import typing
 import numpy as np
 from webgpu.clipping import Clipping
 from webgpu.font import Font
 from webgpu.renderer import Renderer, RenderOptions, check_timestamp
 from webgpu.colormap import Colormap
+
+if typing.TYPE_CHECKING:
+    import netgen.meshing
+    import ngsolve
+
 
 # from webgpu.uniforms import Binding
 from webgpu.uniforms import UniformBase, ct
@@ -102,9 +108,9 @@ class MeshData:
     gpu_elements: dict[str | ElType, Buffer]
     subdivision: int
 
-    mesh: netgen.meshing.Mesh
     el2d_bitarray = None
     el3d_bitarray = None
+    mesh: 'netgen.meshing.Mesh | ngsolve.Mesh'
     curvature_data = None
     deformation_data = None
     _ngs_mesh = None
@@ -113,6 +119,7 @@ class MeshData:
     _needs_update: bool = True
 
     def __init__(self, mesh, el2d_bitarray=None, el3d_bitarray=None):
+        import netgen.meshing
         self.on_region = False
         self.need_3d = False
         self.el2d_bitarray = el2d_bitarray
@@ -244,7 +251,11 @@ class MeshData:
                 self.elements[eltype] = u32array
                 self.num_elements[eltype] = len(filtered)
 
-        curve_order = mesh.GetCurveOrder()
+        try:
+            curve_order = mesh.GetCurveOrder()
+        except:
+            curve_order = 1
+            print("Mesh has no curve order, using 1, update NGSolve/Netgen to detect curved meshes")
         if self.deformation_data is not None:
             curve_order = max(curve_order, self.deformation_data.order)
         if curve_order > 1:

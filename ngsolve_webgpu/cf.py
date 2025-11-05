@@ -1,19 +1,36 @@
 import math
 from typing_extensions import deprecated
+import typing
 
-import ngsolve as ngs
-import ngsolve.webgui
 import numpy as np
 from webgpu.clipping import Clipping
 from webgpu.colormap import Colormap
 from webgpu.renderer import Renderer, RenderOptions, check_timestamp
 from webgpu.shapes import ShapeRenderer, generate_cylinder
 from webgpu.utils import BufferBinding, UniformBinding, buffer_from_array, write_array_to_buffer
+from webgpu.renderer import Renderer, RenderOptions, check_timestamp
+from webgpu.utils import (
+    BufferBinding,
+    UniformBinding,
+    buffer_from_array,
+)
+from webgpu.renderer import RenderOptions, check_timestamp
+from webgpu.utils import (
+    BufferBinding,
+    buffer_from_array,
+)
 from webgpu.vectors import BaseVectorRenderer, VectorRenderer
 from webgpu.webgpu_api import Buffer
 
 from .mesh import Binding as MeshBinding, BaseMeshElements2d
 from .mesh import ElType, MeshData
+from .mesh import Binding as MeshBinding, MeshElements2d
+from .mesh import ElType, MeshData
+from .mesh import MeshElements2d
+from .mesh import MeshData
+
+if typing.TYPE_CHECKING:
+    import ngsolve as ngs
 
 
 class Binding:
@@ -26,6 +43,8 @@ _intrules_3d = {}
 
 
 def get_3d_intrules(order):
+    import ngsolve as ngs
+
     if order in _intrules_3d:
         return _intrules_3d[order]
     ref_pts = [
@@ -73,6 +92,7 @@ def get_3d_intrules(order):
 
 def _get_bernstein_matrix_trig(n, intrule):
     """Create inverse vandermonde matrix for the Bernstein basis functions on a triangle of degree n and given integration points"""
+    import ngsolve as ngs
     ndtrig = int((n + 1) * (n + 2) / 2)
 
     mat = ngs.Matrix(ndtrig, ndtrig)
@@ -96,6 +116,8 @@ def evaluate_cf(cf, mesh, order):
     """Evaluate a coefficient function on a mesh and returns the values as a flat array, ready to copy to the GPU as storage buffer.
     The first two entries are the function dimension and the polynomial order of the stored values.
     """
+    import ngsolve as ngs
+    import ngsolve.webgui
     comps = cf.dim
     int_points = ngsolve.webgui._make_trig(order)
     intrule = ngs.IntegrationRule(
@@ -146,7 +168,7 @@ class FunctionData:
     data_3d: np.ndarray | None = None
     gpu_2d: Buffer | None = None
     gpu_3d: Buffer | None = None
-    cf: ngs.CoefficientFunction
+    cf: "ngs.CoefficientFunction"
     order: int
     order_3d: int
     _timestamp: float = -1
@@ -157,7 +179,7 @@ class FunctionData:
     def __init__(
         self,
         mesh_data: MeshData,
-        cf: ngs.CoefficientFunction,
+        cf: "ngs.CoefficientFunction",
         order: int,
         order3d: int = -1,
     ):
@@ -228,10 +250,13 @@ class FunctionData:
         return self.mesh_data.get_bounding_box()
 
     def evaluate_3d(self, cf, region, order):
+        import ngsolve as ngs
         if isinstance(region, ngs.Mesh):
             region = region.Materials(".*")
         if region.mesh.dim != 3 or region.VB() != ngs.VOL:
             return np.array([]), [1e99, 1e99], [-1e99, -1e99]
+        import ngsolve as ngs
+
         intrules = get_3d_intrules(order)
         ndof = len(intrules[ngs.ET.TET])
         if not isinstance(region, ngs.Region):
@@ -373,8 +398,8 @@ class CFRenderer(BaseMeshElements2d):
 class VectorCFRenderer(VectorRenderer):
     def __init__(
         self,
-        cf: ngs.CoefficientFunction,
-        mesh: ngs.Mesh,
+        cf: "ngs.CoefficientFunction",
+        mesh: "ngs.Mesh",
         grid_size=20,
         size=None,
     ):
@@ -424,7 +449,7 @@ class FieldLines(ShapeRenderer):
     def __init__(
         self,
         cf,
-        start_region: ngs.Region | ngs.Mesh,
+        start_region: "ngs.Region | ngs.Mesh",
         num_lines: int = 100,
         length: float = 0.5,
         max_points_per_line: float = 500,

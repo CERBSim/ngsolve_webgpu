@@ -31,31 +31,36 @@ fn evalTet(data: ptr<storage, array<f32>, read>,
                       vec4f(1.0, 1.0, 1.0, 1.0));
   lam_res *= 1.0 / (lam_res.x + lam_res.y + lam_res.z + lam_res.w);
 
-  var value: f32 = 0.0;
-  var j: u32 = 0u;
-  for(var d: u32 = 0u; d < order+1u; d++) {
-    for(var c: u32 = 0u; c < order+1u-d; c++) {
-      for(var b: u32 = 0u; b < order+1u-c-d;b++) {
-        let a = order - b - c - d;
-        let fac = f32(factorial(order))/f32((factorial(a) * factorial(b) * factorial(c) * factorial(d)));
-        if (icomp == -1)
-          {
-            var comp_val = 0.;
-            for(var k: u32 = 0u; k < ncomp; k++) {
-              comp_val = comp_val + mypow(fac * (*data)[offset + j] * mypow(lam_res.x, a) * mypow(lam_res.y, b) * mypow(lam_res.z, c) * mypow(lam_res.w, d), 2u);
-              j++;
-            }
-            value = value + sqrt(comp_val);
-          }
-        else
-          {
-            value = value + fac * (*data)[offset + u32(icomp) + j * stride] * mypow(lam.x, a) * mypow(lam.y, b) * mypow(lam.z, c) * mypow(1.0 - lam.x - lam.y - lam.z, d);
-            j++;
-          }
+  var value : f32 = 0.0;
+  var first_comp = 0u;
+  if(icomp != -1) {
+    first_comp = u32(icomp);
+  }
+  var last_comp = ncomp;
+  if(icomp != -1) {
+    last_comp = u32(icomp) + 1u;
+  }
+
+  for(var jcomp: u32 = first_comp; jcomp < last_comp; jcomp++) {
+    var j: u32 = 0u;
+    var comp_value = 0.0;
+    for(var d: u32 = 0u; d < order+1u; d++) {
+      for(var c: u32 = 0u; c < order+1u-d; c++) {
+        for(var b: u32 = 0u; b < order+1u-c-d;b++) {
+          let a = order - b - c - d;
+          let fac = f32(factorial(order))/f32((factorial(a) * factorial(b) * factorial(c) * factorial(d)));
+          comp_value = comp_value + fac * (*data)[offset + u32(jcomp) + j * stride] * mypow(lam.x, a) * mypow(lam.y, b) * mypow(lam.z, c) * mypow(1.0 - lam.x - lam.y - lam.z, d);
+          j++;
+        }
       }
     }
+    if(icomp != -1)
+      {
+        return comp_value;
+      }
+      value = value + comp_value*comp_value;
   }
-  return value;
+  return sqrt(value);
     // let dy = order + 1u;
     // let dz = (order + 1u) * (order + 2u) / 2u;
     // let b = vec4f(lam.x, lam.y, lam.z, 1.0 - lam.x - lam.y - lam.z);

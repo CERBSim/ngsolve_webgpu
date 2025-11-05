@@ -160,7 +160,7 @@ class ClippingVectors(SurfaceVectors):
     ):
         super().__init__(
             function_data=function_data, grid_size=grid_size, clipping=clipping
-        )  # , colormap)
+        , colormap=colormap)
         function_data.need_3d = True
 
         self.u_nvectors = None
@@ -199,18 +199,16 @@ class ClippingVectors(SurfaceVectors):
         return bindings
 
     def allocate_buffers(self):
-        print("allocate buffers", self.n_vectors)
         for name in ["positions", "directions", "values"]:
             size = 4 * self.n_vectors if name == "values" else 3 * 4 * self.n_vectors
             self.__buffers[name] = create_buffer(
                 size=size,
-                usage=BufferUsage.STORAGE | BufferUsage.COPY_SRC,
+                usage=BufferUsage.VERTEX | BufferUsage.STORAGE,
                 label=name,
                 reuse=self.__buffers.get(name, None),
             )
 
     def compute_vectors(self):
-        print("Computing clipping vectors...")
         self.u_nvectors = buffer_from_array(
             np.array([0], dtype=np.uint32),
             label="n_vectors",
@@ -222,7 +220,6 @@ class ClippingVectors(SurfaceVectors):
         self.allocate_buffers()
 
         n_tets = self.mesh.num_elements[ElType.TET]
-        print("n_tets =", n_tets)
 
         bindings = self.get_compute_bindings()
 
@@ -240,9 +237,9 @@ class ClippingVectors(SurfaceVectors):
 
         self.n_vectors = int(read_buffer(self.u_nvectors, np.uint32)[0])
         write_array_to_buffer(self.u_nvectors, np.array([0], dtype=np.uint32))
-        print("n_vectors =", self.n_vectors)
 
         self.allocate_buffers()
+        bindings = self.get_compute_bindings()
 
         run_compute_shader(
             read_shader_file("ngsolve/clipping_vectors.wgsl"),
@@ -255,21 +252,13 @@ class ClippingVectors(SurfaceVectors):
         )
 
         self.n_vectors = int(read_buffer(self.u_nvectors, np.uint32)[0])
-        print("n_vectors =", self.n_vectors)
 
-        n = self.n_vectors * 4
-        self.positions = read_buffer(self.__buffers["positions"], np.float32, size=3 * n).reshape(
-            -1
-        )
-        self.values = read_buffer(self.__buffers["values"], np.float32, size=n).reshape(-1)
-        self.directions = read_buffer(self.__buffers["directions"], np.float32, size=3 * n).reshape(
-            -1
-        )
-
-        print("positions", self.positions.shape, sum(self.positions * self.positions))
+        self.positions_buffer = self.__buffers["positions"]
+        self.directions_buffer = self.__buffers["directions"]
+        self.values_buffer = self.__buffers["values"]
 
     def update(self, options):
-        print("Updating clipping vectors...")
+        self.clipping.update(options)
         if not hasattr(self.__clipping, "uniforms"):
             self.__clipping.update(options)
 
@@ -280,9 +269,3 @@ class ClippingVectors(SurfaceVectors):
         )
         self.__clipping.uniforms.update_buffer()
         super().update(options)
-        return
-
-    def render(self, options) -> None:
-        print("Rendering clipping vectors...")
-        super().render(options)
-        print("render done")
