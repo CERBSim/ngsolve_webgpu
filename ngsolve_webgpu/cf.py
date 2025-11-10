@@ -172,7 +172,6 @@ class FunctionData:
     order: int
     order_3d: int
     _timestamp: float = -1
-    _needs_update: bool = True
     minval: list[float]
     maxval: list[float]
 
@@ -187,18 +186,32 @@ class FunctionData:
         self.cf = cf
         self.order = order
         self.order_3d = order if order3d == -1 else order3d
-        self.need_3d = False
+        self._need_3d = mesh_data.need_3d
 
     @check_timestamp
     def update(self, options: RenderOptions):
-        if self.need_3d:
-            self.mesh_data.need_3d = True
         self.mesh_data.update(options)
         self._create_data()
+
+    @property
+    def needs_update(self) -> bool:
+        return self.mesh_data.needs_update or super().needs_update
 
     def set_needs_update(self):
         """Set this data to be updated on the next render call"""
         self._timestamp = -1
+
+    @property
+    def need_3d(self):
+        return self._need_3d
+
+    @need_3d.setter
+    def need_3d(self, value: bool):
+        if self._need_3d == value:
+            return
+        self.mesh_data.need_3d = value
+        self._need_3d = value
+        self.set_needs_update()
 
     @property
     def num_elements(self):

@@ -3,6 +3,8 @@ from enum import Enum
 import netgen.meshing
 import typing
 import numpy as np
+import threading
+
 from webgpu.clipping import Clipping
 from webgpu.font import Font
 from webgpu.renderer import Renderer, RenderOptions, check_timestamp
@@ -110,17 +112,18 @@ class MeshData:
 
     el2d_bitarray = None
     el3d_bitarray = None
-    mesh: 'netgen.meshing.Mesh | ngsolve.Mesh'
+    mesh: "netgen.meshing.Mesh | ngsolve.Mesh"
     curvature_data = None
     deformation_data = None
     _ngs_mesh = None
     _last_mesh_timestamp: int = -1
     _timestamp: float = -1
-    _needs_update: bool = True
     _need_3d: bool = False
+    _update_lock: threading.Lock
 
     def __init__(self, mesh, el2d_bitarray=None, el3d_bitarray=None):
         import netgen.meshing
+
         self.on_region = False
         self.el2d_bitarray = el2d_bitarray
         self.el3d_bitarray = el3d_bitarray
@@ -139,6 +142,7 @@ class MeshData:
         self.gpu_elements = {}
         self.subdivision = None
         self._deformation_scale = 1
+        self._update_lock = threading.Lock()
 
     @property
     def deformation_scale(self):
@@ -178,34 +182,36 @@ class MeshData:
         self._last_mesh_timestamp = -1
         self._timestamp = -1
 
+    @property
+    def needs_update(self):
+        return self._timestamp < 0 or self._last_mesh_timestamp != self.mesh._timestamp
+
     @check_timestamp
     def update(self, options: RenderOptions):
-        if self._last_mesh_timestamp != self.mesh._timestamp:
-            self._create_data()
-        if "curvature_2d" in self.gpu_elements:
-            self.gpu_elements.pop("curvature_2d")
-        if "deformation_2d" in self.gpu_elements:
-            self.gpu_elements.pop("deformation_2d")
-        if "deformation_3d" in self.gpu_elements:
-            self.gpu_elements.pop("deformation_3d")
-        # prevent recursion
-        self._timestamp = options.timestamp
-        if self.curvature_data:
-            self.curvature_data.update(options)
-            self.elements["curvature_2d"] = self.curvature_data.data_2d
-        else:
-            self.elements["curvature_2d"] = np.array([0], dtype=np.float32)
+        with self._update_lock:
+            if self._last_mesh_timestamp != self.mesh._timestamp:
+                self._create_data()
 
-        if self.deformation_data:
-            self.deformation_data.update(options)
-            self.elements["deformation_2d"] = self.deformation_data.data_2d
-            if self.need_3d:
-                self.elements["deformation_3d"] = self.deformation_data.data_3d
+            # prevent recursion
+            self._timestamp = options.timestamp
+            if self.curvature_data:
+                self.curvature_data.update(options)
+                self.elements["curvature_2d"] = self.curvature_data.data_2d
             else:
+                self.elements["curvature_2d"] = np.array([0], dtype=np.float32)
+
+            if self.deformation_data:
+                self.deformation_data.update(options)
+                self.elements["deformation_2d"] = self.deformation_data.data_2d
+                if self.need_3d:
+                    self.elements["deformation_3d"] = self.deformation_data.data_3d
+                else:
+                    self.elements["deformation_3d"] = np.array([-1], dtype=np.float32)
+            else:
+                self.elements["deformation_2d"] = np.array([-1], dtype=np.float32)
                 self.elements["deformation_3d"] = np.array([-1], dtype=np.float32)
-        else:
-            self.elements["deformation_2d"] = np.array([-1], dtype=np.float32)
-            self.elements["deformation_3d"] = np.array([-1], dtype=np.float32)
+
+            self.get_buffers(force_update=True)
 
     def _create_data(self):
         # TODO: implement other element types than triangles
@@ -298,20 +304,25 @@ class MeshData:
         pmin, pmax = self.mesh.bounding_box
         return ([pmin[0], pmin[1], pmin[2]], [pmax[0], pmax[1], pmax[2]])
 
-    def get_buffers(self):
+    def get_buffers(self, force_update=False):
         for eltype in self.elements:
-            if eltype not in self.gpu_elements:
+            if eltype not in self.gpu_elements or force_update:
                 self.gpu_elements[eltype] = buffer_from_array(
-                    self.elements[eltype], label="mesh_" + str(eltype)
+                    self.elements[eltype],
+                    label="mesh_" + str(eltype),
+                    reuse=self.gpu_elements.get(eltype, None),
                 )
-        if "subdivision" not in self.gpu_elements:
+        if "subdivision" not in self.gpu_elements or force_update:
             self.gpu_elements["subdivision"] = uniform_from_array(
                 np.array([self.subdivision], dtype=np.uint32),
                 label="subdivision",
+                reuse=self.gpu_elements.get("subdivision", None),
             )
-        if "deformation_scale" not in self.gpu_elements:
+        if "deformation_scale" not in self.gpu_elements or force_update:
             self.gpu_elements["deformation_scale"] = uniform_from_array(
-                np.array([self.deformation_scale], dtype=np.float32), label="deformation_scale"
+                np.array([self.deformation_scale], dtype=np.float32),
+                label="deformation_scale",
+                reuse=self.gpu_elements.get("deformation_scale", None),
             )
 
         return self.gpu_elements
