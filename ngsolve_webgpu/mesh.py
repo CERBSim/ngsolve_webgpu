@@ -117,11 +117,11 @@ class MeshData:
     _last_mesh_timestamp: int = -1
     _timestamp: float = -1
     _needs_update: bool = True
+    _need_3d: bool = False
 
     def __init__(self, mesh, el2d_bitarray=None, el3d_bitarray=None):
         import netgen.meshing
         self.on_region = False
-        self.need_3d = False
         self.el2d_bitarray = el2d_bitarray
         self.el3d_bitarray = el3d_bitarray
         if isinstance(mesh, netgen.meshing.Mesh):
@@ -161,6 +161,17 @@ class MeshData:
         if self._ngs_mesh is None:
             self._ngs_mesh = ngsolve.Mesh(self.mesh)
         return self._ngs_mesh
+
+    @property
+    def need_3d(self):
+        return self._need_3d
+
+    @need_3d.setter
+    def need_3d(self, value: bool):
+        if value == self._need_3d:
+            return
+        self.set_needs_update()
+        self._need_3d = value
 
     def set_needs_update(self):
         """Update GPU data on next render call"""
