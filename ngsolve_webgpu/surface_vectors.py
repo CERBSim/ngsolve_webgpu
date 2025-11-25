@@ -27,7 +27,7 @@ class SurfaceVectors(ShapeRenderer):
     def __init__(
         self,
         function_data: FunctionData,
-        grid_size: float = 0.02,
+        grid_size: float = 20,
         clipping: Clipping = None,
         colormap: Colormap = None,
     ):
@@ -37,7 +37,8 @@ class SurfaceVectors(ShapeRenderer):
         self.mesh = function_data.mesh_data
 
         bbox = self.mesh.get_bounding_box()
-        grid_size = np.linalg.norm(np.array(bbox[1]) - np.array(bbox[0])) * grid_size
+        self.box_size = np.linalg.norm(np.array(bbox[1]) - np.array(bbox[0]))
+        self.set_grid_size(grid_size)
 
         cyl = generate_cylinder(8, 0.05, 0.5, bottom_face=True)
         cone = generate_cone(8, 0.2, 0.5, bottom_face=True)
@@ -51,6 +52,13 @@ class SurfaceVectors(ShapeRenderer):
 
     def get_compute_bindings(self):
         return []
+
+    def set_grid_size(self, grid_size: float):
+        self.grid_spacing = 1/grid_size * self.box_size
+        if hasattr(self, "u_grid_spacing") and self.u_grid_spacing is not None:
+            write_array_to_buffer(
+                self.u_grid_spacing, np.array([self.grid_spacing], dtype=np.float32)
+            )
 
     def compute_vectors(self):
         self.u_nvectors = buffer_from_array(
@@ -77,6 +85,7 @@ class SurfaceVectors(ShapeRenderer):
             BufferBinding(25, values, read_only=False),
             BufferBinding(21, self.u_nvectors, read_only=False),
             UniformBinding(24, self.u_ntrigs),
+            UniformBinding(31, self.u_grid_spacing),
             BufferBinding(MeshBinding.CURVATURE_VALUES_2D, mesh_buffers["curvature_2d"]),
             # BufferBinding(MeshBinding.DEFORMATION_VALUES, mesh_buffers["deformation_2d"]),
             UniformBinding(MeshBinding.DEFORMATION_SCALE, mesh_buffers["deformation_scale"]),
@@ -117,6 +126,7 @@ class SurfaceVectors(ShapeRenderer):
             BufferBinding(23, buffers["directions"], read_only=False),
             BufferBinding(25, buffers["values"], read_only=False),
             BufferBinding(21, self.u_nvectors, read_only=False),
+            UniformBinding(31, self.u_grid_spacing),
             BufferBinding(MeshBinding.CURVATURE_VALUES_2D, mesh_buffers["curvature_2d"]),
             BufferBinding(FunctionBinding.FUNCTION_VALUES_2D, func_buffers["data_2d"]),
             # BufferBinding(MeshBinding.DEFORMATION_VALUES, mesh_buffers["deformation_2d"]),
@@ -154,7 +164,7 @@ class ClippingVectors(SurfaceVectors):
     def __init__(
         self,
         function_data: FunctionData,
-        grid_size: float = 0.02,
+        grid_size: float = 20,
         clipping: Clipping = None,
         colormap: Colormap = None,
     ):
@@ -178,6 +188,10 @@ class ClippingVectors(SurfaceVectors):
             label="n_tets",
             reuse=self.u_ntets,
         )
+        if not hasattr(self, "u_grid_spacing") or self.u_grid_spacing is None:
+            self.u_grid_spacing = uniform_from_array(
+                np.array([self.grid_spacing], dtype=np.float32), label="grid_spacing"
+            )
 
         buffers = self.function_data.get_buffers()
 
@@ -191,6 +205,7 @@ class ClippingVectors(SurfaceVectors):
             BufferBinding(29, self.__buffers["values"], read_only=False),
             BufferBinding(21, self.u_nvectors, read_only=False),
             UniformBinding(24, self.u_ntets),
+            UniformBinding(31, self.u_grid_spacing),
             BufferBinding(MeshBinding.DEFORMATION_3D_VALUES, buffers["deformation_3d"]),
             UniformBinding(MeshBinding.DEFORMATION_SCALE, buffers["deformation_scale"]),
             BufferBinding(FunctionBinding.FUNCTION_VALUES_3D, buffers["data_3d"]),

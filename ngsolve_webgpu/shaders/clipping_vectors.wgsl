@@ -8,6 +8,7 @@
 @group(0) @binding(23) var<storage, read_write> directions: array<f32>;
 @group(0) @binding(29) var<storage, read_write> values: array<f32>;
 @group(0) @binding(24) var<uniform> u_ntets: u32;
+@group(0) @binding(31) var<uniform> u_gridsize: f32;
 
 @compute @workgroup_size(256)
 fn compute_clipping_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
@@ -80,9 +81,7 @@ fn compute_clipping_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
 
     let minv = 1.0/mdet * mat2x2f( m[1][1], -m[0][1], -m[1][0], m[0][0] );
     
-    let gridsize = 0.005;
-    // let gridsize = 0.5;
-
+    let gridsize = u_gridsize;
     let smin = ceil(min2d.x / gridsize) * gridsize;
     let smax = floor(max2d.x / gridsize) * gridsize;
     let tmin = ceil(min2d.y / gridsize) * gridsize;
