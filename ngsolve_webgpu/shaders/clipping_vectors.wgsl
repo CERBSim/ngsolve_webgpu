@@ -87,8 +87,8 @@ fn compute_clipping_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
     let tmin = ceil(min2d.y / gridsize) * gridsize;
     let tmax = floor(max2d.y / gridsize) * gridsize;
 
-    for (var s = smin; s <= smax; s += gridsize) {
-        for (var t = tmin; t <= tmax; t += gridsize) {
+    for (var s = smin; s <= smax+1e-6; s += gridsize) {
+        for (var t = tmin; t <= tmax+1e-6; t += gridsize) {
               let lam = minv * (vec2f(s, t) - p2d[0]);
           /*
               var lam = vec2f(0.0);
