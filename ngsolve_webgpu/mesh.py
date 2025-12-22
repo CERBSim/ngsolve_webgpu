@@ -119,7 +119,7 @@ class MeshData:
     _last_mesh_timestamp: int = -1
     _timestamp: float = -1
     _need_3d: bool = False
-    _update_lock: threading.Lock
+    _update_lock: threading.RLock
 
     def __init__(self, mesh, el2d_bitarray=None, el3d_bitarray=None):
         import netgen.meshing
@@ -142,7 +142,7 @@ class MeshData:
         self.gpu_elements = {}
         self.subdivision = None
         self._deformation_scale = 1
-        self._update_lock = threading.Lock()
+        self._update_lock = threading.RLock()
 
     @property
     def deformation_scale(self):
@@ -188,30 +188,21 @@ class MeshData:
 
     @check_timestamp
     def update(self, options: RenderOptions):
+        # prevent recursion
+        self._timestamp = options.timestamp
         with self._update_lock:
             if self._last_mesh_timestamp != self.mesh._timestamp:
                 self._create_data()
 
-            # prevent recursion
-            self._timestamp = options.timestamp
-            if self.curvature_data:
-                self.curvature_data.update(options)
-                self.elements["curvature_2d"] = self.curvature_data.data_2d
-            else:
-                self.elements["curvature_2d"] = np.array([0], dtype=np.float32)
+                if self.curvature_data:
+                    self.curvature_data.update(options)
+                    self.elements["curvature_2d"] = self.curvature_data.data_2d
+                else:
+                    self.elements["curvature_2d"] = np.array([0], dtype=np.float32)
+                self.gpu_elements.pop("curvature_2d", None)
 
             if self.deformation_data:
                 self.deformation_data.update(options)
-                self.elements["deformation_2d"] = self.deformation_data.data_2d
-                if self.need_3d:
-                    self.elements["deformation_3d"] = self.deformation_data.data_3d
-                else:
-                    self.elements["deformation_3d"] = np.array([-1], dtype=np.float32)
-            else:
-                self.elements["deformation_2d"] = np.array([-1], dtype=np.float32)
-                self.elements["deformation_3d"] = np.array([-1], dtype=np.float32)
-
-            self.get_buffers(force_update=True)
 
     def _create_data(self):
         # TODO: implement other element types than triangles
@@ -325,8 +316,21 @@ class MeshData:
                 reuse=self.gpu_elements.get("deformation_scale", None),
             )
 
-        return self.gpu_elements
+        result = self.gpu_elements.copy()
+        if self.deformation_data:
+            deform_buffers = self.deformation_data.get_buffers(include_mesh_data=False)
+            result["deformation_2d"] = deform_buffers["data_2d"]
+            result["deformation_3d"] = deform_buffers["data_3d"]
+        else:
+            self._dummy_buffer = buffer_from_array(
+                np.array([-1], dtype=np.float32),
+                label="dummy_deformation",
+                reuse=getattr(self, "_dummy_buffer", None)
+            )
+            result["deformation_2d"] = self._dummy_buffer
+            result["deformation_3d"] = self._dummy_buffer
 
+        return result
 
 class BaseMeshElements2d(Renderer):
     depthBias: int = 1
@@ -339,6 +343,7 @@ class BaseMeshElements2d(Renderer):
         super().__init__(label=label)
         self.data = data
         self.clipping = clipping or Clipping()
+        self.color_uniform = None
 
     def update(self, options: RenderOptions):
         self.clipping.update(options)
@@ -349,7 +354,7 @@ class BaseMeshElements2d(Renderer):
         self._buffers = self.data.get_buffers()
         self.n_instances = self.data.num_elements[ElType.TRIG]
         self.color_uniform = buffer_from_array(
-            np.array(self.color, dtype=np.float32), label="color_uniform"
+            np.array(self.color, dtype=np.float32), label="color_uniform", reuse=self.color_uniform
         )
 
         order = 1

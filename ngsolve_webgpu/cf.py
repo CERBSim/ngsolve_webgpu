@@ -230,8 +230,6 @@ class FunctionData:
         return self.mesh_data.deformation_data
 
     def _create_data(self):
-        self.gpu_2d = None
-        self.gpu_3d = None
         self.data_2d, self.minval, self.maxval = evaluate_cf(
             self.cf, self.mesh_data.ngs_mesh, self.order
         )
@@ -242,9 +240,13 @@ class FunctionData:
             self.minval = [min(v1, v2) for v1, v2 in zip(self.minval, minval)]
             self.maxval = [max(v1, v2) for v1, v2 in zip(self.maxval, maxval)]
 
-    def get_buffers(self):
-        buffers = self.mesh_data.get_buffers().copy()
-        if self.gpu_2d is None:
+    def get_buffers(self, include_mesh_data=True):
+        if include_mesh_data:
+            buffers = self.mesh_data.get_buffers().copy()
+        else:
+            buffers = {}
+
+        if self.data_2d is not None:
             self.gpu_2d = buffer_from_array(
                 self.data_2d, label="function_data_2d", reuse=self.gpu_2d
             )
@@ -252,11 +254,12 @@ class FunctionData:
                 self.gpu_3d = buffer_from_array(
                     self.data_3d, label="function_data_3d", reuse=self.gpu_3d
                 )
-        buffers["data_2d"] = self.gpu_2d
-        if self.gpu_3d is not None:
+            buffers["data_2d"] = self.gpu_2d
+
+        if self.data_3d is not None:
             buffers["data_3d"] = self.gpu_3d
-        self.data_2d = None
-        self.data_3d = None
+            self._need_gpu_update = False
+
         return buffers
 
     def get_bounding_box(self):
@@ -356,6 +359,7 @@ class CFRenderer(BaseMeshElements2d):
         self.colormap = colormap or Colormap()
         self.component = component if self.data.cf.dim > 1 else 0
         self._on_component_change = []
+        self.component_buffer = None
 
     def update(self, options: RenderOptions):
         self.data.update(options)
@@ -367,7 +371,7 @@ class CFRenderer(BaseMeshElements2d):
                 set_autoscale=False,
             )
         self.colormap._update_and_create_render_pipeline(options)
-        self.component_buffer = buffer_from_array(np.array([self.component], np.int32))
+        self.component_buffer = buffer_from_array(np.array([self.component], np.int32), label="cf_component", reuse=self.component_buffer)
         self.shader_defines["MAX_EVAL_ORDER"] = self.data.order
 
     def on_component_change(self, callback):
