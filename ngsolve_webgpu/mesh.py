@@ -317,18 +317,19 @@ class MeshData:
             )
 
         result = self.gpu_elements.copy()
+        self._dummy_buffer = buffer_from_array(
+            np.array([-1], dtype=np.float32),
+            label="dummy_deformation",
+            reuse=getattr(self, "_dummy_buffer", None)
+        )
+
+        result["deformation_2d"] = self._dummy_buffer
+        result["deformation_3d"] = self._dummy_buffer
         if self.deformation_data:
             deform_buffers = self.deformation_data.get_buffers(include_mesh_data=False)
             result["deformation_2d"] = deform_buffers["data_2d"]
-            result["deformation_3d"] = deform_buffers["data_3d"]
-        else:
-            self._dummy_buffer = buffer_from_array(
-                np.array([-1], dtype=np.float32),
-                label="dummy_deformation",
-                reuse=getattr(self, "_dummy_buffer", None)
-            )
-            result["deformation_2d"] = self._dummy_buffer
-            result["deformation_3d"] = self._dummy_buffer
+            if "data_3d" in deform_buffers:
+                result["deformation_3d"] = deform_buffers["data_3d"]
 
         return result
 
