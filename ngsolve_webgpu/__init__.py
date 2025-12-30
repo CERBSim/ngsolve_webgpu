@@ -1,4 +1,4 @@
-from .mesh import MeshData, MeshWireframe2d, MeshElements2d, MeshElements3d, PointNumbers
+from .mesh import MeshData, MeshWireframe2d, MeshElements2d, MeshElements3d, MeshSegments, PointNumbers
 from .cf import FunctionData, CFRenderer
 from .clipping import ClippingCF
 from webgpu.colormap import Colorbar, Colormap

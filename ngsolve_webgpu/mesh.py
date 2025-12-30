@@ -424,6 +424,90 @@ class MeshWireframe2d(BaseMeshElements2d):
         self.n_vertices = 3 * self.subdivision + 1
 
 
+class MeshSegments(Renderer):
+    """Render 1D mesh elements (segments) as thick screen-space lines."""
+
+    n_vertices: int = 4
+    topology: PrimitiveTopology = PrimitiveTopology.triangle_strip
+
+    # render on top of faces similar to GeometryEdgeRenderer
+    depthBias: int = -5
+    depthBiasSlopeScale: int = -5
+
+    def __init__(self, data: MeshData, clipping=None, label: str = "MeshSegments"):
+        super().__init__(label=label)
+        self.data = data
+        self.clipping = clipping or Clipping()
+        self.thickness = 0.005
+        self._buffers: dict[str, Buffer] = {}
+        self._thickness_uniform: Buffer | None = None
+
+    def get_bounding_box(self):
+        return self.data.get_bounding_box()
+
+    def update(self, options: RenderOptions):
+        self.clipping.update(options)
+        self.data.update(options)
+
+        mesh = self.data.mesh
+        vertices = self.data.elements["vertices"]
+
+        try:
+            segs = mesh.Elements1D().NumPy()
+        except Exception:
+            segs = []
+
+        if len(segs) == 0:
+            self.n_instances = 0
+            self._buffers = {}
+            return
+
+        # build segment endpoint coordinates
+        node_ids = segs["nodes"][:, :2] - 1
+        seg_coords = vertices[node_ids].reshape(-1, 6).astype(np.float32)
+
+        # indices and colors: one color entry per segment index
+        indices = segs["index"].astype(np.uint32)
+        edge_indices = indices - 1
+        max_index = int(edge_indices.max()) if edge_indices.size > 0 else -1
+        # TODO: Colors not yet available in NGSolve
+        colors = np.zeros((max_index + 1, 4), dtype=np.float32)
+        colors[:, :] = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
+
+
+        self.n_instances = seg_coords.shape[0]
+
+        self._buffers = {}
+        self._buffers["vertices"] = buffer_from_array(
+            seg_coords.flatten(), label="mesh_segments_vertices"
+        )
+        self._buffers["colors"] = buffer_from_array(
+            colors.flatten(), label="mesh_segments_colors"
+        )
+        self._buffers["index"] = buffer_from_array(
+            edge_indices.astype(np.uint32), label="mesh_segments_indices"
+        )
+
+        self._thickness_uniform = uniform_from_array(
+            np.array([self.thickness], dtype=np.float32),
+            label="mesh_segments_thickness",
+            reuse=self._thickness_uniform,
+        )
+
+    def get_shader_code(self):
+        # reuse the thick-line implementation from geometry edges
+        return read_shader_file("ngsolve/geo_edge.wgsl")
+
+    def get_bindings(self):
+        return [
+            *self.clipping.get_bindings(),
+            BufferBinding(90, self._buffers["vertices"]),
+            BufferBinding(91, self._buffers["colors"]),
+            UniformBinding(92, self._thickness_uniform),
+            BufferBinding(93, self._buffers["index"]),
+        ]
+
+
 class El3dUniform(UniformBase):
     _binding = Binding.MESH
     _fields_ = [
