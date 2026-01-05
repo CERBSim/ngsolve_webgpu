@@ -110,6 +110,7 @@ def Draw(
     vectors=None,
     deformation=None,
     subdivision: int | None = None,
+    contact: ngs.ContactBoundary | None = None,
     **kwargs,
 ):
     """
@@ -186,6 +187,12 @@ def Draw(
     if subdivision is not None:
         mesh_data.subdivision = subdivision
 
+    if contact:
+        from .contact import ContactPairs
+
+        contact_renderer = ContactPairs(mesh, contact, **kwargs)
+        render_objects.append(contact_renderer)
+
     scene = wj.Draw(render_objects, width, height)
     clipping.center = 0.5 * (scene.bounding_box[0] + scene.bounding_box[1])
     if dim == 3:
@@ -198,7 +205,7 @@ def Draw(
 __all__ = ["Draw"]
 
 
-wj.add_zipped_module_on_export("ngsolve_webgpu")
+# wj.add_zipped_module_on_export("ngsolve_webgpu")
 # wj.install_wheels_on_export(
 #     [
 #         "https://cdn.jsdelivr.net/gh/mhochsteger/ngsolve_pyodide@0.27.5/pyngcore.zip",
@@ -206,4 +213,4 @@ wj.add_zipped_module_on_export("ngsolve_webgpu")
 #         "https://cdn.jsdelivr.net/gh/mhochsteger/ngsolve_pyodide@0.27.5/ngsolve.zip",
 #     ]
 # )
-wj.add_init_js_code("await window.pyodide.loadPackage(['ngsolve'])")
+# wj.add_init_js_code("await window.pyodide.loadPackage(['ngsolve'])")
