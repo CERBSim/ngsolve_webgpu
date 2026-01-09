@@ -399,16 +399,12 @@ class MeshElements2d(BaseMeshElements2d):
         if colors is None:
             mesh = data.mesh
             colors = [[int(ci * 255) for ci in fd.color] for fd in mesh.FaceDescriptors()]
-        self.colormap = Colormap(colormap=colors, minval=-0.5, maxval=len(colors) - 0.5)
-        self.colormap.discrete = 0
-        self.colormap.n_colors = 4 * len(colors)
-
-    def update(self, options: RenderOptions):
-        super().update(options)
-        self.colormap.update(options)
+        self.gpu_objects.colormap = Colormap(colormap=colors, minval=-0.5, maxval=len(colors) - 0.5)
+        self.gpu_objects.colormap.discrete = 0
+        self.gpu_objects.colormap.n_colors = 4 * len(colors)
 
     def get_bindings(self):
-        return super().get_bindings() + self.colormap.get_bindings()
+        return super().get_bindings() + self.gpu_objects.colormap.get_bindings()
 
 
 class MeshWireframe2d(BaseMeshElements2d):
@@ -532,9 +528,9 @@ class MeshElements3d(Renderer):
         self.uniforms = None
         if colors is None:
             colors = [[255, 0, 0, 255] for _ in range(len(data.ngs_mesh.GetMaterials()))]
-        self.colormap = Colormap(colormap=colors, minval=-0.5, maxval=len(colors) - 0.5)
-        self.colormap.discrete = 0
-        self.colormap.n_colors = 4 * len(colors)
+        self.gpu_objects.colormap = Colormap(colormap=colors, minval=-0.5, maxval=len(colors) - 0.5)
+        self.gpu_objects.colormap.discrete = 0
+        self.gpu_objects.colormap.n_colors = 4 * len(colors)
 
     @property
     def shrink(self):
@@ -554,7 +550,6 @@ class MeshElements3d(Renderer):
         if self.uniforms is None:
             self.uniforms = El3dUniform()
             self.uniforms.shrink = self._shrink
-        self.colormap.update(options)
         self.data.update(options)
         self.clipping.update(options)
         self._buffers = self.data.get_buffers()
@@ -579,7 +574,7 @@ class MeshElements3d(Renderer):
             BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
             BufferBinding(Binding.TET, self._buffers[ElType.TET]),
             *self.uniforms.get_bindings(),
-            *self.colormap.get_bindings(),
+            *self.gpu_objects.colormap.get_bindings(),
         ]
 
     def get_shader_code(self):

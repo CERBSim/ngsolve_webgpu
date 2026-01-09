@@ -356,7 +356,7 @@ class CFRenderer(BaseMeshElements2d):
     ):
         super().__init__(data=data.mesh_data, label=label, clipping=clipping)
         self.data = data
-        self.colormap = colormap or Colormap()
+        self.gpu_objects.colormap = colormap or Colormap()
         self.component = component if self.data.cf.dim > 1 else 0
         self._on_component_change = []
         self.component_buffer = None
@@ -364,13 +364,12 @@ class CFRenderer(BaseMeshElements2d):
     def update(self, options: RenderOptions):
         self.data.update(options)
         super().update(options)
-        if self.colormap.autoscale:
-            self.colormap.set_min_max(
+        if self.gpu_objects.colormap.autoscale:
+            self.gpu_objects.colormap.set_min_max(
                 self.data.minval[self.component + 1],
                 self.data.maxval[self.component + 1],
                 set_autoscale=False,
             )
-        self.colormap._update_and_create_render_pipeline(options)
         self.component_buffer = buffer_from_array(np.array([self.component], np.int32), label="cf_component", reuse=self.component_buffer)
         self.shader_defines["MAX_EVAL_ORDER"] = self.data.order
 
@@ -402,7 +401,7 @@ class CFRenderer(BaseMeshElements2d):
     def get_bindings(self):
         return [
             *super().get_bindings(),
-            *self.colormap.get_bindings(),
+            *self.gpu_objects.colormap.get_bindings(),
             BufferBinding(Binding.FUNCTION_VALUES_2D, self._buffers["data_2d"]),
             BufferBinding(Binding.COMPONENT, self.component_buffer),
         ]

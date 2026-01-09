@@ -28,16 +28,12 @@ class VolumeCF(MeshElements3d):
         super().__init__(data=data.mesh_data)
         self.data = data
         self.data.need_3d = True
-        self.colormap = Colormap()
-
-    def update(self, options: RenderOptions):
-        super().update(options)
-        self.colormap.update(options)
+        self.gpu_objects.colormap = Colormap()
 
     def get_bindings(self):
         return super().get_bindings() + [
             BufferBinding(10, self._buffers["data_3d"]),
-            *self.colormap.get_bindings(),
+            *self.gpu_objects.colormap.get_bindings(),
         ]
 
     def get_shader_code(self):
@@ -56,7 +52,7 @@ class ClippingCF(Renderer):
         super().__init__()
         self._clipping = clipping or Clipping()
         self.clipping = Clipping()
-        self.colormap = colormap or Colormap()
+        self.gpu_objects.colormap = colormap or Colormap()
         self._clipping.callbacks.append(self.set_needs_update)
         self.data = data
         self.component = component if data.cf.dim > 1 else 0
@@ -90,7 +86,6 @@ class ClippingCF(Renderer):
         )
         self.clipping.uniforms.update_buffer()
 
-        self.colormap.update(options)
         self._buffers = self.data.get_buffers()
         self.build_clip_plane()
 
@@ -131,7 +126,7 @@ class ClippingCF(Renderer):
             ]
         else:
             bindings += [
-                *self.colormap.get_bindings(),
+                *self.gpu_objects.colormap.get_bindings(),
                 BufferBinding(24, self.cut_trigs),
             ]
         return bindings

@@ -77,7 +77,7 @@ class SurfaceVectors(ShapeRenderer):
         values = buffer_from_array(np.array([0], dtype=np.float32), label="positions")
 
         bindings = [
-            *self.colormap.get_bindings(),
+            *self.gpu_objects.colormap.get_bindings(),
             BufferBinding(MeshBinding.VERTICES, mesh_buffers["vertices"]),
             BufferBinding(MeshBinding.TRIGS_INDEX, mesh_buffers[ElType.TRIG]),
             BufferBinding(22, positions, read_only=False),
@@ -119,7 +119,7 @@ class SurfaceVectors(ShapeRenderer):
         )
 
         bindings = [
-            *self.colormap.get_bindings(),
+            *self.gpu_objects.colormap.get_bindings(),
             BufferBinding(MeshBinding.VERTICES, mesh_buffers["vertices"]),
             BufferBinding(MeshBinding.TRIGS_INDEX, mesh_buffers[ElType.TRIG]),
             BufferBinding(22, buffers["positions"], read_only=False),
@@ -153,7 +153,6 @@ class SurfaceVectors(ShapeRenderer):
     def update(self, options):
         self.mesh.update(options)
         self.function_data.update(options)
-        self.colormap.update(options)
         self.clipping.update(options)
         self.compute_vectors()
         super().update(options)
@@ -196,7 +195,7 @@ class ClippingVectors(SurfaceVectors):
         buffers = self.function_data.get_buffers()
 
         bindings = [
-            *self.colormap.get_bindings(),
+            *self.gpu_objects.colormap.get_bindings(),
             *self.__clipping.get_bindings(),
             BufferBinding(MeshBinding.VERTICES, buffers["vertices"]),
             BufferBinding(MeshBinding.TET, buffers[ElType.TET]),
