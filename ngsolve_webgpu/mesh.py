@@ -24,6 +24,7 @@ from webgpu.utils import (
     get_device,
     read_shader_file,
     uniform_from_array,
+    Lock,
 )
 from webgpu.webgpu_api import *
 
@@ -119,7 +120,7 @@ class MeshData:
     _last_mesh_timestamp: int = -1
     _timestamp: float = -1
     _need_3d: bool = False
-    _update_lock: threading.RLock
+    _update_lock: Lock
 
     def __init__(self, mesh, el2d_bitarray=None, el3d_bitarray=None):
         import netgen.meshing
@@ -142,7 +143,7 @@ class MeshData:
         self.gpu_elements = {}
         self.subdivision = None
         self._deformation_scale = 1
-        self._update_lock = threading.RLock()
+        self._update_lock = Lock()
 
     @property
     def deformation_scale(self):
