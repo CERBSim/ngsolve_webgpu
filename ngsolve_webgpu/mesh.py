@@ -404,6 +404,14 @@ class MeshElements2d(BaseMeshElements2d):
         self.gpu_objects.colormap.discrete = 0
         self.gpu_objects.colormap.n_colors = 4 * len(colors)
 
+    @property
+    def colormap(self):
+        return self.gpu_objects.colormap
+
+    @colormap.setter
+    def colormap(self, value: Colormap):
+        self.gpu_objects.colormap = value
+
     def get_bindings(self):
         return super().get_bindings() + self.gpu_objects.colormap.get_bindings()
 
@@ -532,6 +540,14 @@ class MeshElements3d(Renderer):
         self.gpu_objects.colormap = Colormap(colormap=colors, minval=-0.5, maxval=len(colors) - 0.5)
         self.gpu_objects.colormap.discrete = 0
         self.gpu_objects.colormap.n_colors = 4 * len(colors)
+
+    @property
+    def colormap(self):
+        return self.gpu_objects.colormap
+
+    @colormap.setter
+    def colormap(self, value: Colormap):
+        self.gpu_objects.colormap = value
 
     @property
     def shrink(self):
