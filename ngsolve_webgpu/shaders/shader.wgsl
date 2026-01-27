@@ -1,5 +1,6 @@
 #import ngsolve/eval/trig
 
+
 struct VertexOutput1d {
   @builtin(position) fragPosition: vec4<f32>,
   @location(0) p: vec3<f32>,
@@ -91,30 +92,58 @@ fn calcTrig(p: array<vec3<f32>, 3>, vertexId: u32, trigId: u32, index: u32)
 
 
 @vertex
-fn vertexTrigP1Indexed(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) trigId: u32) -> VertexOutput2d {
-    var vid = 3 * vec3u(
-        trigs[4 * trigId + 0],
-        trigs[4 * trigId + 1],
-        trigs[4 * trigId + 2]
-    );
+fn vertexTrigP1Indexed(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) instanceId: u32) -> VertexOutput2d {
+    var vid = vec3u(0,0,0);
+    var trigId = instanceId;
+    let MESHDATA_OFFSET : u32 = 2;
+    let numElements = trigs[0];
 
-    let index = trigs[4 * trigId + 3];
+    let isSecondTrigOfQuad = (trigId >= numElements);
+    if(isSecondTrigOfQuad) {
+      trigId = trigId - numElements;
+    }
+
+    var index = trigs[4 * trigId + 3 + MESHDATA_OFFSET];
+    let signedIndex = bitcast<i32>(index);
+    if(signedIndex < 0) {
+      index = trigs[u32(-signedIndex) + 1];
+    }
+
+    if(isSecondTrigOfQuad) {
+      vid = vec3u(
+            trigs[4 * trigId + 0 + MESHDATA_OFFSET],
+            trigs[4 * trigId + 2 + MESHDATA_OFFSET],
+            trigs[u32(-signedIndex)],
+        );
+    }
+    else {
+      vid = vec3u(
+            trigs[4 * trigId + 0 + MESHDATA_OFFSET],
+            trigs[4 * trigId + 1 + MESHDATA_OFFSET],
+            trigs[4 * trigId + 2 + MESHDATA_OFFSET]
+        );
+    }
+
+    vid = 3 * vid;
+
     var p = array<vec3<f32>, 3>(
         vec3<f32>(vertices[vid[0] ], vertices[vid[0] + 1], vertices[vid[0] + 2]),
         vec3<f32>(vertices[vid[1] ], vertices[vid[1] + 1], vertices[vid[1] + 2]),
         vec3<f32>(vertices[vid[2] ], vertices[vid[2] + 1], vertices[vid[2] + 2])
     );
+
     return calcTrig(p, vertexId, trigId, index);
 }
 
 @vertex
 fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) trigId: u32) -> VertexOutput2d {
+    let MESHDATA_OFFSET : u32 = 2;
     var vid = 3 * vec3u(
-        trigs[4 * trigId + 0],
-        trigs[4 * trigId + 1],
-        trigs[4 * trigId + 2]
+        trigs[4 * trigId + 0 + MESHDATA_OFFSET],
+        trigs[4 * trigId + 1 + MESHDATA_OFFSET],
+        trigs[4 * trigId + 2 + MESHDATA_OFFSET]
     );
-    let index = trigs[4 * trigId + 3];
+    let index = trigs[4 * trigId + 3 + MESHDATA_OFFSET];
 
     var p = array<vec3<f32>, 3>(
         vec3<f32>(vertices[vid[0] ], vertices[vid[0] + 1], vertices[vid[0] + 2]),

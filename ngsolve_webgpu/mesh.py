@@ -237,10 +237,49 @@ class MeshData:
             indices = np.flatnonzero(region.Mask()) + 1
             trigs = trigs[np.isin(trigs["index"], indices)]
         self.num_elements[ElType.TRIG] = len(trigs)
-        trigs_data = np.zeros((len(trigs), 4), dtype=np.uint32)
+
+        trigs_data = np.zeros((len(trigs), 4), dtype=np.int32)
+
         trigs_data[:, :3] = trigs["nodes"][:, :3] - 1
         trigs_data[:, 3] = trigs["index"] - 1
-        self.elements[ElType.TRIG] = trigs_data
+        # trigs_data = trigs_data.flatten()
+
+        # append fourth point for quads
+
+        # triangle data
+        # pi0, pi1, pi2, index, pi0, pi1, pi2, pi3, index, ....
+        # quad in "triangle" data
+        # pi0, pi1, pi2, -offset
+        # at offset:
+        # pi3, index
+
+        quads_data = []
+
+        for i in range(len(trigs)):
+            if trigs["np"][i] == 4:
+                pi3 = trigs["nodes"][i][3] - 1
+                idx = trigs["index"][i] - 1
+                offset = 2 + len(trigs)*4 + len(quads_data)
+                quads_data.append(pi3)
+                quads_data.append(idx)
+                trigs_data[i][3] = -offset
+
+        print("trigs data", trigs_data)
+        print("quads data", quads_data)
+
+        quads_index = trigs["np"] == 4
+        num_quads = np.sum(quads_index)
+        quads = trigs[quads_index]
+
+        metadata = np.array([len(trigs), num_quads], dtype=np.int32)
+        all_data = np.concatenate( (metadata, trigs_data.flatten(), np.array(quads_data, dtype=np.int32)))
+        # all_data = np.concatenate( (trigs_data.flatten(), np.array(quads_data, dtype=np.int32)))
+        print('all data', all_data)
+        print("length of all_data", len(all_data))
+        self.elements[ElType.TRIG] = all_data
+        print("num_quads", num_quads, type(num_quads))
+        self.num_elements[ElType.TRIG] += num_quads
+        print("num_elements trig", self.num_elements[ElType.TRIG])
 
         # 3d Elements
         if self.need_3d:
@@ -358,6 +397,7 @@ class BaseMeshElements2d(Renderer):
 
         self._buffers = self.data.get_buffers()
         self.n_instances = self.data.num_elements[ElType.TRIG]
+        print("n_instances", self.n_instances)
         self.color_uniform = buffer_from_array(
             np.array(self.color, dtype=np.float32), label="color_uniform", reuse=self.color_uniform
         )
@@ -430,6 +470,7 @@ class MeshWireframe2d(BaseMeshElements2d):
     def update(self, options: RenderOptions):
         super().update(options)
         self.n_vertices = 3 * self.subdivision + 1
+        self.n_instances = 1
 
 
 class MeshSegments(Renderer):
