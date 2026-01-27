@@ -290,6 +290,9 @@ class MeshData:
                 subdiv = 1
             self.subdivision = subdiv
 
+        for key in self.num_elements:
+            self.num_elements[key] = int(self.num_elements[key])
+
         self._last_mesh_timestamp = mesh._timestamp
 
     def get_bounding_box(self):

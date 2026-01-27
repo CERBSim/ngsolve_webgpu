@@ -67,6 +67,14 @@ class ClippingCF(Renderer):
         self.only_count = None
         self.n_tets = None
 
+    @property
+    def colormap(self):
+        return self.gpu_objects.colormap
+
+    @colormap.setter
+    def colormap(self, value: Colormap):
+        self.gpu_objects.colormap = value
+
     def update(self, options: RenderOptions):
         self.component_buffer = uniform_from_array(
             np.array([self.component], np.int32),

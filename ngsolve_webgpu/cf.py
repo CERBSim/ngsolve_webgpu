@@ -361,6 +361,14 @@ class CFRenderer(BaseMeshElements2d):
         self._on_component_change = []
         self.component_buffer = None
 
+    @property
+    def colormap(self):
+        return self.gpu_objects.colormap
+
+    @colormap.setter
+    def colormap(self, value: Colormap):
+        self.gpu_objects.colormap = value
+
     def update(self, options: RenderOptions):
         self.data.update(options)
         super().update(options)
@@ -473,6 +481,7 @@ class FieldLines(ShapeRenderer):
         tolerance: float = 0.0005,
         direction: int = 0,
     ):
+        import ngsolve as ngs
         self.fieldline_options = {
             "thickness": thickness,
             "num_lines": num_lines,
