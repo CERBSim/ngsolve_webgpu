@@ -470,7 +470,6 @@ class MeshWireframe2d(BaseMeshElements2d):
     def update(self, options: RenderOptions):
         super().update(options)
         self.n_vertices = 3 * self.subdivision + 1
-        self.n_instances = 1
 
 
 class MeshSegments(Renderer):
