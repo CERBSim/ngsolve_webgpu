@@ -255,11 +255,19 @@ class MeshData:
 
         quads_data = []
 
+        el_numers = np.array(range(len(trigs)), dtype=np.int32)
+        quads_index = trigs["np"] == 4
+
+        quad_numbers = el_numers[quads_index]
+        print("quad numbers", quad_numbers)
+
+        num_quads = np.sum(quads_index)
+
         for i in range(len(trigs)):
             if trigs["np"][i] == 4:
                 pi3 = trigs["nodes"][i][3] - 1
                 idx = trigs["index"][i] - 1
-                offset = 2 + len(trigs)*4 + len(quads_data)
+                offset = 2 + num_quads + len(trigs)*4 + len(quads_data)
                 quads_data.append(pi3)
                 quads_data.append(idx)
                 trigs_data[i][3] = -offset
@@ -267,19 +275,17 @@ class MeshData:
         print("trigs data", trigs_data)
         print("quads data", quads_data)
 
-        quads_index = trigs["np"] == 4
-        num_quads = np.sum(quads_index)
-        quads = trigs[quads_index]
-
         metadata = np.array([len(trigs), num_quads], dtype=np.int32)
-        all_data = np.concatenate( (metadata, trigs_data.flatten(), np.array(quads_data, dtype=np.int32)))
-        # all_data = np.concatenate( (trigs_data.flatten(), np.array(quads_data, dtype=np.int32)))
-        print('all data', all_data)
-        print("length of all_data", len(all_data))
+        all_data = np.concatenate( (metadata, trigs_data.flatten(), quad_numbers, np.array(quads_data, dtype=np.int32)))
         self.elements[ElType.TRIG] = all_data
         print("num_quads", num_quads, type(num_quads))
         self.num_elements[ElType.TRIG] += num_quads
         print("num_elements trig", self.num_elements[ElType.TRIG])
+
+
+        # todo:
+        # build a 3d data array similar to the 2d one above, and store it in self.elements["el3d"]
+        self.elements["el3d"] = np.array([0], dtype=np.uint32)
 
         # 3d Elements
         if self.need_3d:

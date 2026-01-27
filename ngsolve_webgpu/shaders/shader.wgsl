@@ -25,6 +25,67 @@ struct VertexOutput3d {
   @location(3) n: vec3<f32>,
 };
 
+struct Triangle {
+  p: array<vec3<f32>, 3>,
+  nr: u32,
+  npElement: u32,
+  trigOfElement: u32,
+  index: u32,
+};
+
+fn loadTriangle(vertexId: u32, instanceId: u32) -> Triangle {
+    let MESHDATA_OFFSET : u32 = 2;
+    var tri: Triangle;
+
+    var trigId = instanceId;
+    let numElements = trigs[0];
+
+    let isSecondTrigOfQuad = (trigId >= numElements);
+    if(isSecondTrigOfQuad) {
+      trigId = trigId - numElements;
+      trigId = trigs[MESHDATA_OFFSET + numElements*4 + trigId];
+    }
+
+    tri.nr = trigId;
+
+    tri.index = trigs[4 * trigId + 3 + MESHDATA_OFFSET];
+    let signedIndex = bitcast<i32>(tri.index);
+    if(signedIndex < 0) {
+      tri.npElement = 4;
+      tri.index = trigs[u32(-signedIndex) + 1];
+    }
+    else {
+      tri.npElement = 3;
+    }
+
+    var vid = vec3u(0,0,0);
+
+    if(isSecondTrigOfQuad) {
+      tri.trigOfElement = 1;
+      vid = vec3u(
+            trigs[4 * trigId + 0 + MESHDATA_OFFSET],
+            trigs[4 * trigId + 2 + MESHDATA_OFFSET],
+            trigs[u32(-signedIndex)],
+        );
+    }
+    else {
+      tri.trigOfElement = 0;
+      vid = vec3u(
+            trigs[4 * trigId + 0 + MESHDATA_OFFSET],
+            trigs[4 * trigId + 1 + MESHDATA_OFFSET],
+            trigs[4 * trigId + 2 + MESHDATA_OFFSET]
+        );
+    }
+
+    vid = 3 * vid;
+    tri.p = array<vec3<f32>, 3>(
+        vec3<f32>(vertices[vid[0] ], vertices[vid[0] + 1], vertices[vid[0] + 2]),
+        vec3<f32>(vertices[vid[1] ], vertices[vid[1] + 1], vertices[vid[1] + 2]),
+        vec3<f32>(vertices[vid[2] ], vertices[vid[2] + 1], vertices[vid[2] + 2])
+    );
+    return tri;
+}
+
 @vertex
 fn vertexEdgeP1(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) edgeId: u32) -> VertexOutput1d {
     let edge = edges_p1[edgeId];
@@ -93,51 +154,17 @@ fn calcTrig(p: array<vec3<f32>, 3>, vertexId: u32, trigId: u32, index: u32)
 
 @vertex
 fn vertexTrigP1Indexed(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) instanceId: u32) -> VertexOutput2d {
-    var vid = vec3u(0,0,0);
-    var trigId = instanceId;
-    let MESHDATA_OFFSET : u32 = 2;
-    let numElements = trigs[0];
 
-    let isSecondTrigOfQuad = (trigId >= numElements);
-    if(isSecondTrigOfQuad) {
-      trigId = trigId - numElements;
-    }
-
-    var index = trigs[4 * trigId + 3 + MESHDATA_OFFSET];
-    let signedIndex = bitcast<i32>(index);
-    if(signedIndex < 0) {
-      index = trigs[u32(-signedIndex) + 1];
-    }
-
-    if(isSecondTrigOfQuad) {
-      vid = vec3u(
-            trigs[4 * trigId + 0 + MESHDATA_OFFSET],
-            trigs[4 * trigId + 2 + MESHDATA_OFFSET],
-            trigs[u32(-signedIndex)],
-        );
-    }
-    else {
-      vid = vec3u(
-            trigs[4 * trigId + 0 + MESHDATA_OFFSET],
-            trigs[4 * trigId + 1 + MESHDATA_OFFSET],
-            trigs[4 * trigId + 2 + MESHDATA_OFFSET]
-        );
-    }
-
-    vid = 3 * vid;
-
-    var p = array<vec3<f32>, 3>(
-        vec3<f32>(vertices[vid[0] ], vertices[vid[0] + 1], vertices[vid[0] + 2]),
-        vec3<f32>(vertices[vid[1] ], vertices[vid[1] + 1], vertices[vid[1] + 2]),
-        vec3<f32>(vertices[vid[2] ], vertices[vid[2] + 1], vertices[vid[2] + 2])
-    );
-
-    return calcTrig(p, vertexId, trigId, index);
+    let tri = loadTriangle(vertexId, instanceId);
+    return calcTrig(tri.p, vertexId, tri.nr, tri.index);
 }
 
 @vertex
 fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) trigId: u32) -> VertexOutput2d {
-    let MESHDATA_OFFSET : u32 = 2;
+    // let MESHDATA_OFFSET : u32 = 2;
+    let tri = loadTriangle(vertexId, trigId);
+
+  /*
     var vid = 3 * vec3u(
         trigs[4 * trigId + 0 + MESHDATA_OFFSET],
         trigs[4 * trigId + 1 + MESHDATA_OFFSET],
@@ -150,6 +177,9 @@ fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_ind
         vec3<f32>(vertices[vid[1] ], vertices[vid[1] + 1], vertices[vid[1] + 2]),
         vec3<f32>(vertices[vid[2] ], vertices[vid[2] + 1], vertices[vid[2] + 2])
     );
+  */
+
+    let index = tri.index;
 
     let subdivision = u_subdivision;
     let h = 1./ f32(subdivision);
@@ -177,19 +207,28 @@ fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_ind
         lam[1] = 1. - h * f32(subId);
       }
     }
+
     if(subdivision == 1)
       {
-        position = p[(vertexId+2)%3u];
+        var pi = (vertexId+2) % 3u;
+
+        // For quads, don't draw the diagonal edge (p2-p0) 
+        // in order to do that, just draw the "last" vertex at p2 again, in case we are at p0
+        if(tri.npElement == 4u && pi == 0u) {
+          pi = 2u;
+        }
+
+        position = tri.p[pi];
       }
     else
       {
-        position = evalTrigVec3(&u_curvature_values_2d, trigId, lam);
+        position = evalTrigVec3(&u_curvature_values_2d, tri.nr, lam);
       }
     if (u_deformation_values_2d[0] != -1.) {
-      position += u_deformation_scale * evalTrigVec3(&u_deformation_values_2d, trigId, lam);
+      position += u_deformation_scale * evalTrigVec3(&u_deformation_values_2d, tri.nr, lam);
     }
-    return VertexOutput2d(cameraMapPoint(position), position, lam, trigId,
-                          normalize(cross(p[1] - p[0], p[2] - p[0])),
+    return VertexOutput2d(cameraMapPoint(position), position, lam, tri.nr,
+                          normalize(cross(tri.p[1] - tri.p[0], tri.p[2] - tri.p[0])),
                           index);
 }
 
