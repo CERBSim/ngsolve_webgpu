@@ -305,6 +305,55 @@ class MeshData:
                 self.elements[eltype] = u32array
                 self.num_elements[eltype] = len(filtered)
 
+            els_data = np.zeros((len(els), 4), dtype=np.int32)
+
+            els_data[:, :3] = els["nodes"][:, :3] - 1
+            els_data[:, 3] = els["index"] - 1
+
+            rest_data = []
+
+            els_numbers = np.array(range(len(els)), dtype=np.int32)
+            rest_index = (els["np"] == 5) or (els["np"] == 6) or (els["np"] == 8) or (els["np"] == 10) 
+
+            rest_numbers = els_numbers[rest_index]
+            print("rest numbers", rest_numbers)
+
+            num_rests = np.sum(rest_index)
+
+            for i in range(len(els)):
+                if els["np"][i] == 5: #pyramid
+                    pi5 = els["nodes"][i][5] - 1
+                    idx = els["index"][i] - 1
+                    offset = 3 + num_rests + len(els)*5 + len(rest_data)
+                    rest_data.append(5)                            
+                    rest_data.append(pi5)
+                    rest_data.append(idx)
+                    els_data[i][5] = -offset
+                elif els["np"][i] == 6: #prism
+                    pi5, pi6 = [els["nodes"][i][j] - 1 for j in range(5, 7)]
+                    idx = els["index"][i] - 1
+                    offset = 3 + num_rests + len(els)*5 + len(rest_data)
+                    rest_data.extend([6, pi5, pi6, idx])
+                    els_data[i][5] = -offset
+                elif els["np"][i] == 8: #HEX
+                    pi5, pi6, pi7, pi8 = [els["nodes"][i][j] - 1 for j in range(5, 9)]
+                    idx = els["index"][i] - 1
+                    offset = 3 + num_rests + len(els)*5 + len(rest_data)
+                    rest_data.extend([8, pi5, pi6, pi7, pi8, idx])
+                    els_data[i][5] = -offset
+
+            print("els data", els_data)
+            print("els data", rest_data)
+
+            metadata = np.array([len(els), num_rests], dtype=np.int32)
+            all_data = np.concatenate( (metadata, els_data.flatten(), rest_numbers, np.array(rest_data, type=np.int32)))
+            self.elements[ElType.TET ] = all_data
+            
+            self.elements[ElType.TET] = all_data
+            print("num_rests", num_rests, type(num_rests))
+            self.num_elements[ElType.TET] += num_rests
+            print("num_elements els", self.num_elements[ElType.TRIG])
+
         try:
             curve_order = mesh.GetCurveOrder()
         except:
@@ -339,6 +388,7 @@ class MeshData:
             self.num_elements[key] = int(self.num_elements[key])
 
         self._last_mesh_timestamp = mesh._timestamp
+
 
     def get_bounding_box(self):
         pmin, pmax = self.mesh.bounding_box
