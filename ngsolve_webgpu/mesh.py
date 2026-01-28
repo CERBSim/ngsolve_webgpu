@@ -321,37 +321,38 @@ class MeshData:
             )
 
             rest_numbers = els_numbers[rest_index]
+
+            np_vals = els["np"][rest_numbers]         
+            j_vals = np.arange(4, 9, dtype=np.int32)        
+            mask = j_vals[None, :] <= np_vals[:, None]      
+            rest_triangle = 16 * rest_numbers[:, None] + j_vals[None, :]
+            rest_triangle = rest_triangle[mask].astype(np.int32)
+
             print("rest numbers", rest_numbers)
+            print("rest triangle", rest_triangle)
 
             num_rests = np.sum(rest_index)
+            base_offset = 3 + num_rests + len(els) * 5
 
             for i in range(len(els)):
-                if els["np"][i] == 5: #pyramid
-                    pi5 = els["nodes"][i][5] - 1
+                np_val = els["np"][i]
+
+                if np_val in (5, 6, 8):
+                    extra_nodes = [
+                        els["nodes"][i][j] - 1
+                        for j in range(5, 5 + (np_val - 4))]
+
                     idx = els["index"][i] - 1
-                    offset = 3 + num_rests + len(els)*5 + len(rest_data)
-                    rest_data.append(5)                            
-                    rest_data.append(pi5)
-                    rest_data.append(idx)
-                    els_data[i][4] = -offset
-                elif els["np"][i] == 6: #prism
-                    pi5, pi6 = [els["nodes"][i][j] - 1 for j in range(5, 7)]
-                    idx = els["index"][i] - 1
-                    offset = 3 + num_rests + len(els)*5 + len(rest_data)
-                    rest_data.extend([6, pi5, pi6, idx])
-                    els_data[i][4] = -offset
-                elif els["np"][i] == 8: #HEX
-                    pi5, pi6, pi7, pi8 = [els["nodes"][i][j] - 1 for j in range(5, 9)]
-                    idx = els["index"][i] - 1
-                    offset = 3 + num_rests + len(els)*5 + len(rest_data)
-                    rest_data.extend([8, pi5, pi6, pi7, pi8, idx])
+                    offset = base_offset + len(rest_data)
+
+                    rest_data.extend([np_val, *extra_nodes, idx])
                     els_data[i][4] = -offset
 
             print("els data", els_data)
             print("els data", rest_data)
 
             metadata = np.array([len(els), num_rests], dtype=np.int32)
-            all_data = np.concatenate( (metadata, els_data.flatten(), rest_numbers, np.array(rest_data, dtype=np.int32)))
+            all_data = np.concatenate( (metadata, els_data.flatten(), rest_triangle, np.array(rest_data, dtype=np.int32)))
             
             self.elements[ElType.TET] = all_data
             print("num_rests", num_rests, type(num_rests))
