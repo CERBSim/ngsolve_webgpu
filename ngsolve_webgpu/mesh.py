@@ -307,8 +307,8 @@ class MeshData:
 
             els_data = np.zeros((len(els), 5), dtype=np.int32)
 
-            els_data[:, :3] = els["nodes"][:, :3] - 1
-            els_data[:, 3] = els["index"] - 1
+            els_data[:, :4] = els["nodes"][:, :4] - 1
+            els_data[:, 4] = els["index"] - 1
 
             rest_data = []
 
@@ -352,12 +352,11 @@ class MeshData:
 
             metadata = np.array([len(els), num_rests], dtype=np.int32)
             all_data = np.concatenate( (metadata, els_data.flatten(), rest_numbers, np.array(rest_data, dtype=np.int32)))
-            self.elements[ElType.TET ] = all_data
             
             self.elements[ElType.TET] = all_data
             print("num_rests", num_rests, type(num_rests))
             self.num_elements[ElType.TET] += num_rests
-            print("num_elements els", self.num_elements[ElType.TRIG])
+            print("num_elements els", self.num_elements[ElType.TET])
 
         try:
             curve_order = mesh.GetCurveOrder()
