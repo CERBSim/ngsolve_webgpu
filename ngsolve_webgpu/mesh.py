@@ -313,31 +313,32 @@ class MeshData:
             rest_data = []
 
             els_numbers = np.array(range(len(els)), dtype=np.int32)
+
             rest_index = (
                 (els["np"] == 5) | 
                 (els["np"] == 6) | 
                 (els["np"] == 8) | 
                 (els["np"] == 10)
             )
+            np_vals = els["np"]
 
-            rest_numbers = els_numbers[rest_index]
+            rest_mask = np.isin(np_vals, (5, 6, 8, 10))
+            rest_numbers = els_numbers[rest_mask]
 
-            j_ranges = {
-                5: np.arange(4, 6),    # pyramid
-                6: np.arange(4, 8),    # prism
-                8: np.arange(4, 12)    # hex
-            }
+            # pyramides → prismes → hex
+            element_numbers_sorted_by_type = np.concatenate([
+                rest_numbers[np_vals[rest_numbers] == 5],
+                rest_numbers[np_vals[rest_numbers] == 6],
+                rest_numbers[np_vals[rest_numbers] == 8],
+            ]).astype(np.int32)
 
-            if rest_numbers.size == 0:
-                rest_triangle = np.array([], dtype=np.int32)   
-            else:    
-                rest_triangle = np.concatenate([
-                    16 * e + j_ranges[els["np"][e]] 
-                    for e in rest_numbers 
-                    if els["np"][e] in j_ranges]).astype(np.int32)  
+            n_pyra  = np.count_nonzero(np_vals == 5)
+            n_prims = np.count_nonzero(np_vals == 6)
+            n_hex   = np.count_nonzero(np_vals == 8)
+            n_tests = len(els) - n_pyra - n_prims - n_hex
                                                 
             print("rest numbers", rest_numbers)
-            print("rest triangle", rest_triangle)
+            print("element numbers sorted by type", element_numbers_sorted_by_type)
 
             num_rests = np.sum(rest_index)
             base_offset = 3 + num_rests + len(els) * 5
@@ -359,11 +360,15 @@ class MeshData:
             print("els data", els_data)
             print("els data", rest_data)
 
-            metadata = np.array([len(els), num_rests], dtype=np.int32)
-            all_data = np.concatenate( (metadata, els_data.flatten(), rest_triangle, np.array(rest_data, dtype=np.int32)))
+            metadata = np.array([len(els), n_tests, n_pyra, n_prims, n_hex], dtype=np.int32)
+            all_data = np.concatenate( (metadata, els_data.flatten(), element_numbers_sorted_by_type, np.array(rest_data, dtype=np.int32)))
             
             self.elements[ElType.TET] = all_data
             print("num_rests", num_rests, type(num_rests))
+            print("n_tests", n_tests, type(n_tests))
+            print("n_pyra", n_pyra, type(n_pyra))
+            print("n_prims", n_prims, type(n_prims))
+            print("n_hex", n_hex, type(n_hex))
             self.num_elements[ElType.TET] += num_rests
             print("num_elements els", self.num_elements[ElType.TET])
 
