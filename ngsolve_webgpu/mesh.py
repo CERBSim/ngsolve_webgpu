@@ -322,12 +322,20 @@ class MeshData:
 
             rest_numbers = els_numbers[rest_index]
 
-            np_vals = els["np"][rest_numbers]         
-            j_vals = np.arange(4, 9, dtype=np.int32)        
-            mask = j_vals[None, :] <= np_vals[:, None]      
-            rest_triangle = 16 * rest_numbers[:, None] + j_vals[None, :]
-            rest_triangle = rest_triangle[mask].astype(np.int32)
+            j_ranges = {
+                5: np.arange(4, 6),    # pyramid
+                6: np.arange(4, 8),    # prism
+                8: np.arange(4, 12)    # hex
+            }
 
+            if rest_numbers.size == 0:
+                rest_triangle = np.array([], dtype=np.int32)   
+            else:    
+                rest_triangle = np.concatenate([
+                    16 * e + j_ranges[els["np"][e]] 
+                    for e in rest_numbers 
+                    if els["np"][e] in j_ranges]).astype(np.int32)  
+                                                
             print("rest numbers", rest_numbers)
             print("rest triangle", rest_triangle)
 
