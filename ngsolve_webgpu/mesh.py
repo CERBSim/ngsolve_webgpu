@@ -335,13 +335,13 @@ class MeshData:
             n_pyra  = np.count_nonzero(np_vals == 5)
             n_prims = np.count_nonzero(np_vals == 6)
             n_hex   = np.count_nonzero(np_vals == 8)
-            n_tests = len(els) - n_pyra - n_prims - n_hex
+            n_tets = len(els) - n_pyra - n_prims - n_hex
                                                 
             print("rest numbers", rest_numbers)
             print("element numbers sorted by type", element_numbers_sorted_by_type)
 
             num_rests = np.sum(rest_index)
-            base_offset = 3 + num_rests + len(els) * 5
+            base_offset = 5 + len(els) * 5 + num_rests
 
             for i in range(len(els)):
                 np_val = els["np"][i]
@@ -354,22 +354,22 @@ class MeshData:
                     idx = els["index"][i] - 1
                     offset = base_offset + len(rest_data)
 
-                    rest_data.extend([np_val, *extra_nodes, idx])
+                    rest_data.extend([np_val, idx, *extra_nodes])
                     els_data[i][4] = -offset
 
             print("els data", els_data)
             print("els data", rest_data)
 
-            metadata = np.array([len(els), n_tests, n_pyra, n_prims, n_hex], dtype=np.int32)
+            metadata = np.array([len(els), n_tets, n_pyra, n_prims, n_hex], dtype=np.int32)
             all_data = np.concatenate( (metadata, els_data.flatten(), element_numbers_sorted_by_type, np.array(rest_data, dtype=np.int32)))
             
             self.elements[ElType.TET] = all_data
             print("num_rests", num_rests, type(num_rests))
-            print("n_tests", n_tests, type(n_tests))
+            print("n_tets", n_tets, type(n_tets))
             print("n_pyra", n_pyra, type(n_pyra))
             print("n_prims", n_prims, type(n_prims))
             print("n_hex", n_hex, type(n_hex))
-            self.num_elements[ElType.TET] += num_rests
+            self.num_elements["faces"] = 4*len(els) + 2 * n_pyra + 4 * n_prims + 8 * n_hex
             print("num_elements els", self.num_elements[ElType.TET])
 
         try:
@@ -643,7 +643,7 @@ class El3dUniform(UniformBase):
 
 
 class MeshElements3d(Renderer):
-    n_vertices: int = 3 * 4
+    n_vertices: int = 3
 
     def __init__(self, data: MeshData, clipping=None, colors: list | None = None):
         super().__init__(label="MeshElements3d")
@@ -688,7 +688,7 @@ class MeshElements3d(Renderer):
         self.clipping.update(options)
         self._buffers = self.data.get_buffers()
         self.uniforms.update_buffer()
-        self.n_instances = self.data.num_elements[ElType.TET]
+        self.n_instances = self.data.num_elements["faces"]
 
     def add_options_to_gui(self, gui):
         if gui is None:

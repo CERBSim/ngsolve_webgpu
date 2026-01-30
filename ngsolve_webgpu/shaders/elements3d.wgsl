@@ -2,10 +2,11 @@
 #import camera
 #import light
 #import colormap
+#import ngsolve/eval/common3d
 
 @group(0) @binding(12) var<storage> vertices : array<f32>;
 @group(0) @binding(20) var<uniform> u_mesh : MeshUniforms;
-@group(0) @binding(25) var<storage> u_tets : array<Tet>;
+@group(0) @binding(25) var<storage> u_tets : array<u32>;
                         
 const TET_FACES = array(
     vec3u(0u, 2u, 1u),
@@ -13,6 +14,52 @@ const TET_FACES = array(
     vec3u(1u, 2u, 3u),
     vec3u(2u, 0u, 3u)
 );
+
+const PYRA_FACES = array<vec3<u32>, 6>(
+    vec3(0u, 1u, 2u),
+    vec3(0u, 2u, 3u),
+
+    vec3(0u, 1u, 4u),
+    vec3(1u, 2u, 4u),
+    vec3(2u, 3u, 4u),
+    vec3(3u, 0u, 4u)
+);
+
+
+const PRISM_FACES = array<vec3<u32>, 8>(
+    vec3(0u, 1u, 2u),
+    vec3(3u, 5u, 4u),
+
+    vec3(0u, 1u, 4u),
+    vec3(0u, 4u, 3u),
+
+    vec3(1u, 2u, 5u),
+    vec3(1u, 5u, 4u),
+
+    vec3(2u, 0u, 3u),
+    vec3(2u, 3u, 5u)
+);
+
+const HEX_FACES = array<vec3<u32>, 12>(
+    vec3(0u, 1u, 2u),
+    vec3(0u, 2u, 3u),
+
+    vec3(4u, 5u, 6u),
+    vec3(4u, 6u, 7u),
+
+    vec3(0u, 3u, 7u),
+    vec3(0u, 7u, 4u),
+
+    vec3(1u, 5u, 6u),
+    vec3(1u, 6u, 2u),
+
+    vec3(0u, 1u, 5u),
+    vec3(0u, 5u, 4u),
+
+    vec3(3u, 2u, 6u),
+    vec3(3u, 6u, 7u)
+);
+
 
 struct MeshUniforms {
   subdivision: u32,
@@ -43,8 +90,9 @@ fn calcMeshFace(p: array<vec3<f32>, 3>,
 }
 
 
+/*
 @vertex
-fn vertex_main(@builtin(vertex_index) vertId: u32,
+fn vertex_main_old(@builtin(vertex_index) vertId: u32,
                @builtin(instance_index) elId: u32)
   -> MeshFragmentInput
 {
@@ -83,6 +131,24 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
 
     return calcMeshFace(points, vertId, elId, el.index,
                         array<vec3<f32>, 3> (lams[pi[0]], lams[pi[1]], lams[pi[2]]));
+}
+*/
+
+@vertex
+fn vertex_main(@builtin(vertex_index) vertId: u32,
+               @builtin(instance_index) elId: u32)
+  -> MeshFragmentInput
+{
+    let face = loadFaces(vertId, elId);
+    var lams = array<vec3<f32>, 4>(
+        vec3<f32>(1.0, 0.0, 0.0),
+        vec3<f32>(0.0, 1.0, 0.0),
+        vec3<f32>(0.0, 0.0, 1.0),
+        vec3<f32>(0.0, 0.0, 0.0),
+    );
+
+    return calcMeshFace(face.p, vertId, elId, face.index,
+                        array<vec3<f32>, 3> (lams[0], lams[1], lams[2]));
 }
 
 @fragment
