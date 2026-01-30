@@ -54,6 +54,15 @@ fn getPoint(element: Element, index: u32) ->  vec3<f32> {
 
 }
 
+fn getCenter(element: Element) -> vec3<f32> {
+    var center = getPoint(element, 0u);
+
+    for (var i: u32 = 1u; i < element.np; i = i + 1u) {
+        center = center + getPoint(element, i);
+    }
+
+    return center / f32(element.np);
+}
 
 fn getFace(element: Element, faceIndex: u32) -> Triangle {
     let MESHDATA_OFFSET: u32 = 5;

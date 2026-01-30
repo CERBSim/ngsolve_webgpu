@@ -152,36 +152,51 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
     var elementId= instanceId;
     var faceId= 0u;
 
+    let pyramidStart = 4u*numElements;
+    let prismStart = pyramidStart + 2u *numPyra;
+    let hexStart = prismStart + 4u * numPrims;
 
-    if (elementId < 4u * numElements) {
+    if (elementId < pyramidStart) {
         faceId = elementId % 4u;
         elementId= elementId / 4u;
     }
     // extra 2 triangles of any pyramid
-    else if (4u * numElements <= elementId && elementId< 4u * numElements + 2u * numPyra) {
-        let local = elementId- 4u * numElements;
+    else if (elementId< prismStart) {
+        let local = elementId - pyramidStart;
         faceId = local % 2u + 4u;
         elementId= u_tets[INDEX_SORTED_BY_TYPE + (local / 2u)];
         
     }
 
     // extra 4 triangles of any prism
-    else if (4u * numElements + 2u * numPyra <= elementId&& elementId< 4u * numElements + 2u * numPyra + 4u * numPrims) {
-        let local = elementId- (4u * numElements + 2u * numPyra);
+    else if (elementId < hexStart) {
+        let local = elementId - prismStart;
         faceId = local % 4u + 4u;
-        elementId= u_tets[INDEX_SORTED_BY_TYPE + (local / 4u)];
+        elementId= u_tets[INDEX_SORTED_BY_TYPE + numPyra + (local / 4u)];
     }
 
     // extra 8 triangles of any hex
     else {
-        let local = elementId- (4u * numElements + 2u * numPyra + 4u * numPrims);
+        let local = elementId - hexStart;
         faceId = local % 8u + 4u;
-        elementId= u_tets[INDEX_SORTED_BY_TYPE + (local / 8u)];
+        elementId= u_tets[INDEX_SORTED_BY_TYPE + numPyra + numPrims + (local / 8u)];
     }
 
     let element = getElem(elementId);
+    let center = getCenter(element);
+    var face = getFace(element, faceId);
 
-    let face = getFace(element, faceId);
+    if(calcClipping(center) == false) {
+          // one vertex is clipped away, skip rendering this tet
+          return MeshFragmentInput(vec4<f32>(0.0, 0.0, 0.0, 0.0),
+                                   vec3<f32>(0.0, 0.0, 0.0),
+                                   vec3<f32>(0.0, 0.0, 0.0),
+                                   0u, 0u);
+    }
+
+    for (var i = 0u; i < 3u; i++) {
+        face.p[i] = mix(center, face.p[i], u_mesh.shrink);
+    }
     
     var lams = array<vec3<f32>, 4>(
         vec3<f32>(1.0, 0.0, 0.0),
