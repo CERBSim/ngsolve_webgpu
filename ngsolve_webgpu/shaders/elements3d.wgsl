@@ -27,8 +27,8 @@ const PYRA_FACES = array<vec3<u32>, 6>(
 
 
 const PRISM_FACES = array<vec3<u32>, 8>(
-    vec3(0u, 1u, 2u),
-    vec3(3u, 5u, 4u),
+    vec3(0u, 2u, 1u),
+    vec3(3u, 4u, 5u),
 
     vec3(0u, 1u, 4u),
     vec3(0u, 4u, 3u),
