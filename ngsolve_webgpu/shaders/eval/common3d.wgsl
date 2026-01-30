@@ -8,6 +8,18 @@ struct Triangle {
   index: u32,
 };
 
+/*
+struct Element {
+    p: array<vec3<f32>, 8>,
+    nr: u32,
+    np: u32,
+    index: u32,
+}
+
+fn getFace(element: Element, faceIndex: u32) -> Triangle {
+}
+*/
+
 fn loadFaces(vertexId: u32, instanceId: u32) -> Triangle {
     let MESHDATA_OFFSET: u32 = 5;
     var face: Triangle;
