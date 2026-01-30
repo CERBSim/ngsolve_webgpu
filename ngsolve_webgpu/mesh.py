@@ -348,8 +348,8 @@ class MeshData:
 
                 if np_val in (5, 6, 8):
                     extra_nodes = [
-                        els["nodes"][i][j] - 1
-                        for j in range(5, 5 + (np_val - 4))]
+                        els["nodes"][i][j] - 1 for j in range(4, 4 + (np_val - 4))
+                    ]
 
                     idx = els["index"][i] - 1
                     offset = base_offset + len(rest_data)
