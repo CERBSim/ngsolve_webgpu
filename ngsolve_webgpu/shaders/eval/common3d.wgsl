@@ -1,5 +1,3 @@
-
-
 struct Triangle {
   p: array<vec3<f32>, 3>,
   nr: u32,
@@ -8,19 +6,88 @@ struct Triangle {
   index: u32,
 };
 
-/*
+
 struct Element {
-    p: array<vec3<f32>, 8>,
-    nr: u32,
+    p: array<u32, 8>,
+    id: u32,
     np: u32,
     index: u32,
 }
 
-fn getFace(element: Element, faceIndex: u32) -> Triangle {
-}
-*/
+fn getElem(elementId: u32) -> Element {
+    let MESHDATA_OFFSET: u32 = 5;
+    var elem: Element;
 
-fn loadFaces(vertexId: u32, instanceId: u32) -> Triangle {
+    elem.id = elementId; // element to which I belong ;  is this useful in this case 
+    elem.index = u_tets[5 * elementId+ 4 + MESHDATA_OFFSET]; //offset
+
+    let signedIndex = bitcast<i32>(elem.index); //sign of the offset
+
+    var VerArray: array<u32, 8> = array<u32, 8>(0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u);
+
+    for (var i: u32 = 0u; i < 4u; i = i + 1u) {
+        VerArray[i] = u_tets[5 * elementId+ i + MESHDATA_OFFSET];
+    }
+
+    if (signedIndex >= 0) {
+        elem.np = 4;
+    }
+    else {
+         let offset = u32(-signedIndex);
+
+         elem.np = u_tets[offset];
+         elem.index = u_tets[offset + 1u];
+
+         for (var i: u32 = 0; i < (elem.np-4u); i = i + 1u) {
+            VerArray[4+i] = u_tets[offset + 2 + i];
+            }
+    }
+
+    elem.p = VerArray;
+
+    return elem;
+}
+
+fn getPoint(element: Element, index: u32) ->  vec3<f32> {
+    let a = 3u * element.p[index];
+    return vec3<f32>(vertices[a ], vertices[a + 1], vertices[a + 2]);
+
+}
+
+
+fn getFace(element: Element, faceIndex: u32) -> Triangle {
+    let MESHDATA_OFFSET: u32 = 5;
+    var face: Triangle;
+
+    face.nr = element.id; // element to which I belong
+    //face.index = u_tets[5 * element.id + 4 + MESHDATA_OFFSET]; //offset
+    face.trigOfElement = faceIndex;
+    face.npElement = element.np;
+    face.index = element.index;
+  
+    var LocalV: vec3<u32> = vec3<u32>(0, 0, 0); 
+
+    if (face.npElement == 4) {
+        LocalV = TET_FACES[face.trigOfElement];
+    } else if (face.npElement == 5) {
+        LocalV = PYRA_FACES[face.trigOfElement];
+    } else if (face.npElement == 6) {
+        LocalV = PRISM_FACES[face.trigOfElement];
+    } else {
+        LocalV = HEX_FACES[face.trigOfElement];
+    }
+
+    face.p = array<vec3<f32>, 3>(
+        getPoint(element, LocalV[0]),
+        getPoint(element, LocalV[1]),
+        getPoint(element, LocalV[2])
+    );
+
+    return face;
+}
+
+/*
+fn loadFaces_old(vertexId: u32, instanceId: u32) -> Triangle {
     let MESHDATA_OFFSET: u32 = 5;
     var face: Triangle;
 
@@ -113,7 +180,7 @@ fn loadFaces(vertexId: u32, instanceId: u32) -> Triangle {
                 VerArray[LocalV[2]]
     );
 
-    vid = 3 * vid;
+    vid = 3 * vid; 
 
     face.p = array<vec3<f32>, 3>(
         vec3<f32>(vertices[vid[0] ], vertices[vid[0] + 1], vertices[vid[0] + 2]),
@@ -123,3 +190,4 @@ fn loadFaces(vertexId: u32, instanceId: u32) -> Triangle {
 
     return face;
 }
+*/

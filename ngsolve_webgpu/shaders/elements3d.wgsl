@@ -93,15 +93,17 @@ fn calcMeshFace(p: array<vec3<f32>, 3>,
 /*
 @vertex
 fn vertex_main_old(@builtin(vertex_index) vertId: u32,
-               @builtin(instance_index) elId: u32)
+               @builtin(instance_index) instanceId: u32)
   -> MeshFragmentInput
 {
     const N: u32 = 4u;
     let faceId: u32 = vertId / 3u;
-    let el = u_tets[elId];
+    let el = u_tets[instanceId];
     var p: array<vec3<f32>, 4>;
 
     var lam = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+
+    // CENTER
     var center = vec3<f32>(0.0, 0.0, 0.0);
     for (var i = 0u; i < N; i++) {
         let n = 3u * el.p[i];
@@ -109,7 +111,7 @@ fn vertex_main_old(@builtin(vertex_index) vertId: u32,
         center += p[i] / f32(N);
     }
 
-
+    // SHRINKING
     for (var i = 0u; i < 4u; i++) {
         p[i] = mix(center, p[i], u_mesh.shrink);
         if(calcClipping(p[i]) == false) {
@@ -129,17 +131,58 @@ fn vertex_main_old(@builtin(vertex_index) vertId: u32,
     let pi = TET_FACES[faceId];
     let points = array<vec3<f32>, 3>(p[pi[0]], p[pi[1]], p[pi[2]]);
 
-    return calcMeshFace(points, vertId, elId, el.index,
+    return calcMeshFace(points, vertId, instanceId, el.index,
                         array<vec3<f32>, 3> (lams[pi[0]], lams[pi[1]], lams[pi[2]]));
 }
 */
 
 @vertex
 fn vertex_main(@builtin(vertex_index) vertId: u32,
-               @builtin(instance_index) elId: u32)
+               @builtin(instance_index) instanceId: u32)
   -> MeshFragmentInput
 {
-    let face = loadFaces(vertId, elId);
+    let MESHDATA_OFFSET: u32 = 5;
+    let numElements = u_tets[0];
+    let numTets = u_tets[1];
+    let numPyra = u_tets[2];
+    let numPrims = u_tets[3];
+    let numHex = u_tets[4];
+    let INDEX_SORTED_BY_TYPE = MESHDATA_OFFSET+5*numElements;
+
+    var elementId= instanceId;
+    var faceId= 0u;
+
+
+    if (elementId < 4u * numElements) {
+        faceId = elementId % 4u;
+        elementId= elementId / 4u;
+    }
+    // extra 2 triangles of any pyramid
+    else if (4u * numElements <= elementId && elementId< 4u * numElements + 2u * numPyra) {
+        let local = elementId- 4u * numElements;
+        faceId = local % 2u + 4u;
+        elementId= u_tets[INDEX_SORTED_BY_TYPE + (local / 2u)];
+        
+    }
+
+    // extra 4 triangles of any prism
+    else if (4u * numElements + 2u * numPyra <= elementId&& elementId< 4u * numElements + 2u * numPyra + 4u * numPrims) {
+        let local = elementId- (4u * numElements + 2u * numPyra);
+        faceId = local % 4u + 4u;
+        elementId= u_tets[INDEX_SORTED_BY_TYPE + (local / 4u)];
+    }
+
+    // extra 8 triangles of any hex
+    else {
+        let local = elementId- (4u * numElements + 2u * numPyra + 4u * numPrims);
+        faceId = local % 8u + 4u;
+        elementId= u_tets[INDEX_SORTED_BY_TYPE + (local / 8u)];
+    }
+
+    let element = getElem(elementId);
+
+    let face = getFace(element, faceId);
+    
     var lams = array<vec3<f32>, 4>(
         vec3<f32>(1.0, 0.0, 0.0),
         vec3<f32>(0.0, 1.0, 0.0),
@@ -147,7 +190,8 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
         vec3<f32>(0.0, 0.0, 0.0),
     );
 
-    return calcMeshFace(face.p, vertId, elId, face.index,
+
+    return calcMeshFace(face.p, vertId, instanceId, face.index,
                         array<vec3<f32>, 3> (lams[0], lams[1], lams[2]));
 }
 
