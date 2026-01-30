@@ -30,8 +30,8 @@ fn loadFaces(vertexId: u32, instanceId: u32) -> Triangle {
     let numPyra = u_tets[2];
     let numPrims = u_tets[3];
     let numHex = u_tets[4];
-    
-    let INDEX_SORTED_BY_TYPE = MESHDATA_OFFSET+4*numTets+6*numPyra+8*numPrims+12*numHex;
+
+    let INDEX_SORTED_BY_TYPE = MESHDATA_OFFSET+5*numElements;
 
     // Standard elements
     if (elementId< 4u * numElements) {
