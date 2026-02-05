@@ -41,23 +41,28 @@ const PRISM_FACES = array<vec3<u32>, 8>(
 );
 
 const HEX_FACES = array<vec3<u32>, 12>(
-    vec3(0u, 1u, 2u),
-    vec3(0u, 2u, 3u),
+    vec3(0u, 2u, 1u),
+    vec3(3u, 2u, 0u),
 
+    //BOTTOM FACE
     vec3(4u, 5u, 6u),
     vec3(4u, 6u, 7u),
 
-    vec3(0u, 3u, 7u),
-    vec3(0u, 7u, 4u),
+    //Left lateral face
+    vec3(0u, 7u, 3u),
+    vec3(0u, 4u, 7u),
 
-    vec3(1u, 5u, 6u),
-    vec3(1u, 6u, 2u),
+    //Right Face
+    vec3(1u, 6u, 5u),
+    vec3(1u, 2u, 6u),
 
+    //First Face
     vec3(0u, 1u, 5u),
     vec3(0u, 5u, 4u),
 
-    vec3(3u, 2u, 6u),
-    vec3(3u, 6u, 7u)
+    // 4th Lateral Face
+    vec3(3u, 6u, 2u),
+    vec3(3u, 7u, 6u)
 );
 
 
@@ -213,7 +218,7 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
 @fragment
 fn fragment_main(input: MeshFragmentInput) -> @location(0) vec4<f32>
 {
-  checkClipping(input.p);
+  //checkClipping(input.p);
   let color = getColor(f32(input.index));
   if(color.a < 0.01) {
     discard;
