@@ -16,8 +16,9 @@ const TET_FACES = array(
 );
 
 const PYRA_FACES = array<vec3<u32>, 6>(
-    vec3(0u, 1u, 2u),
-    vec3(0u, 2u, 3u),
+    //vec3(0u, 1u, 2u),
+    vec3(0u, 2u, 1u),
+    vec3(0u, 3u, 2u),
 
     vec3(0u, 1u, 4u),
     vec3(1u, 2u, 4u),
