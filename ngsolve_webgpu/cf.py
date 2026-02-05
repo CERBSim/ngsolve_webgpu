@@ -148,7 +148,7 @@ def evaluate_cf(cf, mesh, order):
         pmat = cf(pts)
         
     with ngs.TaskManager():
-        pts2 = region.mesh.MapToAllElements({ngs.ET.TRIG: make_rule([]), ngs.ET.QUAD: quad_rule2}, region)
+        pts2 = region.mesh.MapToAllElements({ngs.ET.QUAD: quad_rule2}, region)
         pmat2 = cf(pts2)
     
     pmat = np.concatenate((pmat, pmat2), axis=0)
