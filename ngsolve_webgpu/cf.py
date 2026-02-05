@@ -120,16 +120,19 @@ def evaluate_cf(cf, mesh, order):
     import ngsolve.webgui
     comps = cf.dim
     int_points = ngsolve.webgui._make_trig(order)
-    intrule = ngs.IntegrationRule(
-        int_points,
-        [
-            0,
-        ]
-        * len(int_points),
-    )
-    ibmat = _get_bernstein_matrix_trig(order, intrule).I
+    ndof = len(int_points)
+    
+    make_rule = lambda pts: ngs.IntegrationRule(pts, [0] * len(pts))
+    
+    trig_rule = make_rule(int_points)
+    
+    ibmat = _get_bernstein_matrix_trig(order, trig_rule).I
 
-    ndof = ibmat.h
+    quad_points = ngsolve.webgui._make_quad(order)
+    quad_rule1 = make_rule(quad_points[:ndof])
+    quad_rule2 = make_rule(quad_points[ndof:])
+    
+    print("Rule sizes", len(trig_rule), len(quad_rule1), len(quad_rule2))
 
     if isinstance(mesh, ngs.Region):
         if mesh.VB() == ngs.VOL and mesh.mesh.dim == 3:
@@ -141,8 +144,15 @@ def evaluate_cf(cf, mesh, order):
         if mesh.dim == 3:
             region = mesh.Boundaries(".*")
     with ngs.TaskManager():
-        pts = region.mesh.MapToAllElements({ngs.ET.TRIG: intrule, ngs.ET.QUAD: intrule}, region)
+        pts = region.mesh.MapToAllElements({ngs.ET.TRIG: trig_rule, ngs.ET.QUAD: quad_rule1}, region)
         pmat = cf(pts)
+        
+    with ngs.TaskManager():
+        pts2 = region.mesh.MapToAllElements({ngs.ET.TRIG: make_rule([]), ngs.ET.QUAD: quad_rule2}, region)
+        pmat2 = cf(pts2)
+    
+    pmat = np.concatenate((pmat, pmat2), axis=0)
+        
     pmat = pmat.reshape(-1, ndof, comps)
     minval = np.min(pmat, axis=(0, 1))
     maxval = np.max(pmat, axis=(0, 1))

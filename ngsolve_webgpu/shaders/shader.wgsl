@@ -15,6 +15,7 @@ struct VertexOutput2d {
   @location(2) @interpolate(flat) id: u32,
   @location(3) n: vec3<f32>,
   @location(4) @interpolate(flat) index: u32,
+  @location(5) @interpolate(flat) instanceId: u32,
 };
 
 struct VertexOutput3d {
@@ -60,23 +61,32 @@ fn loadTriangle(vertexId: u32, instanceId: u32) -> Triangle {
 
     var vid = vec3u(0,0,0);
 
-    if(isSecondTrigOfQuad) {
-      tri.trigOfElement = 1;
-      vid = vec3u(
-            trigs[4 * trigId + 0 + MESHDATA_OFFSET],
-            trigs[4 * trigId + 2 + MESHDATA_OFFSET],
-            trigs[u32(-signedIndex)],
-        );
+    tri.trigOfElement = 0;
+    vid = vec3u(
+          trigs[4 * trigId + 0 + MESHDATA_OFFSET],
+          trigs[4 * trigId + 1 + MESHDATA_OFFSET],
+          trigs[4 * trigId + 2 + MESHDATA_OFFSET]
+      );
+      
+    if(tri.npElement==4){
+        if(isSecondTrigOfQuad) {
+            tri.trigOfElement = 1;
+            vid = vec3u(
+                  trigs[4 * trigId + 2 + MESHDATA_OFFSET],
+                  trigs[u32(-signedIndex)],
+                  trigs[4 * trigId + 1 + MESHDATA_OFFSET],
+              );
+        }
+        else {
+            vid = vec3u(
+                  trigs[4 * trigId + 0 + MESHDATA_OFFSET],
+                  trigs[4 * trigId + 1 + MESHDATA_OFFSET],
+                  trigs[u32(-signedIndex)],
+              );
+        }
+          
     }
-    else {
-      tri.trigOfElement = 0;
-      vid = vec3u(
-            trigs[4 * trigId + 0 + MESHDATA_OFFSET],
-            trigs[4 * trigId + 1 + MESHDATA_OFFSET],
-            trigs[4 * trigId + 2 + MESHDATA_OFFSET]
-        );
-    }
-
+    
     vid = 3 * vid;
     tri.p = array<vec3<f32>, 3>(
         vec3<f32>(vertices[vid[0] ], vertices[vid[0] + 1], vertices[vid[0] + 2]),
@@ -100,15 +110,33 @@ fn vertexEdgeP1(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) e
     return VertexOutput1d(position, p, lam, edgeId);
 }
 
-fn calcTrig(p: array<vec3<f32>, 3>, vertexId: u32, trigId: u32, index: u32)
+fn calcTriLam(tri: Triangle, vertexId: u32, h: f32) -> vec2<f32> {
+    let i3 = vertexId % 3u;
+    var lam = vec2f(0.0, 0.0);
+    
+    if(tri.npElement ==3) {
+        if (i3) < 2 {
+            lam[i3] += h;
+        }
+    }
+    else {
+        if(i3 > 0u) {
+            lam[i3-1] += h;
+        }
+    }
+    
+    return lam;
+}
+
+fn calcTrig(tri: Triangle, vertexId: u32, instanceId: u32)
   -> VertexOutput2d {
+    let p = tri.p;
+    let trigId = tri.nr;
+    let index = tri.index;
     let subdivision = u_subdivision;
     let h = 1.0 / f32(subdivision);
 
-    var lam = vec2f(0.0, 0.0);
-    if (vertexId % 3u) < 2 {
-        lam[vertexId % 3u] += h;
-    }
+    var lam = calcTriLam(tri, vertexId, h);
 
     var position: vec3f;
     var normal: vec3f;
@@ -145,10 +173,16 @@ fn calcTrig(p: array<vec3<f32>, 3>, vertexId: u32, trigId: u32, index: u32)
         normal = normalize(cross(pos_and_gradients[1], pos_and_gradients[2]));
     }
 
-    let mapped_position = cameraMapPoint(position);
+    
+    if(tri.npElement == 4 && tri.trigOfElement == 0)
+        {
+            // lam.x += 0.5;
+            // position = vec3f(0., 0., 0.);
+        }
 
+    let mapped_position = cameraMapPoint(position);
     return VertexOutput2d(mapped_position, position, lam, trigId, normal,
-                          index);
+                          index, instanceId);
 }
 
 
@@ -156,7 +190,7 @@ fn calcTrig(p: array<vec3<f32>, 3>, vertexId: u32, trigId: u32, index: u32)
 fn vertexTrigP1Indexed(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) instanceId: u32) -> VertexOutput2d {
 
     let tri = loadTriangle(vertexId, instanceId);
-    return calcTrig(tri.p, vertexId, tri.nr, tri.index);
+    return calcTrig(tri, vertexId, instanceId);
 }
 
 @vertex
@@ -164,49 +198,14 @@ fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_ind
     // let MESHDATA_OFFSET : u32 = 2;
     let tri = loadTriangle(vertexId, trigId);
 
-  /*
-    var vid = 3 * vec3u(
-        trigs[4 * trigId + 0 + MESHDATA_OFFSET],
-        trigs[4 * trigId + 1 + MESHDATA_OFFSET],
-        trigs[4 * trigId + 2 + MESHDATA_OFFSET]
-    );
-    let index = trigs[4 * trigId + 3 + MESHDATA_OFFSET];
-
-    var p = array<vec3<f32>, 3>(
-        vec3<f32>(vertices[vid[0] ], vertices[vid[0] + 1], vertices[vid[0] + 2]),
-        vec3<f32>(vertices[vid[1] ], vertices[vid[1] + 1], vertices[vid[1] + 2]),
-        vec3<f32>(vertices[vid[2] ], vertices[vid[2] + 1], vertices[vid[2] + 2])
-    );
-  */
-
     let index = tri.index;
 
     let subdivision = u_subdivision;
     let h = 1./ f32(subdivision);
     var lam = vec2f(0.0, 0.0);
     var position: vec3f;
-    var side = vertexId / subdivision;
-    if (side >= 2u) {
-      side = 2u;
-    }
-    var subId = vertexId - subdivision * side;
-    if(side == 0u)
-      {
-        lam[0] = h * f32(subId);
-        lam[1] = 0.;
-      }
-    else {
-      if(side == 1u)
-      {
-        lam[0] = 1.0 - h * f32(subId);
-        lam[1] = h * f32(subId);
-      }
-    else
-      {
-        lam[0] = 0.;
-        lam[1] = 1. - h * f32(subId);
-      }
-    }
+    
+    lam = calcTriLam(tri, vertexId, h);
 
     if(subdivision == 1)
       {
@@ -214,7 +213,7 @@ fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_ind
 
         // For quads, don't draw the diagonal edge (p2-p0) 
         // in order to do that, just draw the "last" vertex at p2 again, in case we are at p0
-        if(tri.npElement == 4u && pi == 0u) {
+        if(tri.npElement == 4u && pi == 1u) {
           pi = 2u;
         }
 
@@ -229,7 +228,7 @@ fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_ind
     }
     return VertexOutput2d(cameraMapPoint(position), position, lam, tri.nr,
                           normalize(cross(tri.p[1] - tri.p[0], tri.p[2] - tri.p[0])),
-                          index);
+                          index, trigId);
 }
 
 
@@ -237,7 +236,7 @@ fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_ind
 fn fragmentTrig(input: VertexOutput2d) -> @location(0) vec4<f32> {
     checkClipping(input.p);
     let p = &u_function_values_2d;
-    let value = evalTrig(p, input.id, u_function_component, input.lam);
+    let value = evalTrig(p, input.instanceId, u_function_component, input.lam);
     let color = getColor(value);
     if(color.a < 0.01) {
         discard;
