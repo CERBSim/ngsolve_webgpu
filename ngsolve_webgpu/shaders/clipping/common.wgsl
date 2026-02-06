@@ -1,7 +1,50 @@
 #import ngsolve/eval/tet
 
 @group(0) @binding(12) var<storage> vertices : array<f32>;
-@group(0) @binding(25) var<storage> u_tets : array<Tet>;
+@group(0) @binding(25) var<storage> u_tets : array<u32>;
+
+
+const TET_FACES = array(
+    vec3i(0, 2, 1),
+    vec3i(0, 1, 3),
+    vec3i(1, 2, 3),
+    vec3i(2, 0, 3)
+);
+
+const PYRAMID_FACES = array(
+    vec3i(0, 2, 1),
+    vec3i(0, 3, 2),
+    vec3i(0, 1, 4),
+    vec3i(1, 2, 4),
+    vec3i(2, 3, 4),
+    vec3i(3, 0, 4)
+);
+
+const PRISM_FACES = array(
+    vec3i(0, 2, 1),
+    vec3i(3, 4, 5),
+    vec3i(0, 1, 4),
+    vec3i(0, 4, 3),
+    vec3i(1, 2, 5),
+    vec3i(1, 5, 4),
+    vec3i(2, 0, 3),
+    vec3i(2, 3, 5)
+);
+
+const HEX_FACES = array(
+    vec3i(0, 3, 1),
+    vec3i(3, 2, 1),
+    vec3i(4, 5, 6),
+    vec3i(4, 6, 7),
+    vec3i(0, 1, 5),
+    vec3i(0, 5, 4),
+    vec3i(1, 2, 6),
+    vec3i(1, 6, 5),
+    vec3i(2, 3, 7),
+    vec3i(2, 7, 6),
+    vec3i(3, 0, 4),
+    vec3i(3, 4, 7)
+);
 
 struct Tet { p: array<u32, 4>, nr: u32, index: u32 };
 
@@ -15,6 +58,7 @@ struct ClipTetResult {
   trigs: array<SubTrig, 2>,
 }
 
+/*
 fn get_tet_points(elid: u32) -> array<vec3f, 4>
 {
   var p: array<vec3f, 4>;
@@ -32,6 +76,7 @@ fn get_tet_points(elid: u32) -> array<vec3f, 4>
   }
   return p;
 }
+*/
 
 fn clipCheckOrientation(trig: SubTrig, values: array<f32, 4>) -> SubTrig {
   var result = trig;
