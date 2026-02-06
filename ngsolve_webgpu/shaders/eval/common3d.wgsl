@@ -14,6 +14,13 @@ struct Element {
     index: u32,
 }
 
+struct Tetrahedron {
+    p: vec4u,
+    id: u32,
+    tetOfElement: u32,
+    index: u32,
+}
+
 fn getElem(elementId: u32) -> Element {
     let MESHDATA_OFFSET: u32 = 5;
     var elem: Element;
@@ -48,8 +55,70 @@ fn getElem(elementId: u32) -> Element {
     return elem;
 }
 
+fn getTetrahedron(tetId: u32) -> Tetrahedron {
+    let MESHDATA_OFFSET: u32 = 5;
+    var tet: Tetrahedron;
+    
+    let n_els = u_tets[0];
+    
+    var elId = tetId;
+    
+    tet.tetOfElement = 0;
+    
+    if(elId >= n_els) {
+        let num_pyramids = u_tets[2];
+        let num_prisms = u_tets[3];
+        let hex_start = num_pyramids + 2u * num_prisms;
+        
+        var extraElemId = elId-n_els;
+        
+        if(extraElemId < num_pyramids) {
+            tet.tetOfElement = 1;
+        } 
+        else if (extraElemId < hex_start) {
+            extraElemId = extraElemId - num_pyramids;
+            tet.tetOfElement = extraElemId%2u + 1;
+            extraElemId = extraElemId/2u + num_pyramids;
+        }
+        else {
+            extraElemId = extraElemId - hex_start;
+            tet.tetOfElement = extraElemId%5u + 1;
+            extraElemId = extraElemId/5u + num_pyramids + num_prisms;
+        }
+        
+        elId = u_tets[MESHDATA_OFFSET + 5u*n_els + extraElemId];
+        
+        // tet.tetOfElement = 0;
+    }
+    
+    let element = getElem(elId);
+    tet.index = element.index;
+    tet.id = element.id;
+    
+    var pi = vec4u(0,1,2,3);
+    if(element.np == 5 ) {
+        pi = PYRAMID_TETS[tet.tetOfElement];
+    }
+    else if(element.np == 6 ) {
+        pi = PRISM_TETS[tet.tetOfElement];
+    }
+    else if (element.np == 8) {
+        pi = HEX_TETS[tet.tetOfElement];
+    }
+    
+    
+    tet.p = vec4u( element.p[pi[0]], element.p[pi[1]], element.p[pi[2]], element.p[pi[3]] );
+    return tet;
+}
+
 fn getPoint(element: Element, index: u32) ->  vec3<f32> {
     let a = 3u * element.p[index];
+    return vec3<f32>(vertices[a ], vertices[a + 1], vertices[a + 2]);
+
+}
+
+fn getVertex(index: u32) ->  vec3<f32> {
+    let a = 3u * index;
     return vec3<f32>(vertices[a ], vertices[a + 1], vertices[a + 2]);
 
 }
@@ -200,3 +269,32 @@ fn loadFaces_old(vertexId: u32, instanceId: u32) -> Triangle {
     return face;
 }
 */
+
+
+const PYRAMID_TETS = array(
+    vec4u(0, 1, 2, 4),
+    vec4u(0, 2, 3, 4),
+);
+
+const PRISM_TETS = array(
+    vec4u(0, 1, 2, 3),
+    vec4u(1, 4, 5, 3),
+    vec4u(1, 5, 2, 3),
+);
+
+// const PRISM_TETS = array(
+//     vec4u(0, 0, 0, 0),
+//     vec4u(0, 0, 0, 0),
+//     vec4u(0, 1, 2, 3),
+//     // vec4u(1, 5, 2, 3),
+//     // vec4u(1, 4, 5, 3),
+// );
+
+const  HEX_TETS = array(
+    vec4u( 0,2,7,3),
+    vec4u( 6,5,1,4),
+    vec4u( 4,6,0,7),
+    vec4u( 6,1,2,0),
+    vec4u( 7,2,6,0),
+    vec4u( 4,1,6,0),
+);

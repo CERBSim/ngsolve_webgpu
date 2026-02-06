@@ -75,7 +75,7 @@ struct MeshUniforms {
   padding1: f32,
 };
 
-struct Tet { p: array<u32, 4>, index: u32, padding: u32};
+// struct Tet { p: array<u32, 4>, index: u32, padding: u32};
 
 struct MeshFragmentInput {
   @builtin(position) fragPosition: vec4<f32>,

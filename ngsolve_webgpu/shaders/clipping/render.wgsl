@@ -16,12 +16,16 @@ struct VertexOutputClip {
 };
 
 @vertex
-fn vertex_main(@builtin(vertex_index) vertId: u32,
+fn vertex_clipping(@builtin(vertex_index) vertId: u32,
                @builtin(instance_index) trigId: u32)
   -> VertexOutputClip
 {
   let trig = subtrigs[trigId];
-  let points = get_tet_points(trig.id);
+  // let points = get_tet_points(trig.id);
+  let tet = getTetrahedron(trig.id);
+  let points = array(getVertex(tet.p[0]), getVertex(tet.p[1]), getVertex(tet.p[2]), getVertex(tet.p[3]));
+  // let element = getElem(trig.id);
+  // let points = array(getPoint(element, 0), getPoint(element, 1), getPoint(element, 2), getPoint(element, 3));
   var lam = vec4<f32>(trig.lam[vertId], 1.);
   lam[3] = 1.0 - lam[0] - lam[1] - lam[2];
   var p = vec3<f32>(0.0, 0.0, 0.0);
@@ -29,12 +33,11 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
     p = p + lam[i] * points[i];
   }
   
-  return VertexOutputClip(cameraMapPoint(p), p, u_clipping.plane.xyz, lam.xyz,
-                      trig.id);
+  return VertexOutputClip(cameraMapPoint(p), p, u_clipping.plane.xyz, lam.xyz, trig.id);
 }
 
 @fragment
-fn fragment_main(input: VertexOutputClip) -> @location(0) vec4<f32>
+fn fragment_clipping(input: VertexOutputClip) -> @location(0) vec4<f32>
 {
   let value = evalTet(&u_function_values_3d, input.elnr, u_component, input.lam);
   return lightCalcColor(input.p, input.n, getColor(value));

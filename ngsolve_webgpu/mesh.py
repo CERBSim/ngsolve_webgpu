@@ -357,19 +357,22 @@ class MeshData:
                     rest_data.extend([np_val, idx, *extra_nodes])
                     els_data[i][4] = -offset
 
-            print("els data", els_data)
-            print("els data", rest_data)
+            # print("els data", els_data)
+            # print("els data", rest_data)
 
             metadata = np.array([len(els), n_tets, n_pyra, n_prims, n_hex], dtype=np.int32)
             all_data = np.concatenate( (metadata, els_data.flatten(), element_numbers_sorted_by_type, np.array(rest_data, dtype=np.int32)))
             
+            print("3d metadata:", metadata)
+            
             self.elements[ElType.TET] = all_data
-            print("num_rests", num_rests, type(num_rests))
-            print("n_tets", n_tets, type(n_tets))
-            print("n_pyra", n_pyra, type(n_pyra))
-            print("n_prims", n_prims, type(n_prims))
-            print("n_hex", n_hex, type(n_hex))
+            # print("num_rests", num_rests, type(num_rests))
+            # print("n_tets", n_tets, type(n_tets))
+            # print("n_pyra", n_pyra, type(n_pyra))
+            # print("n_prims", n_prims, type(n_prims))
+            # print("n_hex", n_hex, type(n_hex))
             self.num_elements["faces"] = 4*len(els) + 2 * n_pyra + 4 * n_prims + 8 * n_hex
+            self.num_elements["tets"] = len(els) + n_pyra + 2 * n_prims + 5 * n_hex
             print("num_elements els", self.num_elements[ElType.TET])
 
         try:

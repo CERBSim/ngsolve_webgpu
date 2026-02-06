@@ -13,7 +13,8 @@
 @compute @workgroup_size(256)
 fn compute_clipping_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
   for (var tetId = id.x; tetId<u_ntets; tetId+=256*1024) {
-    let p_tet = get_tet_points(tetId);
+    let element = getElem(tetId);
+    let p_tet = array(getPoint(element, 0), getPoint(element, 1), getPoint(element, 2), getPoint(element, 3));
     let lam_clip = array(vec3f(1.0, 0.0, 0.0), vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), vec3f(0.0, 0.0, 0.0));
 
     let f = array(dot(vec4<f32>(p_tet[0], 1.0), u_clipping.plane),
