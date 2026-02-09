@@ -257,10 +257,7 @@ class MeshData:
 
         el_numers = np.array(range(len(trigs)), dtype=np.int32)
         quads_index = trigs["np"] == 4
-
         quad_numbers = el_numers[quads_index]
-        print("quad numbers", quad_numbers)
-
         num_quads = np.sum(quads_index)
 
         for i in range(len(trigs)):
@@ -272,20 +269,10 @@ class MeshData:
                 quads_data.append(idx)
                 trigs_data[i][3] = -offset
 
-        print("trigs data", trigs_data)
-        print("quads data", quads_data)
-
         metadata = np.array([len(trigs), num_quads], dtype=np.int32)
         all_data = np.concatenate( (metadata, trigs_data.flatten(), quad_numbers, np.array(quads_data, dtype=np.int32)))
         self.elements[ElType.TRIG] = all_data
-        print("num_quads", num_quads, type(num_quads))
         self.num_elements[ElType.TRIG] += num_quads
-        print("num_elements trig", self.num_elements[ElType.TRIG])
-
-
-        # todo:
-        # build a 3d data array similar to the 2d one above, and store it in self.elements["el3d"]
-        self.elements["el3d"] = np.array([0], dtype=np.uint32)
 
         # 3d Elements
         if self.need_3d:
@@ -337,9 +324,6 @@ class MeshData:
             n_hex   = np.count_nonzero(np_vals == 8)
             n_tets = len(els) - n_pyra - n_prims - n_hex
                                                 
-            print("rest numbers", rest_numbers)
-            print("element numbers sorted by type", element_numbers_sorted_by_type)
-
             num_rests = np.sum(rest_index)
             base_offset = 5 + len(els) * 5 + num_rests
 
@@ -357,23 +341,12 @@ class MeshData:
                     rest_data.extend([np_val, idx, *extra_nodes])
                     els_data[i][4] = -offset
 
-            # print("els data", els_data)
-            # print("els data", rest_data)
-
             metadata = np.array([len(els), n_tets, n_pyra, n_prims, n_hex], dtype=np.int32)
             all_data = np.concatenate( (metadata, els_data.flatten(), element_numbers_sorted_by_type, np.array(rest_data, dtype=np.int32)))
             
-            print("3d metadata:", metadata)
-            
             self.elements[ElType.TET] = all_data
-            # print("num_rests", num_rests, type(num_rests))
-            # print("n_tets", n_tets, type(n_tets))
-            # print("n_pyra", n_pyra, type(n_pyra))
-            # print("n_prims", n_prims, type(n_prims))
-            # print("n_hex", n_hex, type(n_hex))
             self.num_elements["faces"] = 4*len(els) + 2 * n_pyra + 4 * n_prims + 8 * n_hex
             self.num_elements["tets"] = len(els) + n_pyra + 2 * n_prims + 5 * n_hex
-            print("num_elements els", self.num_elements[ElType.TET])
 
         try:
             curve_order = mesh.GetCurveOrder()
@@ -474,7 +447,6 @@ class BaseMeshElements2d(Renderer):
 
         self._buffers = self.data.get_buffers()
         self.n_instances = self.data.num_elements[ElType.TRIG]
-        print("n_instances", self.n_instances)
         self.color_uniform = buffer_from_array(
             np.array(self.color, dtype=np.float32), label="color_uniform", reuse=self.color_uniform
         )

@@ -75,8 +75,8 @@ def get_3d_intrules(order):
     if order > 1:
         ho_tets = {}
         for eltype in p1_tets:
+            ho_tets[eltype] = []
             for tet in p1_tets[eltype]:
-                ho_tets[eltype] = []
                 for lam in ref_pts:
                     lami = [*lam, 1 - sum(lam)]
                     ho_tets[eltype].append(
@@ -132,8 +132,6 @@ def evaluate_cf(cf, mesh, order):
     quad_rule1 = make_rule(quad_points[:ndof])
     quad_rule2 = make_rule(quad_points[ndof:])
     
-    print("Rule sizes", len(trig_rule), len(quad_rule1), len(quad_rule2))
-
     if isinstance(mesh, ngs.Region):
         if mesh.VB() == ngs.VOL and mesh.mesh.dim == 3:
             region = mesh.Boundaries()
@@ -347,14 +345,6 @@ class FunctionData:
         prism_rule1, prism_rule2 = split_rule(intrules[ngs.ET.PRISM])
         hex_rule1, hex_rule2 = split_rule(intrules[ngs.ET.HEX])
 
-        print("Rule sizes", len(tet_rule), 
-                            len(pyra_rule1), 
-                            len(pyra_rule2), 
-                            len(prism_rule1), 
-                            len(prism_rule2), 
-                            len(hex_rule1), 
-                            len(hex_rule2))
-                            
         if isinstance(region, ngs.Mesh):
             region = region.Materials(".*")
         if region.mesh.dim != 3 or region.VB() != ngs.VOL:
