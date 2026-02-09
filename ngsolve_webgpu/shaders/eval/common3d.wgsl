@@ -272,29 +272,21 @@ fn loadFaces_old(vertexId: u32, instanceId: u32) -> Triangle {
 
 
 const PYRAMID_TETS = array(
-    vec4u(0, 1, 2, 4),
-    vec4u(0, 2, 3, 4),
+    vec4u(1, 3 ,4, 0),
+    vec4u(1, 3 ,4, 2),
 );
 
 const PRISM_TETS = array(
-    vec4u(0, 1, 2, 3),
-    vec4u(1, 4, 5, 3),
-    vec4u(1, 5, 2, 3),
+    vec4u( 0,1,5,2),
+    vec4u( 5,1,4,0),
+    vec4u( 3,4,0,5),
 );
 
-// const PRISM_TETS = array(
-//     vec4u(0, 0, 0, 0),
-//     vec4u(0, 0, 0, 0),
-//     vec4u(0, 1, 2, 3),
-//     // vec4u(1, 5, 2, 3),
-//     // vec4u(1, 4, 5, 3),
-// );
-
 const  HEX_TETS = array(
-    vec4u( 0,2,7,3),
-    vec4u( 6,5,1,4),
-    vec4u( 4,6,0,7),
-    vec4u( 6,1,2,0),
-    vec4u( 7,2,6,0),
-    vec4u( 4,1,6,0),
+    vec4u( 1,3,4,0),
+    vec4u( 7,6,2,5),
+    vec4u( 5,7,1,4),
+    vec4u( 7,2,3,1),
+    vec4u( 4,3,7,1),
+    vec4u( 5,2,7,1),
 );
