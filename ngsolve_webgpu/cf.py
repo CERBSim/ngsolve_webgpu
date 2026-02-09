@@ -275,7 +275,7 @@ class FunctionData:
     def get_bounding_box(self):
         return self.mesh_data.get_bounding_box()
 
-    def evaluate_3d(self, cf, region, order):
+    def evaluate_3d_old(self, cf, region, order):
         import ngsolve as ngs
         if isinstance(region, ngs.Mesh):
             region = region.Materials(".*")
@@ -285,8 +285,11 @@ class FunctionData:
 
         intrules = get_3d_intrules(order)
         ndof = len(intrules[ngs.ET.TET])
+
+        """
         if not isinstance(region, ngs.Region):
             region = region.Materials(".*")
+        """
 
         with ngs.TaskManager():
             pts = region.mesh.MapToAllElements(intrules, region)
@@ -319,8 +322,98 @@ class FunctionData:
             dtype=np.float32,
         )
         return ret, vmin, vmax
+    
+    def evaluate_3d(self, cf, region, order):
+        import ngsolve as ngs
+        import ngsolve.webgui
+        
+        comps = cf.dim
+        intrules = get_3d_intrules(order)
 
+        # Defining the integration rules
+        tet_rule = intrules[ngs.ET.TET]
+        ndof = len(intrules[ngs.ET.TET])
 
+        def split_rule(intrule) : 
+            rule1 = [intrule[i].point for i in range(ndof)]  
+            rule2 = [intrule[i].point for i in range(ndof, len(intrule))]
+
+            rule1 = ngs.IntegrationRule(rule1, [0]*len(rule1)) 
+            rule2 = ngs.IntegrationRule(rule2, [0]*len(rule2))
+             
+            return rule1, rule2
+        
+        pyra_rule1, pyra_rule2 = split_rule(intrules[ngs.ET.PYRAMID])
+        prism_rule1, prism_rule2 = split_rule(intrules[ngs.ET.PRISM])
+        hex_rule1, hex_rule2 = split_rule(intrules[ngs.ET.HEX])
+
+        print("Rule sizes", len(tet_rule), 
+                            len(pyra_rule1), 
+                            len(pyra_rule2), 
+                            len(prism_rule1), 
+                            len(prism_rule2), 
+                            len(hex_rule1), 
+                            len(hex_rule2))
+                            
+        if isinstance(region, ngs.Mesh):
+            region = region.Materials(".*")
+        if region.mesh.dim != 3 or region.VB() != ngs.VOL:
+            return np.array([]), [1e99, 1e99], [-1e99, -1e99]
+        
+        # TET
+        with ngs.TaskManager():
+            pts = region.mesh.MapToAllElements({ngs.ET.TET: tet_rule, 
+                                                ngs.ET.PYRAMID: pyra_rule1,
+                                                ngs.ET.PRISM: prism_rule1,
+                                                ngs.ET.HEX: hex_rule1,}
+                                                , region)
+            pmat = cf(pts)
+
+        # PYRA
+        with ngs.TaskManager():
+            pts_pyra = region.mesh.MapToAllElements({ngs.ET.PYRAMID: pyra_rule2}, region)
+            pmat_pyra = cf(pts_pyra)
+        
+        # PRISM
+        with ngs.TaskManager():
+            pts_prism = region.mesh.MapToAllElements({ngs.ET.PRISM: prism_rule2}, region)
+            pmat_prism = cf(pts_prism)
+
+        # HEX
+        with ngs.TaskManager():
+            pts_hex = region.mesh.MapToAllElements({ngs.ET.HEX: hex_rule2}, region)
+            pmat_hex = cf(pts_hex)
+
+        pmat = np.concatenate((pmat, pmat_pyra, pmat_prism, pmat_hex))
+        pmat = pmat.reshape(-1, ndof, comps)
+
+        with ngs.TaskManager():
+            V_inv = vandermonde_3d(order).T
+            I, K, L = pmat.shape[0], pmat.shape[2], V_inv.shape[1]
+            vals = np.zeros((I, L, K))
+
+            ibmat = ngs.Matrix(V_inv.T)  # note the transpose for matching dimensions
+
+            for k in range(K):
+                ngsmat = ngs.Matrix(pmat[:, :, k].T)
+                result = ibmat * ngsmat
+                vals[:, :, k] = np.array(result).T
+
+        minval = np.min(pmat, axis=(0, 1))
+        maxval = np.max(pmat, axis=(0, 1))
+        if comps > 1:
+            norm = np.linalg.norm(pmat, axis=2)
+        else:
+            norm = np.abs(pmat)
+        vmin = [float(np.min(norm))] + [float(v) for v in minval]
+        vmax = [float(np.max(norm))] + [float(v) for v in maxval]
+
+        ret = np.concatenate(
+            ([np.float32(cf.dim), np.float32(order)], vals.reshape(-1)),
+            dtype=np.float32,
+        )
+        return ret, vmin, vmax
+    
 _vandermonde_mats = {}
 
 
