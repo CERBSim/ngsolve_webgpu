@@ -205,7 +205,29 @@ fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_ind
     var lam = vec2f(0.0, 0.0);
     var position: vec3f;
     
-    lam = calcTriLam(tri, vertexId, h);
+    var side = vertexId / subdivision;
+    if (side >= 2u) {
+      side = 2u;
+    }
+    var subId = vertexId - subdivision * side;
+    if(side == 0u)
+      {
+        lam[0] = h * f32(subId);
+        lam[1] = 0.;
+      }
+    else {
+      if(side == 1u)
+      {
+        lam[0] = 1.0 - h * f32(subId);
+        lam[1] = h * f32(subId);
+      }
+    else
+      {
+        lam[0] = 0.;
+        lam[1] = 1. - h * f32(subId);
+      }
+    }
+
 
     if(subdivision == 1)
       {
@@ -214,6 +236,8 @@ fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_ind
         // For quads, don't draw the diagonal edge (p2-p0) 
         // in order to do that, just draw the "last" vertex at p2 again, in case we are at p0
         if(tri.npElement == 4u && pi == 1u) {
+          // todo: fix curved quads
+          lam = calcTriLam(tri, vertexId, h);
           pi = 2u;
         }
 
