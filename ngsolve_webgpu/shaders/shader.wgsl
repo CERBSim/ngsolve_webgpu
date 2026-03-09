@@ -234,11 +234,11 @@ fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_ind
         var pi = (vertexId+2) % 3u;
 
         // For quads, don't draw the diagonal edge (p2-p0) 
-        // in order to do that, just draw the "last" vertex at p2 again, in case we are at p0
-        if(tri.npElement == 4u && pi == 1u) {
+        // in order to do that, just draw the "last" vertex at p1 again
+        if(tri.npElement == 4u && vertexId == 3u) {
           // todo: fix curved quads
           lam = calcTriLam(tri, vertexId, h);
-          pi = 2u;
+          pi = 1u;
         }
 
         position = tri.p[pi];
