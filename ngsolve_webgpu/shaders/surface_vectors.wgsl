@@ -1,27 +1,17 @@
 #import ngsolve/eval/trig
-#import ngsolve/uniforms
+#import ngsolve/mesh/render
 
 @group(0) @binding(21) var<storage, read_write> count_vectors: atomic<u32>;
 @group(0) @binding(22) var<storage, read_write> positions: array<f32>;
 @group(0) @binding(23) var<storage, read_write> directions: array<f32>;
 @group(0) @binding(29) var<storage, read_write> values: array<f32>;
-@group(0) @binding(24) var<uniform> u_ntrigs: u32;
 
 @compute @workgroup_size(256)
 fn compute_surface_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
-  for (var trigId = id.x; trigId<u_ntrigs; trigId+=256*1024) {
-    var vid = 3 * vec3u(
-        trigs[4 * trigId + 2],
-        trigs[4 * trigId + 0],
-        trigs[4 * trigId + 1]
-    );
-
-    let p = array<vec3<f32>, 3>(
-        vec3<f32>(vertices[vid[0] ], vertices[vid[0] + 1], vertices[vid[0] + 2]),
-        vec3<f32>(vertices[vid[1] ], vertices[vid[1] + 1], vertices[vid[1] + 2]),
-        vec3<f32>(vertices[vid[2] ], vertices[vid[2] + 1], vertices[vid[2] + 2])
-    );
-
+    let n_trigs = mesh_data[5];
+  for (var trigId = id.x; trigId<n_trigs; trigId+=256*1024) {
+    let p = loadTriangle(trigId).p;
+    
     // let pmin = min(p[0], min(p[1], p[2]));
     let pmin = vec3f(-1, -1, -1);
     let rad = 1.0;
@@ -94,9 +84,9 @@ fn compute_surface_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
                       let scale = 2 * gridsize * 1.0; //clamp(scale, 0.5, 1.0);
                       let direction = scale * normalize(v) ;
                       let index = atomicAdd(&count_vectors, 1);
-                      if (u_curvature_values_2d[0] != -1.) {
-                        cp = evalTrigVec3(&u_curvature_values_2d, trigId, lam);
-                      }
+                      // if (u_curvature_values_2d[0] != -1.) {
+                        // cp = evalTrigVec3(&u_curvature_values_2d, trigId, lam);
+                      // }
                       cp += 0.5 * gridsize * normalize(n);
 
                       positions[index*3+0] = cp[0];

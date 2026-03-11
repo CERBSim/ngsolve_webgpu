@@ -28,7 +28,7 @@ fn getVertex(vertexId: u32) -> vec3f {
     );
 }
 
-fn loadTriangle(vertexId: u32, instanceId: u32) -> Triangle {
+fn loadTriangle(instanceId: u32) -> Triangle {
     let MESHDATA_OFFSET : u32 = 2;
     var tri: Triangle;
 

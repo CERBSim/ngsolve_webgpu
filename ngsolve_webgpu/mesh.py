@@ -429,7 +429,6 @@ class MeshData:
     
         self.mesh_metadata = mesh_metadata
         self.cpu_data = bytes(mesh_metadata) + vertices + data_2d + data_3d
-        print("cpu_data", len(self.cpu_data), self.cpu_data[:100])
 
         self._last_mesh_timestamp = mesh._timestamp
 
@@ -481,11 +480,6 @@ class MeshData:
             if "data_3d" in deform_buffers:
                 result["deformation_3d"] = deform_buffers["data_3d"]
                 
-        print(
-            "mesh metadata",
-            {field_name: getattr(self.mesh_metadata, field_name) for field_name, _ in self.mesh_metadata._fields_},
-        )
-        print("mesh data size", len(self.cpu_data))
         result["mesh"] = self.gpu_data
 
         return result

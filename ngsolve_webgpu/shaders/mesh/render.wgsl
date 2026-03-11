@@ -34,14 +34,14 @@ struct VertexOutput3d {
 @vertex
 fn vertexTrigP1Indexed(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) instanceId: u32) -> VertexOutput2d {
 
-    let tri = loadTriangle(vertexId, instanceId);
+    let tri = loadTriangle(instanceId);
     return calcTrig(tri, vertexId, instanceId);
 }
 
 @vertex
 fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) trigId: u32) -> VertexOutput2d {
     // let MESHDATA_OFFSET : u32 = 2;
-    let tri = loadTriangle(vertexId, trigId);
+    let tri = loadTriangle(trigId);
 
     let index = tri.index;
 
