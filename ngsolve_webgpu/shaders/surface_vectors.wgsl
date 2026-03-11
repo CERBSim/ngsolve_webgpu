@@ -1,11 +1,10 @@
 #import ngsolve/eval/trig
 #import ngsolve/uniforms
-#import colormap
 
 @group(0) @binding(21) var<storage, read_write> count_vectors: atomic<u32>;
 @group(0) @binding(22) var<storage, read_write> positions: array<f32>;
 @group(0) @binding(23) var<storage, read_write> directions: array<f32>;
-@group(0) @binding(25) var<storage, read_write> values: array<f32>;
+@group(0) @binding(29) var<storage, read_write> values: array<f32>;
 @group(0) @binding(24) var<uniform> u_ntrigs: u32;
 
 @compute @workgroup_size(256)
@@ -91,8 +90,8 @@ fn compute_surface_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
                       let v = evalTrigVec3(&u_function_values_2d, trigId, lam);
                       
                       let val = length(v);
-                      var scale = (val - u_cmap_uniforms.min) / (u_cmap_uniforms.max - u_cmap_uniforms.min);
-                      scale = 2 * gridsize * clamp(scale, 0.5, 1.0);
+                      // var scale = (val - u_cmap_uniforms.min) / (u_cmap_uniforms.max - u_cmap_uniforms.min);
+                      let scale = 2 * gridsize * 1.0; //clamp(scale, 0.5, 1.0);
                       let direction = scale * normalize(v) ;
                       let index = atomicAdd(&count_vectors, 1);
                       if (u_curvature_values_2d[0] != -1.) {

@@ -4,7 +4,7 @@
 // They are used to pass data from the CPU to the GPU (variable names are only relevant within the shader code)
 
 // general uniforms
-@group(0) @binding(14) var gBufferLam : texture_2d<f32>;
+// @group(0) @binding(14) var gBufferLam : texture_2d<f32>;
 
 // legacy uniforms
 @group(0) @binding(8) var<storage> edges_p1 : array<EdgeP1>;
