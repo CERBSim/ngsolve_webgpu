@@ -77,8 +77,6 @@ class VectorRenderer(ShapeRenderer):
     def allocate_buffers(self):
         for name in ["positions", "directions", "values"]:
             size = 4 * self.n_vectors if name == "values" else 3 * 4 * self.n_vectors
-            if name == "positions":
-                size += 1 # add one extra for n vectors
             self.__buffers[name] = create_buffer(
                 size=size,
                 usage=BufferUsage.VERTEX | BufferUsage.STORAGE,
