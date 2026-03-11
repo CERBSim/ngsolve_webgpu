@@ -3,53 +3,14 @@
 // Each uniform must have a unique binding group and number
 // They are used to pass data from the CPU to the GPU (variable names are only relevant within the shader code)
 
-// general uniforms
-// @group(0) @binding(14) var gBufferLam : texture_2d<f32>;
-
 // legacy uniforms
-@group(0) @binding(8) var<storage> edges_p1 : array<EdgeP1>;
 @group(0) @binding(12) var<storage> vertices : array<f32>;
 @group(0) @binding(13) var<storage> trigs : array<u32>;
 
 // mesh uniforms
 @group(0) @binding(20) var<uniform> u_mesh : MeshUniforms;
-@group(0) @binding(21) var<storage> u_edges : array<Edge>;
-@group(0) @binding(22) var<storage> u_segs : array<Seg>;
 @group(0) @binding(23) var<storage> u_trigs : array<Trig>;
-@group(0) @binding(24) var<storage> u_quads : array<Quad>;
 @group(0) @binding(25) var<storage> u_tets : array<Tet>;
-@group(0) @binding(26) var<storage> u_pyramids : array<Pyramid>;
-@group(0) @binding(27) var<storage> u_prisms : array<Prism>;
-@group(0) @binding(28) var<storage> u_hexes : array<Hex>;
-
-// deformation uniforms
-@group(0) @binding(30) var<storage> u_segs_deformation : array<f32>;
-@group(0) @binding(31) var<storage> u_trigs_deformation : array<f32>;
-@group(0) @binding(32) var<storage> u_quads_deformation : array<f32>;
-@group(0) @binding(33) var<storage> u_tets_deformation : array<f32>;
-@group(0) @binding(34) var<storage> u_pyramids_deformation : array<f32>;
-@group(0) @binding(35) var<storage> u_prisms_deformation : array<f32>;
-@group(0) @binding(36) var<storage> u_hexes_deformation : array<f32>;
-
-// function uniforms
-@group(0) @binding(30) var<storage> u_segs_function : array<f32>;
-@group(0) @binding(31) var<storage> u_trigs_function : array<f32>;
-@group(0) @binding(32) var<storage> u_quads_function : array<f32>;
-@group(0) @binding(33) var<storage> u_tets_function : array<f32>;
-@group(0) @binding(34) var<storage> u_pyramids_function : array<f32>;
-@group(0) @binding(35) var<storage> u_prisms_function : array<f32>;
-@group(0) @binding(36) var<storage> u_hexes_function : array<f32>;
-
-// Line integral convolution
-@group(0) @binding(40) var<uniform> u_line_integral_convolution : LineIntegralConvolutionUniforms;
-@group(0) @binding(41) var u_line_integral_convolution_input: texture_2d<f32>;
-@group(0) @binding(42) var u_line_integral_convolution_output: texture_storage_2d<r32float, write>;
-
-// Create mesh
-@group(0) @binding(50) var<storage, read_write> create_mesh_trigs_p1 : array<TrigP1>;
-@group(0) @binding(51) var<storage, read_write> create_mesh_trig_function_values : array<f32>;
-@group(0) @binding(52) var<storage, read_write> create_mesh_vertex_buffer : array<f32>;
-@group(0) @binding(53) var<storage, read_write> create_mesh_index_buffer : array<u32>;
 
 struct MeshUniforms {
   subdivision: u32,

@@ -96,20 +96,6 @@ fn loadTriangle(vertexId: u32, instanceId: u32) -> Triangle {
     return tri;
 }
 
-@vertex
-fn vertexEdgeP1(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) edgeId: u32) -> VertexOutput1d {
-    let edge = edges_p1[edgeId];
-    var p: vec3<f32> = vec3<f32>(edge.p[3 * vertexId], edge.p[3 * vertexId + 1], edge.p[3 * vertexId + 2]);
-
-    var lam: f32 = 0.0;
-    if vertexId == 0 {
-        lam = 1.0;
-    }
-
-    var position = cameraMapPoint(p);
-    return VertexOutput1d(position, p, lam, edgeId);
-}
-
 fn calcTriLam(tri: Triangle, vertexId: u32, h: f32) -> vec2<f32> {
     let i3 = vertexId % 3u;
     var lam = vec2f(0.0, 0.0);
