@@ -67,11 +67,11 @@ class VectorRenderer(ShapeRenderer):
             np.array([self.n_search_els], dtype=np.uint32), label="n_search_els",
             reuse=self.u_nsearch if hasattr(self, "u_nsearch") else None)
         return [
-            # BufferBinding(MeshBinding.VERTICES, buffers["vertices"]),
+            BufferBinding(MeshBinding.MESH_DATA, buffers["mesh"]),
             BufferBinding(21, self.u_nvectors, read_only=False),
             BufferBinding(22, self.__buffers["positions"], read_only=False),
             BufferBinding(23, self.__buffers["directions"], read_only=False),
-            # UniformBinding(24, self.u_nsearch),
+            UniformBinding(24, self.u_nsearch),
             BufferBinding(29, self.__buffers["values"], read_only=False),
             UniformBinding(31, self.u_grid_spacing)]
 
@@ -147,7 +147,6 @@ class SurfaceVectors(VectorRenderer):
         bindings = super().get_compute_bindings()
         buffers = self.function_data.get_buffers()
         return bindings + [
-            BufferBinding(MeshBinding.MESH_DATA, buffers["mesh"]),
             BufferBinding(MeshBinding.DEFORMATION_VALUES, buffers["deformation_2d"]),
             UniformBinding(MeshBinding.DEFORMATION_SCALE, buffers["deformation_scale"]),
             BufferBinding(MeshBinding.CURVATURE_VALUES_2D, buffers["curvature_2d"]),

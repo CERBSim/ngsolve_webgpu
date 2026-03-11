@@ -489,6 +489,22 @@ class MeshData:
         result["mesh"] = self.gpu_data
 
         return result
+        
+    def get_bindings(self):
+        return [
+            BufferBinding(Binding.MESH_DATA, self.gpu_data),
+        ]
+        
+    def get_shader_defines(self):
+        order = 1
+        for d in [self.curvature_data, self.deformation_data]:
+            if d is not None:
+                order = max(order, d.order)
+                
+        return {
+            "MAX_EVAL_ORDER": order,
+            "MAX_EVAL_ORDER_VEC3": order,
+        }
 
 class BaseMeshElements2d(Renderer):
     depthBias: int = 1

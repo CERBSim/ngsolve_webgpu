@@ -121,4 +121,3 @@ fn evalTrigVec3Grad(data: ptr<storage, array<f32>, read>, id: u32, lam: vec2<f32
 
     return result;
 }
-
