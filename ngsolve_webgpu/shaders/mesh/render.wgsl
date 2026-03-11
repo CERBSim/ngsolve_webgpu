@@ -2,8 +2,122 @@
 #import colormap
 #import camera
 #import light
-#import ngsolve/shader
-#import ngsolve/uniforms
+
+#import ngsolve/eval/trig
+#import ngsolve/mesh/utils
+
+struct VertexOutput1d {
+  @builtin(position) fragPosition: vec4<f32>,
+  @location(0) p: vec3<f32>,
+  @location(1) lam: f32,
+  @location(2) @interpolate(flat) id: u32,
+};
+
+struct VertexOutput2d {
+  @builtin(position) fragPosition: vec4<f32>,
+  @location(0) p: vec3<f32>,
+  @location(1) lam: vec2<f32>,
+  @location(2) @interpolate(flat) id: u32,
+  @location(3) n: vec3<f32>,
+  @location(4) @interpolate(flat) index: u32,
+  @location(5) @interpolate(flat) instanceId: u32,
+};
+
+struct VertexOutput3d {
+  @builtin(position) fragPosition: vec4<f32>,
+  @location(0) p: vec3<f32>,
+  @location(1) lam: vec3<f32>,
+  @location(2) @interpolate(flat) id: u32,
+  @location(3) n: vec3<f32>,
+};
+
+@vertex
+fn vertexTrigP1Indexed(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) instanceId: u32) -> VertexOutput2d {
+
+    let tri = loadTriangle(vertexId, instanceId);
+    return calcTrig(tri, vertexId, instanceId);
+}
+
+@vertex
+fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) trigId: u32) -> VertexOutput2d {
+    // let MESHDATA_OFFSET : u32 = 2;
+    let tri = loadTriangle(vertexId, trigId);
+
+    let index = tri.index;
+
+    let subdivision = u_subdivision;
+    let h = 1./ f32(subdivision);
+    var lam = vec2f(0.0, 0.0);
+    var position: vec3f;
+    
+    var side = vertexId / subdivision;
+    if (side >= 2u) {
+      side = 2u;
+    }
+    var subId = vertexId - subdivision * side;
+    if(side == 0u)
+      {
+        lam[0] = h * f32(subId);
+        lam[1] = 0.;
+      }
+    else {
+      if(side == 1u)
+      {
+        lam[0] = 1.0 - h * f32(subId);
+        lam[1] = h * f32(subId);
+      }
+    else
+      {
+        lam[0] = 0.;
+        lam[1] = 1. - h * f32(subId);
+      }
+    }
+
+
+    if(subdivision == 1)
+      {
+        var pi = (vertexId+2) % 3u;
+
+        // For quads, don't draw the diagonal edge (p2-p0) 
+        // in order to do that, just draw the "last" vertex at p1 again
+        if(tri.npElement == 4u && vertexId == 3u) {
+          // todo: fix curved quads
+          lam = calcTriLam(tri, vertexId, h);
+          pi = 1u;
+        }
+
+        position = tri.p[pi];
+      }
+    else
+      {
+        position = evalTrigVec3(&u_curvature_values_2d, tri.nr, lam);
+      }
+    if (u_deformation_values_2d[0] != -1.) {
+      position += u_deformation_scale * evalTrigVec3(&u_deformation_values_2d, tri.nr, lam);
+    }
+    return VertexOutput2d(cameraMapPoint(position), position, lam, tri.nr,
+                          normalize(cross(tri.p[1] - tri.p[0], tri.p[2] - tri.p[0])),
+                          index, trigId);
+}
+
+
+@fragment
+fn fragmentTrig(input: VertexOutput2d) -> @location(0) vec4<f32> {
+    checkClipping(input.p);
+    let p = &u_function_values_2d;
+    let value = evalTrig(p, input.instanceId, u_function_component, input.lam);
+    let color = getColor(value);
+    if(color.a < 0.01) {
+        discard;
+    }
+    return lightCalcColor(input.p, input.n, color);
+}
+
+@fragment
+fn fragmentEdge(@location(0) p: vec3<f32>) -> @location(0) vec4<f32> {
+    checkClipping(p);
+    return vec4<f32>(0, 0, 0, 1.0);
+}
 
 struct MeshFragmentInput {
   @builtin(position) fragPosition: vec4<f32>,
