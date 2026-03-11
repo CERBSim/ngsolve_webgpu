@@ -60,13 +60,13 @@ fn _evalTrigVec3Data(order: i32, data: array<vec3f, N_DOFS_TRIG_VEC3>, lam: vec2
     return v[0];
 }
 
-fn evalTrigVec3(data: ptr<storage, array<f32>, read>, id: u32, lam: vec2<f32>) -> vec3f {
-    var order: i32 = i32((*data)[1]);
-    let ncomp: u32 = u32((*data)[0]);
+fn evalTrigVec3(data: ptr<storage, array<f32>, read>, id: u32, lam: vec2<f32>, offset_: u32) -> vec3f {
+    var order: i32 = i32((*data)[offset_ + 1]);
+    let ncomp: u32 = u32((*data)[offset_ + 0]);
     var ndof: u32 = u32((order + 1) * (order + 2) / 2);
 
     var v: array<vec3f, N_DOFS_TRIG_VEC3>;
-    let offset: u32 = ndof * id * ncomp + VALUES_OFFSET;
+    let offset: u32 = offset_ + ndof * id * ncomp + VALUES_OFFSET;
     let stride: u32 = ncomp;
 
     for (var i: u32 = 0u; i < ndof; i++) {
@@ -78,14 +78,14 @@ fn evalTrigVec3(data: ptr<storage, array<f32>, read>, id: u32, lam: vec2<f32>) -
     return _evalTrigVec3Data(order, v, lam, order+1);
 }
 
-fn evalTrigVec3Grad(data: ptr<storage, array<f32>, read>, id: u32, lam: vec2<f32>) -> mat3x3<f32> {
-    var order: i32 = i32((*data)[1]);
-    let ncomp: u32 = u32((*data)[0]);
+fn evalTrigVec3Grad(data: ptr<storage, array<f32>, read>, id: u32, lam: vec2<f32>, offset_: u32) -> mat3x3<f32> {
+    var order: i32 = i32((*data)[offset_ + 1]);
+    let ncomp: u32 = u32((*data)[offset_ + 0]);
     var ndof: u32 = u32((order + 1) * (order + 2) / 2);
     let dy = order + 1;
 
     var v: array<vec3f, N_DOFS_TRIG_VEC3>;
-    let offset: u32 = ndof * id * ncomp + VALUES_OFFSET;
+    let offset: u32 = offset_ + ndof * id * ncomp + VALUES_OFFSET;
     let stride: u32 = ncomp;
 
     for (var i: u32 = 0u; i < ndof; i++) {

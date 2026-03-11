@@ -105,6 +105,7 @@ class _MeshMetaData(ct.Structure):
         ("offset_vertices", ct.c_uint32),
         ("offset_2d_data", ct.c_uint32),
         ("offset_3d_data", ct.c_uint32),
+        ("offset_curvature_2d", ct.c_uint32),
         ("num_verts", ct.c_uint32),
         ("num_segments", ct.c_uint32),
         ("num_trigs", ct.c_uint32),
@@ -113,6 +114,7 @@ class _MeshMetaData(ct.Structure):
         ("num_pyramids", ct.c_uint32),
         ("num_prisms", ct.c_uint32),
         ("num_hexes", ct.c_uint32),
+        ("is_curved", ct.c_uint32),
     ]
 
 class MeshData:
@@ -412,7 +414,7 @@ class MeshData:
         mesh_metadata.num_prisms = 0
         mesh_metadata.num_hexes = 0
         
-        mesh_metadata.offset_vertices = len(bytes(mesh_metadata))//4
+        mesh_metadata.offset_vertices = 0
         vertices = self.elements['vertices'].tobytes()
         data_2d = self.elements[ElType.TRIG].tobytes()
         mesh_metadata.offset_2d_data = mesh_metadata.offset_vertices + len(vertices)//4
@@ -426,9 +428,13 @@ class MeshData:
             mesh_metadata.num_prisms = self.num_elements[ElType.PRISM]
             mesh_metadata.num_hexes = self.num_elements[ElType.HEX]
             data_3d = self.elements[ElType.TET].tobytes()
+            
+        mesh_metadata.offset_curvature_2d = mesh_metadata.offset_3d_data + len(data_3d)//4
+        mesh_metadata.is_curved = 0 if self.curvature_data is None else 1
     
         self.mesh_metadata = mesh_metadata
-        self.cpu_data = bytes(mesh_metadata) + vertices + data_2d + data_3d
+        curvature_2d = self.curvature_data or b''
+        self.cpu_data = bytes(mesh_metadata) + vertices + data_2d + data_3d + curvature_2d
 
         self._last_mesh_timestamp = mesh._timestamp
 
@@ -525,7 +531,7 @@ class BaseMeshElements2d(Renderer):
             *self.clipping.get_bindings(),
             BufferBinding(Binding.MESH_DATA, self._buffers["mesh"]),
             BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
-            BufferBinding(Binding.CURVATURE_VALUES_2D, self._buffers["curvature_2d"]),
+            # BufferBinding(Binding.CURVATURE_VALUES_2D, self._buffers["curvature_2d"]),
             BufferBinding(Binding.DEFORMATION_VALUES, self._buffers["deformation_2d"]),
             BufferBinding(Binding.DEFORMATION_3D_VALUES, self._buffers["deformation_3d"]),
             UniformBinding(Binding.DEFORMATION_SCALE, self._buffers["deformation_scale"]),

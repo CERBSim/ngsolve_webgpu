@@ -74,7 +74,7 @@ fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_ind
     }
 
 
-    if(subdivision == 1)
+    if(subdivision == 1 || mesh.is_curved == 0u)
       {
         var pi = (vertexId+2) % 3u;
 
@@ -90,10 +90,10 @@ fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_ind
       }
     else
       {
-        position = evalTrigVec3(&u_curvature_values_2d, tri.nr, lam);
+        position = evalTrigVec3(&mesh.data, tri.nr, lam, mesh.offset_curvature_2d);
       }
     if (u_deformation_values_2d[0] != -1.) {
-      position += u_deformation_scale * evalTrigVec3(&u_deformation_values_2d, tri.nr, lam);
+      position += u_deformation_scale * evalTrigVec3(&u_deformation_values_2d, tri.nr, lam, 0u);
     }
     return VertexOutput2d(cameraMapPoint(position), position, lam, tri.nr,
                           normalize(cross(tri.p[1] - tri.p[0], tri.p[2] - tri.p[0])),

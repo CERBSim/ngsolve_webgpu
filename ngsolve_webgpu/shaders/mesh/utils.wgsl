@@ -1,5 +1,22 @@
-@group(0) @binding(110) var<storage> mesh_data : array<u32>;
+@group(0) @binding(110) var<storage> mesh : MeshData;
 @group(0) @binding(20) var<uniform> u_mesh : MeshUniforms;
+
+struct MeshData {
+    offset_vertices: u32,
+    offset_2d_data: u32,
+    offset_3d_data: u32,
+    offset_curvature_2d: u32,
+    num_verts: u32,
+    num_segments: u32,
+    num_trigs: u32,
+    num_quads: u32,
+    num_tets: u32,
+    num_pyramids: u32,
+    num_prisms: u32,
+    num_hexes: u32,
+    is_curved: u32,
+    data: array<f32>,
+};
 
 struct MeshUniforms {
   subdivision: u32,
@@ -19,12 +36,12 @@ struct Triangle {
 };
 
 fn getVertex(vertexId: u32) -> vec3f {
-    let offset = mesh_data[0];
+    let offset = mesh.offset_vertices + 3 * vertexId;
     
     return vec3f(
-        bitcast<f32>(mesh_data[offset + 3*vertexId]),
-        bitcast<f32>(mesh_data[offset + 3*vertexId + 1]),
-        bitcast<f32>(mesh_data[offset + 3*vertexId + 2])
+        bitcast<f32>(mesh.data[offset]),
+        bitcast<f32>(mesh.data[offset + 1]),
+        bitcast<f32>(mesh.data[offset + 2])
     );
 }
 
@@ -34,51 +51,53 @@ fn loadTriangle(instanceId: u32) -> Triangle {
 
     var trigId = instanceId;
     
-    let offset_2d = mesh_data[1];
+    let offset_2d = mesh.offset_2d_data;
     
-    let numElements = mesh_data[offset_2d];
+    let numElements = bitcast<u32>(mesh.data[offset_2d]);
 
     let isSecondTrigOfQuad = (trigId >= numElements);
     if(isSecondTrigOfQuad) {
       trigId = trigId - numElements;
-      trigId = mesh_data[offset_2d + MESHDATA_OFFSET + numElements*4 + trigId];
+      trigId = bitcast<u32>(mesh.data[offset_2d + MESHDATA_OFFSET + numElements*4 + trigId]);
     }
 
     tri.nr = trigId;
 
-    tri.index = mesh_data[ offset_2d + 4 * trigId + 3 + MESHDATA_OFFSET];
+    tri.index = bitcast<u32>(mesh.data[ offset_2d + 4 * trigId + 3 + MESHDATA_OFFSET]);
     let signedIndex = bitcast<i32>(tri.index);
     if(signedIndex < 0) {
       tri.npElement = 4;
-      tri.index = mesh_data[offset_2d + u32(-signedIndex) + 1];
+      tri.index = bitcast<u32>(mesh.data[offset_2d + u32(-signedIndex) + 1]);
     }
     else {
       tri.npElement = 3;
     }
 
     var vid = vec3u(0,0,0);
+    
+    let trig_base = offset_2d + MESHDATA_OFFSET + 4u * trigId;
 
     tri.trigOfElement = 0;
     vid = vec3u(
-          mesh_data[offset_2d + 4 * trigId + 0 + MESHDATA_OFFSET],
-          mesh_data[offset_2d + 4 * trigId + 1 + MESHDATA_OFFSET],
-          mesh_data[offset_2d + 4 * trigId + 2 + MESHDATA_OFFSET]
+          bitcast<u32>(mesh.data[trig_base + 0u]),
+          bitcast<u32>(mesh.data[trig_base + 1u]),
+          bitcast<u32>(mesh.data[trig_base + 2u])
       );
-      
+
     if(tri.npElement==4){
         if(isSecondTrigOfQuad) {
             tri.trigOfElement = 1;
             vid = vec3u(
-                  mesh_data[offset_2d + 4 * trigId + 2 + MESHDATA_OFFSET],
-                  mesh_data[offset_2d + u32(-signedIndex) + 1],
-                  mesh_data[offset_2d + 4 * trigId + 1 + MESHDATA_OFFSET],
+                  bitcast<u32>(mesh.data[trig_base + 2u]),
+                  bitcast<u32>(mesh.data[offset_2d + u32(-signedIndex) + 1]),
+                  bitcast<u32>(mesh.data[trig_base + 1u]),
               );
         }
         else {
             vid = vec3u(
-                  mesh_data[offset_2d + 4 * trigId + 0 + MESHDATA_OFFSET],
-                  mesh_data[offset_2d + 4 * trigId + 1 + MESHDATA_OFFSET],
-                  mesh_data[offset_2d + u32(-signedIndex) + 1],
+                  bitcast<u32>(mesh.data[trig_base + 0u]),
+                  bitcast<u32>(mesh.data[trig_base + 1u]),
+                  bitcast<u32>(mesh.data[offset_2d + u32(-signedIndex) + 1]),
               );
         }
           
@@ -126,7 +145,7 @@ fn calcTrig(tri: Triangle, vertexId: u32, instanceId: u32)
     if subdivision == 1 {
         position = p[vertexId];
         if (u_deformation_values_2d[0] != -1.) {
-          let pos_and_gradients = u_deformation_scale * evalTrigVec3Grad(&u_deformation_values_2d, trigId, lam);
+          let pos_and_gradients = u_deformation_scale * evalTrigVec3Grad(&u_deformation_values_2d, trigId, lam, 0u);
           position += u_deformation_scale * pos_and_gradients[0];
           var v1 = p[0] - p[2] + u_deformation_scale * pos_and_gradients[1];
           var v2 = p[1] - p[2] + u_deformation_scale * pos_and_gradients[2];
@@ -146,10 +165,9 @@ fn calcTrig(tri: Triangle, vertexId: u32, instanceId: u32)
         }
 
 
-        let data = &u_curvature_values_2d;
-        var pos_and_gradients = evalTrigVec3Grad(data, trigId, lam);
+        var pos_and_gradients = evalTrigVec3Grad(&mesh.data, trigId, lam, mesh.offset_curvature_2d);
         if (u_deformation_values_2d[0] != -1.) {
-          pos_and_gradients += u_deformation_scale * evalTrigVec3Grad(&u_deformation_values_2d, trigId, lam);
+          pos_and_gradients += u_deformation_scale * evalTrigVec3Grad(&u_deformation_values_2d, trigId, lam, 0u);
         }
         position = pos_and_gradients[0];
         normal = normalize(cross(pos_and_gradients[1], pos_and_gradients[2]));
