@@ -69,7 +69,7 @@ fn compute_surface_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
               
               if (lam.x >= 0 && lam.y >= 0 && lam.x+lam.y <= 1)
                 {
-                  var cp = p[0] + lam.x * (p[1] - p[0]) + lam.y * (p[2] - p[0]);
+                  var cp = lam.x*p[0] + lam.y * p[1] + (1.0 - lam.x - lam.y) * p[2];
                   
                   if(@MODE@ == 0) {
   // just count
