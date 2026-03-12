@@ -5,6 +5,7 @@
 @group(0) @binding(22) var<storage, read_write> positions: array<f32>;
 @group(0) @binding(23) var<storage, read_write> directions: array<f32>;
 @group(0) @binding(29) var<storage, read_write> values: array<f32>;
+@group(0) @binding(31) var<uniform> u_gridsize: f32;
 
 @compute @workgroup_size(256)
 fn compute_surface_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
@@ -12,6 +13,7 @@ fn compute_surface_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
   for (var trigId = id.x; trigId<n_trigs; trigId+=256*1024) {
     let p = loadTriangle(trigId).p;
     
+    let gridsize = u_gridsize;
     // let pmin = min(p[0], min(p[1], p[2]));
     let pmin = vec3f(-1, -1, -1);
     let rad = 1.0;
@@ -55,8 +57,6 @@ fn compute_surface_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
 
     let minv = 1.0/mdet * mat2x2f( m[1][1], -m[0][1], -m[1][0], m[0][0] );
     
-    let gridsize = 0.03;
-
     let xmin = floor(min2d.x / gridsize) * gridsize;
 
     for (var s = 0.0; s <= 1.; s += 1.0 * gridsize) {
