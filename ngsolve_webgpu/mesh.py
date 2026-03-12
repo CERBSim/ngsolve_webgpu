@@ -225,6 +225,16 @@ class MeshData:
 
             if self.deformation_data:
                 self.deformation_data.update(options)
+                
+        curvature_2d = b''
+        if self.curvature_data:
+            curvature_2d = self.curvature_data.data_2d.tobytes()
+        vertices = self.elements['vertices'].tobytes()
+        data_2d = self.elements[ElType.TRIG].tobytes()
+        data_3d = b''
+        if self.need_3d:
+            data_3d = self.elements[ElType.TET].tobytes()
+        self.cpu_data = bytes(self.mesh_metadata) + vertices + data_2d + data_3d + curvature_2d
 
     def _create_data(self):
         # TODO: implement other element types than triangles
@@ -433,8 +443,6 @@ class MeshData:
         mesh_metadata.is_curved = 0 if self.curvature_data is None else 1
     
         self.mesh_metadata = mesh_metadata
-        curvature_2d = self.curvature_data or b''
-        self.cpu_data = bytes(mesh_metadata) + vertices + data_2d + data_3d + curvature_2d
 
         self._last_mesh_timestamp = mesh._timestamp
 
