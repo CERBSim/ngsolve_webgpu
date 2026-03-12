@@ -109,7 +109,6 @@ class VectorRenderer(ShapeRenderer):
             }
         )
         self.n_vectors = int(read_buffer(self.u_nvectors, np.uint32)[0])
-        print("n vectors found = ", self.n_vectors)
         write_array_to_buffer(self.u_nvectors, np.array([0], dtype=np.uint32))
         self.allocate_buffers()
         run_compute_shader(
