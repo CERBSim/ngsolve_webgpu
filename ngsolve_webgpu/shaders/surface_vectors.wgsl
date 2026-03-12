@@ -17,7 +17,6 @@ fn compute_surface_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
     // let pmin = min(p[0], min(p[1], p[2]));
     let pmin = vec3f(-1, -1, -1);
     let rad = 1.0;
-    let swap_lam = false;
 
     var dir: u32 =0;
     var dir1: u32 =0;
@@ -57,8 +56,6 @@ fn compute_surface_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
 
     let minv = 1.0/mdet * mat2x2f( m[1][1], -m[0][1], -m[1][0], m[0][0] );
     
-    let xmin = floor(min2d.x / gridsize) * gridsize;
-
     for (var s = 0.0; s <= 1.; s += 1.0 * gridsize) {
       if (s >= min2d.x && s <= max2d.x) 
       {
