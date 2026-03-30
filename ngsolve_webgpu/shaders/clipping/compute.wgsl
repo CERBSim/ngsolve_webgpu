@@ -10,7 +10,9 @@
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     
-  let n_tets = u_tets[0] + u_tets[2] + 2 * u_tets[3] + 5*u_tets[4];
+  let offset_3d = mesh.offset_3d_data;
+  let n_tets = bitcast<u32>(mesh.data[offset_3d + 0]) + bitcast<u32>(mesh.data[offset_3d + 2]) + 2 * bitcast<u32>(mesh.data[offset_3d + 3]) + 5*bitcast<u32>(mesh.data[offset_3d + 4]);
+  
   for (var i = id.x; i<n_tets; i+=256*1024) {
     let tet = getTetrahedron(i);
     let p = array(getVertex(tet.p[0]), getVertex(tet.p[1]), getVertex(tet.p[2]), getVertex(tet.p[3]));

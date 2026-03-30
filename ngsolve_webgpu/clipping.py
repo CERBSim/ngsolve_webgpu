@@ -10,7 +10,7 @@ from webgpu.webgpu_api import *
 
 import numpy as np
 
-from .cf import FunctionData
+from .cf import FunctionData, FunctionSettings
 from .cf import Binding as CFBinding
 
 from .mesh import MeshElements3d, ElType
@@ -57,17 +57,18 @@ class ClippingCF(Renderer):
         self.gpu_objects.colormap = colormap or Colormap()
         self._clipping.callbacks.append(self.set_needs_update)
         self.data = data
-        self.component = component if data.cf.dim > 1 else 0
         self.data.need_3d = True
         if self.data.mesh_data.deformation_data is not None:
             self.data.mesh_data.deformation_data.need_3d = True
         self.options = None
-        self.component_buffer = None
         self.cut_trigs_counter = None
         self.cut_trigs = None
         self.trig_counter = None
         self.only_count = None
         self.n_tets = None
+        if component is None:
+            component = -1 if self.data.cf.dim > 1 else 0
+        self.gpu_objects.settings = FunctionSettings(component=component)
 
     @property
     def colormap(self):
@@ -78,12 +79,8 @@ class ClippingCF(Renderer):
         self.gpu_objects.colormap = value
 
     def update(self, options: RenderOptions):
-        self.component_buffer = uniform_from_array(
-            np.array([self.component], np.int32),
-            label="component_buffer",
-            reuse=self.component_buffer,
-        )
         self.data.update(options)
+        self.shader_defines = self.data.mesh_data.get_shader_defines()
         self._clipping.update(options)
 
         if not hasattr(self.clipping, "uniforms"):
@@ -106,20 +103,17 @@ class ClippingCF(Renderer):
         return read_shader_file("ngsolve/clipping/render.wgsl")
 
     def set_component(self, component: int):
-        self.component = component
-        self.component_buffer = uniform_from_array(np.array([self.component], np.int32))
-        self.set_needs_update()
+        self.gpu_objects.settings.component = component
 
     def get_bindings(self, compute=False, count: bool = False):
         bindings = [
-            BufferBinding(MeshBinding.VERTICES, self._buffers["vertices"]),
+            *self.data.mesh_data.get_bindings(),
             UniformBinding(22, self.n_tets),
             UniformBinding(23, self.only_count),
-            BufferBinding(MeshBinding.TET, self._buffers[ElType.TET]),
+            # BufferBinding(MeshBinding.TET, self._buffers[ElType.TET]),
             BufferBinding(13, self._buffers["data_3d"]),
             UniformBinding(17, self._buffers["deformation_scale"]),
             BufferBinding(18, self._buffers["deformation_3d"]),
-            UniformBinding(CFBinding.COMPONENT, self.component_buffer),
             *self.clipping.get_bindings(),
         ]
         if compute:
@@ -137,6 +131,7 @@ class ClippingCF(Renderer):
         else:
             bindings += [
                 *self.gpu_objects.colormap.get_bindings(),
+                *self.gpu_objects.settings.get_bindings(),
                 BufferBinding(24, self.cut_trigs),
             ]
         return bindings
@@ -173,7 +168,7 @@ class ClippingCF(Renderer):
 
             shader_code = read_shader_file(self.compute_shader)
             run_compute_shader(
-                shader_code, self.get_bindings(compute=True, count=count), 1024, "build_clip_plane"
+                shader_code, self.get_bindings(compute=True, count=count), 1024, "build_clip_plane", defines=self.data.mesh_data.get_shader_defines()
             )
             if count:
                 self.n_instances = int(read_buffer(self.trig_counter, np.uint32)[0])

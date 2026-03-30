@@ -33,10 +33,8 @@ class Binding:
     """Binding numbers for uniforms in shader code in uniforms.wgsl"""
 
     EDGES = 8
-    TRIGS = 9
-    SEG_FUNCTION_VALUES = 11
+    MESH_DATA = 110
     VERTICES = 12
-    TRIGS_INDEX = 13
     CURVATURE_VALUES_2D = 14
     SUBDIVISION = 15
     DEFORMATION_VALUES = 16
@@ -46,7 +44,6 @@ class Binding:
     MESH = 20
     EDGE = 21
     SEG = 22
-    TRIG = 23
     QUAD = 24
     TET = 25
     PYRAMID = 26
@@ -103,6 +100,22 @@ class ElType(Enum):
 ElTypes2D = [ElType.TRIG, ElType.QUAD]
 ElTypes3D = [ElType.TET, ElType.HEX, ElType.PRISM, ElType.PYRAMID]
 
+class _MeshMetaData(ct.Structure):
+    _fields_ = [
+        ("offset_vertices", ct.c_uint32),
+        ("offset_2d_data", ct.c_uint32),
+        ("offset_3d_data", ct.c_uint32),
+        ("offset_curvature_2d", ct.c_uint32),
+        ("num_verts", ct.c_uint32),
+        ("num_segments", ct.c_uint32),
+        ("num_trigs", ct.c_uint32),
+        ("num_quads", ct.c_uint32),
+        ("num_tets", ct.c_uint32),
+        ("num_pyramids", ct.c_uint32),
+        ("num_prisms", ct.c_uint32),
+        ("num_hexes", ct.c_uint32),
+        ("is_curved", ct.c_uint32),
+    ]
 
 class MeshData:
     # only for drawing the mesh, not needed for function values
@@ -116,6 +129,10 @@ class MeshData:
     mesh: "netgen.meshing.Mesh | ngsolve.Mesh"
     curvature_data = None
     deformation_data = None
+    
+    cpu_data: bytes | None = None
+    gpu_data: Buffer | None = None
+    
     _ngs_mesh = None
     _last_mesh_timestamp: int = -1
     _timestamp: float = -1
@@ -140,6 +157,10 @@ class MeshData:
             self.mesh = mesh.ngmesh
         self.num_elements = {}
         self.elements = {}
+        
+        self.cpu_data = None
+        self.gpu_data = None
+        
         self.gpu_elements = {}
         self.subdivision = None
         self._deformation_scale = 1
@@ -204,11 +225,23 @@ class MeshData:
 
             if self.deformation_data:
                 self.deformation_data.update(options)
+                
+        curvature_2d = b''
+        if self.curvature_data:
+            curvature_2d = self.curvature_data.data_2d.tobytes()
+        vertices = self.elements['vertices'].tobytes()
+        data_2d = self.elements[ElType.TRIG].tobytes()
+        data_3d = b''
+        if self.need_3d:
+            data_3d = self.elements[ElType.TET].tobytes()
+        self.cpu_data = bytes(self.mesh_metadata) + vertices + data_2d + data_3d + curvature_2d
 
     def _create_data(self):
         # TODO: implement other element types than triangles
         # TODO: handle region correctly to draw only part of the mesh
+        
         mesh = self.mesh
+        
         self.num_elements = {eltype: 0 for eltype in ElType}
         self.elements = {}
         self.gpu_elements = {}
@@ -381,14 +414,51 @@ class MeshData:
         for key in self.num_elements:
             self.num_elements[key] = int(self.num_elements[key])
 
-        self._last_mesh_timestamp = mesh._timestamp
+        mesh_metadata = _MeshMetaData()
+        mesh_metadata.num_verts = nv
+        mesh_metadata.num_segments = 0
+        mesh_metadata.num_trigs = len(trigs)
+        mesh_metadata.num_quads = num_quads
+        mesh_metadata.num_tets = 0
+        mesh_metadata.num_pyramids = 0
+        mesh_metadata.num_prisms = 0
+        mesh_metadata.num_hexes = 0
+        
+        mesh_metadata.offset_vertices = 0
+        vertices = self.elements['vertices'].tobytes()
+        data_2d = self.elements[ElType.TRIG].tobytes()
+        mesh_metadata.offset_2d_data = mesh_metadata.offset_vertices + len(vertices)//4
+        mesh_metadata.offset_3d_data = mesh_metadata.offset_2d_data + len(data_2d)//4
+        
+        data_3d = b''
+        
+        if self.need_3d:
+            mesh_metadata.num_tets = self.num_elements[ElType.TET]
+            mesh_metadata.num_pyramids = self.num_elements[ElType.PYRAMID]
+            mesh_metadata.num_prisms = self.num_elements[ElType.PRISM]
+            mesh_metadata.num_hexes = self.num_elements[ElType.HEX]
+            data_3d = self.elements[ElType.TET].tobytes()
+            
+        mesh_metadata.offset_curvature_2d = mesh_metadata.offset_3d_data + len(data_3d)//4
+        mesh_metadata.is_curved = 0 if self.curvature_data is None else 1
+    
+        self.mesh_metadata = mesh_metadata
 
+        self._last_mesh_timestamp = mesh._timestamp
 
     def get_bounding_box(self):
         pmin, pmax = self.mesh.bounding_box
         return ([pmin[0], pmin[1], pmin[2]], [pmax[0], pmax[1], pmax[2]])
 
     def get_buffers(self, force_update=False):
+        
+        if self.gpu_data is None or force_update:
+            self.gpu_data = buffer_from_array(
+                self.cpu_data,
+                label="mesh",
+                reuse=self.gpu_data,
+            )
+        
         for eltype in self.elements:
             if eltype not in self.gpu_elements or force_update:
                 self.gpu_elements[eltype] = buffer_from_array(
@@ -423,8 +493,26 @@ class MeshData:
             result["deformation_2d"] = deform_buffers["data_2d"]
             if "data_3d" in deform_buffers:
                 result["deformation_3d"] = deform_buffers["data_3d"]
+                
+        result["mesh"] = self.gpu_data
 
         return result
+        
+    def get_bindings(self):
+        return [
+            BufferBinding(Binding.MESH_DATA, self.gpu_data),
+        ]
+        
+    def get_shader_defines(self):
+        order = 1
+        for d in [self.curvature_data, self.deformation_data]:
+            if d is not None:
+                order = max(order, d.order)
+                
+        return {
+            "MAX_EVAL_ORDER": order,
+            "MAX_EVAL_ORDER_VEC3": order,
+        }
 
 class BaseMeshElements2d(Renderer):
     depthBias: int = 1
@@ -465,9 +553,9 @@ class BaseMeshElements2d(Renderer):
     def get_bindings(self):
         bindings = [
             *self.clipping.get_bindings(),
+            BufferBinding(Binding.MESH_DATA, self._buffers["mesh"]),
             BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
-            BufferBinding(Binding.TRIGS_INDEX, self._buffers[ElType.TRIG]),
-            BufferBinding(Binding.CURVATURE_VALUES_2D, self._buffers["curvature_2d"]),
+            # BufferBinding(Binding.CURVATURE_VALUES_2D, self._buffers["curvature_2d"]),
             BufferBinding(Binding.DEFORMATION_VALUES, self._buffers["deformation_2d"]),
             BufferBinding(Binding.DEFORMATION_3D_VALUES, self._buffers["deformation_3d"]),
             UniformBinding(Binding.DEFORMATION_SCALE, self._buffers["deformation_scale"]),
@@ -478,7 +566,7 @@ class BaseMeshElements2d(Renderer):
         return bindings
 
     def get_shader_code(self):
-        return read_shader_file("ngsolve/mesh.wgsl")
+        return read_shader_file("ngsolve/mesh/render.wgsl")
 
 
 class MeshElements2d(BaseMeshElements2d):

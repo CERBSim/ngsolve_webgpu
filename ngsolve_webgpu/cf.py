@@ -8,7 +8,8 @@ from webgpu.colormap import Colormap
 from webgpu.renderer import Renderer, RenderOptions, check_timestamp
 from webgpu.shapes import ShapeRenderer, generate_cylinder
 from webgpu.utils import BufferBinding, UniformBinding, buffer_from_array, write_array_to_buffer
-from webgpu.renderer import Renderer, RenderOptions, check_timestamp
+from webgpu.renderer import BaseRenderer, RenderOptions, check_timestamp
+from webgpu.uniforms import UniformBase, ct
 from webgpu.utils import (
     BufferBinding,
     UniformBinding,
@@ -36,7 +37,7 @@ if typing.TYPE_CHECKING:
 class Binding:
     FUNCTION_VALUES_2D = 10
     FUNCTION_VALUES_3D = 13
-    COMPONENT = 55
+    FUNCTION_SETTINGS = 55
 
 
 _intrules_3d = {}
@@ -434,6 +435,39 @@ def vandermonde_3d(order):
     return _vandermonde_mats[order]
 
 
+class FunctionUniform(UniformBase):
+    _binding = Binding.FUNCTION_SETTINGS
+    _fields_ = [
+        ("component", ct.c_int32),
+        ("padding", ct.c_uint32*3),
+    ]
+    
+class FunctionSettings(BaseRenderer):
+    def __init__(self, component):
+        super().__init__()
+        self._component = component
+        self.uniform = None
+
+    def update(self, options: RenderOptions):
+        if self.uniform is None:
+            self.uniform = FunctionUniform(component=self._component)
+            self.uniform.update_buffer()
+
+    def get_bindings(self):
+        return self.uniform.get_bindings()
+        
+    @property
+    def component(self):
+        return self._component
+        
+    @component.setter
+    def component(self, value):
+        self._component = value
+        if self.uniform is not None:
+            self.uniform.component = value
+            self.uniform.update_buffer()
+
+
 class CFRenderer(BaseMeshElements2d):
     """Use "vertices", "index" and "trig_function_values" buffers to render a mesh"""
 
@@ -442,7 +476,7 @@ class CFRenderer(BaseMeshElements2d):
     def __init__(
         self,
         data: FunctionData,
-        component=-1,
+        component=None,
         label="CFRenderer",
         clipping: Clipping = None,
         colormap: Colormap = None,
@@ -450,10 +484,11 @@ class CFRenderer(BaseMeshElements2d):
         super().__init__(data=data.mesh_data, label=label, clipping=clipping)
         self.data = data
         self.gpu_objects.colormap = colormap or Colormap()
-        self.component = component if self.data.cf.dim > 1 else 0
         self._on_component_change = []
-        self.component_buffer = None
-
+        if component is None:
+            component = -1 if self.data.cf.dim > 1 else 0
+        self.gpu_objects.settings = FunctionSettings(component=component)
+        
     @property
     def colormap(self):
         return self.gpu_objects.colormap
@@ -461,6 +496,10 @@ class CFRenderer(BaseMeshElements2d):
     @colormap.setter
     def colormap(self, value: Colormap):
         self.gpu_objects.colormap = value
+        
+    @property
+    def component(self):
+        return self.gpu_objects.settings.component
 
     def update(self, options: RenderOptions):
         self.data.update(options)
@@ -471,7 +510,6 @@ class CFRenderer(BaseMeshElements2d):
                 self.data.maxval[self.component + 1],
                 set_autoscale=False,
             )
-        self.component_buffer = buffer_from_array(np.array([self.component], np.int32), label="cf_component", reuse=self.component_buffer)
         self.shader_defines["MAX_EVAL_ORDER"] = self.data.order
 
     def on_component_change(self, callback):
@@ -492,19 +530,16 @@ class CFRenderer(BaseMeshElements2d):
     @deprecated("Use set_component instead")
     def change_cf_dim(self, value):
         self.set_component(value)
-
+        
     def set_component(self, component: int):
-        self.component = component
-        write_array_to_buffer(self.component_buffer, np.array([self.component], np.int32))
-        for callback in self._on_component_change:
-            callback(component)
+        self.gpu_objects.settings.component = component
 
     def get_bindings(self):
         return [
             *super().get_bindings(),
             *self.gpu_objects.colormap.get_bindings(),
+            *self.gpu_objects.settings.get_bindings(),
             BufferBinding(Binding.FUNCTION_VALUES_2D, self._buffers["data_2d"]),
-            BufferBinding(Binding.COMPONENT, self.component_buffer),
         ]
 
     def set_needs_update(self):
