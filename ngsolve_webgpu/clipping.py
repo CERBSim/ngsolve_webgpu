@@ -80,6 +80,9 @@ class ClippingCF(Renderer):
 
     def update(self, options: RenderOptions):
         self.data.update(options)
+        if self.data.data_3d is None:
+            self.active = False
+            return
         self.shader_defines = self.data.mesh_data.get_shader_defines()
         self._clipping.update(options)
 

@@ -239,15 +239,23 @@ class FunctionData:
         return self.mesh_data.deformation_data
 
     def _create_data(self):
-        self.data_2d, self.minval, self.maxval = evaluate_cf(
-            self.cf, self.mesh_data.ngs_mesh, self.order
-        )
-        if self.need_3d:
-            self.data_3d, minval, maxval = self.evaluate_3d(
-                self.cf, self.mesh_data.ngs_mesh, self.order_3d
+        try:
+            self.data_2d, self.minval, self.maxval = evaluate_cf(
+                self.cf, self.mesh_data.ngs_mesh, self.order
             )
-            self.minval = [min(v1, v2) for v1, v2 in zip(self.minval, minval)]
-            self.maxval = [max(v1, v2) for v1, v2 in zip(self.maxval, maxval)]
+        except Exception:
+            self.data_2d = None
+            self.minval = [1e99] * (self.cf.dim + 1)
+            self.maxval = [-1e99] * (self.cf.dim + 1)
+        if self.need_3d:
+            try:
+                self.data_3d, minval, maxval = self.evaluate_3d(
+                self.cf, self.mesh_data.ngs_mesh, self.order_3d
+                )
+                self.minval = [min(v1, v2) for v1, v2 in zip(self.minval, minval)]
+                self.maxval = [max(v1, v2) for v1, v2 in zip(self.maxval, maxval)]
+            except Exception:
+                self.data_3d = None
 
     def get_buffers(self, include_mesh_data=True):
         if include_mesh_data:
@@ -503,6 +511,9 @@ class CFRenderer(BaseMeshElements2d):
 
     def update(self, options: RenderOptions):
         self.data.update(options)
+        if self.data.data_2d is None:
+            self.active = False
+            return
         super().update(options)
         if self.gpu_objects.colormap.autoscale:
             self.gpu_objects.colormap.set_min_max(
