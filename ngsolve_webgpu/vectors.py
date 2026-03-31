@@ -129,7 +129,8 @@ class VectorRenderer(ShapeRenderer):
     def update(self, options):
         self.function_data.update(options)
         self.compute_vectors()
-        super().update(options)
+        if self.active:
+            super().update(options)
 
 class SurfaceVectors(VectorRenderer):
     def __init__(self, function_data: FunctionData, grid_size: float = 20, clipping: Clipping = None, colormap: Colormap = None):
@@ -142,6 +143,12 @@ class SurfaceVectors(VectorRenderer):
         self.n_search_els = self.function_data.mesh_data.ngs_mesh.GetNE(ngs.BND)
         super().update(options)
         
+    def compute_vectors(self):
+        if "data_2d" not in self.function_data.get_buffers():
+            self.active = False
+            return
+        return super().compute_vectors()
+
     def get_compute_bindings(self):
         bindings = super().get_compute_bindings()
         buffers = self.function_data.get_buffers()
@@ -180,6 +187,12 @@ class ClippingVectors(VectorRenderer):
             UniformBinding(MeshBinding.DEFORMATION_SCALE, buffers["deformation_scale"]),
             BufferBinding(FunctionBinding.FUNCTION_VALUES_3D, buffers["data_3d"]),
         ]
+        
+    def compute_vectors(self):
+        if "data_3d" not in self.function_data.get_buffers():
+            self.active = False
+            return
+        return super().compute_vectors()
 
     def update(self, options):
         self.n_search_els = self.function_data.mesh_data.ngs_mesh.GetNE(ngs.VOL)
