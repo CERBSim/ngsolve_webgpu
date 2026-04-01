@@ -21,8 +21,7 @@ fn vertex_clipping(@builtin(vertex_index) vertId: u32,
   -> VertexOutputClip
 {
   let trig = subtrigs[trigId];
-  let tet = getTetrahedron(trig.id);
-  let points = array(getVertex(tet.p[0]), getVertex(tet.p[1]), getVertex(tet.p[2]), getVertex(tet.p[3]));
+  let points = getTetPoints(trig.id);
   var lam = vec4<f32>(trig.lam[vertId], 1.);
   lam[3] = 1.0 - lam[0] - lam[1] - lam[2];
   var p = vec3<f32>(0.0, 0.0, 0.0);
