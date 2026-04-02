@@ -67,7 +67,7 @@ class VectorRenderer(ShapeRenderer):
             np.array([self.n_search_els], dtype=np.uint32), label="n_search_els",
             reuse=self.u_nsearch if hasattr(self, "u_nsearch") else None)
         return [
-            self.function_data.mesh_data.get_bindings(),
+            *self.function_data.mesh_data.get_bindings(),
             BufferBinding(21, self.u_nvectors, read_only=False),
             BufferBinding(22, self.__buffers["positions"], read_only=False),
             BufferBinding(23, self.__buffers["directions"], read_only=False),
@@ -153,8 +153,6 @@ class SurfaceVectors(VectorRenderer):
         bindings = super().get_compute_bindings()
         buffers = self.function_data.get_buffers()
         return bindings + [
-            BufferBinding(MeshBinding.DEFORMATION_VALUES, buffers["deformation_2d"]),
-            UniformBinding(MeshBinding.DEFORMATION_SCALE, buffers["deformation_scale"]),
             BufferBinding(FunctionBinding.FUNCTION_VALUES_2D, buffers["data_2d"]),
         ]
 
@@ -181,8 +179,6 @@ class ClippingVectors(VectorRenderer):
         buffers = self.function_data.get_buffers()
         return bindings + [
             *self.__clipping.get_bindings(),
-            BufferBinding(MeshBinding.DEFORMATION_3D_VALUES, buffers["deformation_3d"]),
-            UniformBinding(MeshBinding.DEFORMATION_SCALE, buffers["deformation_scale"]),
             BufferBinding(FunctionBinding.FUNCTION_VALUES_3D, buffers["data_3d"]),
         ]
         
