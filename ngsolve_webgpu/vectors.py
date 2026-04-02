@@ -155,7 +155,6 @@ class SurfaceVectors(VectorRenderer):
         return bindings + [
             BufferBinding(MeshBinding.DEFORMATION_VALUES, buffers["deformation_2d"]),
             UniformBinding(MeshBinding.DEFORMATION_SCALE, buffers["deformation_scale"]),
-            BufferBinding(MeshBinding.CURVATURE_VALUES_2D, buffers["curvature_2d"]),
             BufferBinding(FunctionBinding.FUNCTION_VALUES_2D, buffers["data_2d"]),
         ]
 
@@ -182,7 +181,6 @@ class ClippingVectors(VectorRenderer):
         buffers = self.function_data.get_buffers()
         return bindings + [
             *self.__clipping.get_bindings(),
-            BufferBinding(MeshBinding.TET, buffers[ElType.TET]),
             BufferBinding(MeshBinding.DEFORMATION_3D_VALUES, buffers["deformation_3d"]),
             UniformBinding(MeshBinding.DEFORMATION_SCALE, buffers["deformation_scale"]),
             BufferBinding(FunctionBinding.FUNCTION_VALUES_3D, buffers["data_3d"]),
