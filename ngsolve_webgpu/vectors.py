@@ -67,7 +67,7 @@ class VectorRenderer(ShapeRenderer):
             np.array([self.n_search_els], dtype=np.uint32), label="n_search_els",
             reuse=self.u_nsearch if hasattr(self, "u_nsearch") else None)
         return [
-            BufferBinding(MeshBinding.MESH_DATA, buffers["mesh"]),
+            self.function_data.mesh_data.get_bindings(),
             BufferBinding(21, self.u_nvectors, read_only=False),
             BufferBinding(22, self.__buffers["positions"], read_only=False),
             BufferBinding(23, self.__buffers["directions"], read_only=False),

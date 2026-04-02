@@ -27,13 +27,13 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
   -> MeshFragmentInput
 {
     let MESHDATA_OFFSET: u32 = 5;
-    let offset_3d = bitcast<u32>(mesh.offset_3d_data);
+    let offset_3d = mesh.offset_3d_data;
     let numElements = bitcast<u32>(mesh.data[offset_3d + 0]);
     let numTets = bitcast<u32>(mesh.data[offset_3d + 1]);
     let numPyra = bitcast<u32>(mesh.data[offset_3d + 2]);
     let numPrims = bitcast<u32>(mesh.data[offset_3d + 3]);
     let numHex = bitcast<u32>(mesh.data[offset_3d + 4]);
-    let INDEX_SORTED_BY_TYPE = MESHDATA_OFFSET+5*numElements;
+    let INDEX_SORTED_BY_TYPE = offset_3d + MESHDATA_OFFSET+5*numElements;
 
     var elementId= instanceId;
     var faceId= 0u;
@@ -50,7 +50,7 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
     else if (elementId< prismStart) {
         let local = elementId - pyramidStart;
         faceId = local % 2u + 4u;
-        elementId= bitcast<u32>(mesh.data[offset_3d + INDEX_SORTED_BY_TYPE + (local / 2u)]);
+        elementId= bitcast<u32>(mesh.data[ INDEX_SORTED_BY_TYPE + (local / 2u)]);
         
     }
 
@@ -58,20 +58,20 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
     else if (elementId < hexStart) {
         let local = elementId - prismStart;
         faceId = local % 4u + 4u;
-        elementId= bitcast<u32>(mesh.data[offset_3d + INDEX_SORTED_BY_TYPE + numPyra + (local / 4u)]);
+        elementId= bitcast<u32>(mesh.data[ INDEX_SORTED_BY_TYPE + numPyra + (local / 4u)]);
     }
 
     // extra 8 triangles of any hex
     else {
         let local = elementId - hexStart;
         faceId = local % 8u + 4u;
-        elementId= bitcast<u32>(mesh.data[offset_3d + INDEX_SORTED_BY_TYPE + numPyra + numPrims + (local / 8u)]);
+        elementId= bitcast<u32>(mesh.data[ INDEX_SORTED_BY_TYPE + numPyra + numPrims + (local / 8u)]);
     }
-
-    let element = getElem(elementId);
+    
+    var element = getElem(elementId);
     let center = getCenter(element);
     var face = getFace(element, faceId);
-
+    
     if(calcClipping(center) == false) {
           // one vertex is clipped away, skip rendering this tet
           return MeshFragmentInput(vec4<f32>(0.0, 0.0, 0.0, 0.0),

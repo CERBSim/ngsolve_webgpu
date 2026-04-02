@@ -32,23 +32,13 @@ from webgpu.webgpu_api import *
 class Binding:
     """Binding numbers for uniforms in shader code in uniforms.wgsl"""
 
-    EDGES = 8
     MESH_DATA = 110
-    VERTICES = 12
-    CURVATURE_VALUES_2D = 14
     SUBDIVISION = 15
     DEFORMATION_VALUES = 16
     DEFORMATION_SCALE = 17
     DEFORMATION_3D_VALUES = 18
 
     MESH = 20
-    EDGE = 21
-    SEG = 22
-    QUAD = 24
-    TET = 25
-    PYRAMID = 26
-    PRISM = 27
-    HEX = 28
 
     LINE_INTEGRAL_CONVOLUTION = 40
     LINE_INTEGRAL_CONVOLUTION_INPUT_TEXTURE = 41
@@ -499,9 +489,21 @@ class MeshData:
         return result
         
     def get_bindings(self):
-        return [
+        bindings = [
             BufferBinding(Binding.MESH_DATA, self.gpu_data),
+            UniformBinding(Binding.DEFORMATION_SCALE, self.gpu_elements['deformation_scale']),
         ]
+        if self.deformation_data:
+            bindings += [
+                BufferBinding(Binding.DEFORMATION_VALUES, self.deformation_data.gpu_2d),
+                BufferBinding(Binding.DEFORMATION_3D_VALUES, self.deformation_data.gpu_3d),
+            ]
+        else:
+            bindings += [
+                BufferBinding(Binding.DEFORMATION_VALUES, self._dummy_buffer),
+                BufferBinding(Binding.DEFORMATION_3D_VALUES, self._dummy_buffer),
+            ]
+        return bindings
         
     def get_shader_defines(self):
         order = 1
@@ -551,14 +553,13 @@ class BaseMeshElements2d(Renderer):
         return self.data.get_bounding_box()
 
     def get_bindings(self):
+        from .cf import FunctionData
+        mesh_data = self.data
+        if isinstance(mesh_data, FunctionData):
+            mesh_data = mesh_data.mesh_data
         bindings = [
             *self.clipping.get_bindings(),
-            BufferBinding(Binding.MESH_DATA, self._buffers["mesh"]),
-            BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
-            # BufferBinding(Binding.CURVATURE_VALUES_2D, self._buffers["curvature_2d"]),
-            BufferBinding(Binding.DEFORMATION_VALUES, self._buffers["deformation_2d"]),
-            BufferBinding(Binding.DEFORMATION_3D_VALUES, self._buffers["deformation_3d"]),
-            UniformBinding(Binding.DEFORMATION_SCALE, self._buffers["deformation_scale"]),
+            *mesh_data.get_bindings(),
             UniformBinding(Binding.SUBDIVISION, self._buffers["subdivision"]),
         ]
         if hasattr(self, "color_uniform"):
@@ -752,6 +753,9 @@ class MeshElements3d(Renderer):
         self._buffers = self.data.get_buffers()
         self.uniforms.update_buffer()
         self.n_instances = self.data.num_elements["faces"]
+        order = self.data.deformation_data.order if self.data.deformation_data else 1
+        order = 3
+        self.shader_defines = {"MAX_EVAL_ORDER": str(order), "MAX_EVAL_ORDER_VEC3": str(order)}
 
     def add_options_to_gui(self, gui):
         if gui is None:
@@ -768,8 +772,7 @@ class MeshElements3d(Renderer):
     def get_bindings(self):
         return [
             *self.clipping.get_bindings(),
-            BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
-            BufferBinding(Binding.TET, self._buffers[ElType.TET]),
+            *self.data.get_bindings(),
             *self.uniforms.get_bindings(),
             *self.gpu_objects.colormap.get_bindings(),
         ]

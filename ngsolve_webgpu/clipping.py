@@ -115,8 +115,6 @@ class ClippingCF(Renderer):
             UniformBinding(23, self.only_count),
             # BufferBinding(MeshBinding.TET, self._buffers[ElType.TET]),
             BufferBinding(13, self._buffers["data_3d"]),
-            UniformBinding(17, self._buffers["deformation_scale"]),
-            BufferBinding(18, self._buffers["deformation_3d"]),
             *self.clipping.get_bindings(),
         ]
         if compute:
