@@ -489,21 +489,12 @@ class MeshData:
         return result
         
     def get_bindings(self):
-        bindings = [
+        return [
             BufferBinding(Binding.MESH_DATA, self.gpu_data),
             UniformBinding(Binding.DEFORMATION_SCALE, self.gpu_elements['deformation_scale']),
+            BufferBinding(Binding.DEFORMATION_VALUES, self.deformation_data.gpu_2d or self._dummy_buffer),
+            BufferBinding(Binding.DEFORMATION_3D_VALUES, self.deformation_data.gpu_3d or self._dummy_buffer),
         ]
-        if self.deformation_data:
-            bindings += [
-                BufferBinding(Binding.DEFORMATION_VALUES, self.deformation_data.gpu_2d),
-                BufferBinding(Binding.DEFORMATION_3D_VALUES, self.deformation_data.gpu_3d),
-            ]
-        else:
-            bindings += [
-                BufferBinding(Binding.DEFORMATION_VALUES, self._dummy_buffer),
-                BufferBinding(Binding.DEFORMATION_3D_VALUES, self._dummy_buffer),
-            ]
-        return bindings
         
     def get_shader_defines(self):
         order = 1
