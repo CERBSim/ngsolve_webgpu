@@ -108,6 +108,15 @@ class ClippingCF(Renderer):
     def set_component(self, component: int):
         self.gpu_objects.settings.component = component
 
+    def add_options_to_gui(self, gui):
+        if gui is None:
+            return
+        def set_enabled(value):
+            self.active = value
+            self.set_needs_update()
+        folder = gui.folder("Clipping", closed=True)
+        folder.checkbox("function", self.active, set_enabled)
+
     def get_bindings(self, compute=False, count: bool = False):
         bindings = [
             *self.data.mesh_data.get_bindings(),

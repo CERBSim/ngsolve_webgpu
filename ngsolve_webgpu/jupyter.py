@@ -7,6 +7,7 @@ import netgen.occ as ngocc
 from .cf import CFRenderer, FunctionData
 from .mesh import MeshData, MeshElements2d, MeshWireframe2d
 from .geometry import GeometryRenderer
+from .clipping import ClippingCF
 
 _local_path = None  # change this to local path of pyodide compiled zip files
 
@@ -111,6 +112,7 @@ def Draw(
     deformation=None,
     subdivision: int | None = None,
     contact: ngs.ContactBoundary | None = None,
+    clipping: bool | dict | None = None,
     **kwargs,
 ):
     """
@@ -136,7 +138,13 @@ def Draw(
     """
     # create gui before calling render
     render_objects = []
+    _clip = clipping
     clipping = Clipping()
+    if isinstance(_clip, bool):
+        clipping.mode = clipping.Mode.PLANE if _clip else clipping.Mode.DISABLED
+    elif isinstance(_clip, dict):
+        clipping.mode = clipping.Mode.PLANE if _clip.get("enabled", True) else clipping.Mode.DISABLED
+        clipping.normal = [_clip.get("nx", 0), _clip.get("ny", -1), _clip.get("nz", 0)]
     colormap = Colormap()
     if isinstance(obj, ngs.Mesh | ngs.Region):
         mesh = obj
@@ -180,6 +188,9 @@ def Draw(
             vcf = VectorCFRenderer(obj, mesh, **options)
             vcf.colormap = r_cf.colormap
             render_objects.append(vcf)
+        if mesh.dim == 3:
+            clipping_cf = ClippingCF(function_data, clipping=clipping, colormap=colormap)
+            render_objects.append(clipping_cf)
 
     if deformation:
         mesh_data.deformation_data = FunctionData(mesh_data, deformation, order=min(order, 3))
@@ -194,7 +205,15 @@ def Draw(
         render_objects.append(contact_renderer)
 
     scene = wj.Draw(render_objects, width, height)
-    clipping.center = 0.5 * (scene.bounding_box[0] + scene.bounding_box[1])
+
+    center = 0.5 * (scene.bounding_box[0] + scene.bounding_box[1])
+    if _clip is not None and isinstance(_clip, dict):
+        clipping.center = [_clip.get("x", center[0]), _clip.get("y", center[1]), _clip.get("z", center[2])]
+    else:
+        clipping.center = center
+    import time
+    clipping.update(time.time())
+    scene.render()
     if dim == 3:
         clipping.add_options_to_gui(scene.gui)
     for r in render_objects:
