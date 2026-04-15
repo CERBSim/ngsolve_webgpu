@@ -87,34 +87,24 @@ fn loadTriangle(instanceId: u32) -> Triangle {
       tri.npElement = 3;
     }
 
-    var vid = vec3u(0,0,0);
-    
+    tri.trigOfElement = 0;
     let trig_base = offset_2d + MESHDATA_OFFSET + 4u * trigId;
 
-    tri.trigOfElement = 0;
-    vid = vec3u(
+    var vid = vec3u(
           bitcast<u32>(mesh.data[trig_base + 0u]),
           bitcast<u32>(mesh.data[trig_base + 1u]),
           bitcast<u32>(mesh.data[trig_base + 2u])
       );
 
     if(tri.npElement==4){
+        let pi3 = bitcast<u32>(mesh.data[offset_2d + u32(-signedIndex)]);
         if(isSecondTrigOfQuad) {
             tri.trigOfElement = 1;
-            vid = vec3u(
-                  bitcast<u32>(mesh.data[trig_base + 2u]),
-                  bitcast<u32>(mesh.data[offset_2d + u32(-signedIndex) + 1]),
-                  bitcast<u32>(mesh.data[trig_base + 1u]),
-              );
+            vid = vec3u(vid[2], pi3, vid[1]);
         }
         else {
-            vid = vec3u(
-                  bitcast<u32>(mesh.data[trig_base + 0u]),
-                  bitcast<u32>(mesh.data[trig_base + 1u]),
-                  bitcast<u32>(mesh.data[offset_2d + u32(-signedIndex) + 1]),
-              );
+            vid[2] = pi3;
         }
-          
     }
     
     tri.p = array<vec3<f32>, 3>(
