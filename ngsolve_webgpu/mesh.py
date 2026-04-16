@@ -529,11 +529,12 @@ class BaseMeshElements2d(Renderer):
     fragment_entry_point: str = "fragment2dElement"
     color = (0, 1, 0, 1)
 
-    def __init__(self, data: MeshData, label="MeshElements2d", clipping=None):
+    def __init__(self, data: MeshData, label="MeshElements2d", clipping=None, symmetry=None):
         super().__init__(label=label)
         self.data = data
         self.clipping = clipping or Clipping()
         self.color_uniform = None
+        self.symmetry = symmetry
 
     def update(self, options: RenderOptions):
         self.clipping.update(options)
@@ -554,6 +555,9 @@ class BaseMeshElements2d(Renderer):
             order = max(order, self.data.deformation_data.order)
 
         self.shader_defines = {"MAX_EVAL_ORDER": 1, "MAX_EVAL_ORDER_VEC3": order + 1}
+        if self.symmetry:
+            self.n_instances *= self.symmetry.n_copies
+            self.shader_defines["SYMMETRY"] = "1"
 
     def get_bounding_box(self):
         return self.data.get_bounding_box()
@@ -570,6 +574,8 @@ class BaseMeshElements2d(Renderer):
         ]
         if hasattr(self, "color_uniform"):
             bindings.append(BufferBinding(54, self.color_uniform))
+        if self.symmetry:
+            bindings += self.symmetry.get_bindings(self.data.num_elements[ElType.TRIG])
         return bindings
 
     def get_shader_code(self):
@@ -715,7 +721,7 @@ class El3dUniform(UniformBase):
 class MeshElements3d(Renderer):
     n_vertices: int = 3
 
-    def __init__(self, data: MeshData, clipping=None, colors: list | None = None):
+    def __init__(self, data: MeshData, clipping=None, colors: list | None = None, symmetry=None):
         super().__init__(label="MeshElements3d")
         data.need_3d = True
         self.data = data
@@ -727,6 +733,7 @@ class MeshElements3d(Renderer):
         self.gpu_objects.colormap = Colormap(colormap=colors, minval=-0.5, maxval=len(colors) - 0.5)
         self.gpu_objects.colormap.discrete = 0
         self.gpu_objects.colormap.n_colors = 4 * len(colors)
+        self.symmetry = symmetry
 
     @property
     def colormap(self):
@@ -762,6 +769,9 @@ class MeshElements3d(Renderer):
         order = self.data.deformation_data.order if self.data.deformation_data else 1
         order = 3
         self.shader_defines = {"MAX_EVAL_ORDER": str(order), "MAX_EVAL_ORDER_VEC3": str(order)}
+        if self.symmetry:
+            self.n_instances *= self.symmetry.n_copies
+            self.shader_defines["SYMMETRY"] = "1"
 
     def add_options_to_gui(self, gui):
         if gui is None:
@@ -776,12 +786,15 @@ class MeshElements3d(Renderer):
         )
 
     def get_bindings(self):
-        return [
+        bindings = [
             *self.clipping.get_bindings(),
             *self.data.get_bindings(),
             *self.uniforms.get_bindings(),
             *self.gpu_objects.colormap.get_bindings(),
         ]
+        if self.symmetry:
+            bindings += self.symmetry.get_bindings(self.data.num_elements["faces"])
+        return bindings
 
     def get_shader_code(self):
         return read_shader_file("ngsolve/elements3d.wgsl")

@@ -1,5 +1,8 @@
 #import camera
 #import clipping
+#ifdef SYMMETRY
+#import ngsolve/symmetry
+#endif SYMMETRY
 
 @group(0) @binding(90) var<storage> u_vertices: array<f32>;
 @group(0) @binding(91) var<storage> u_color: array<f32>;
@@ -16,14 +19,23 @@ struct GeoEdgeInput
 
 @vertex
 fn vertex_main(@builtin(vertex_index) vertId: u32,
-               @builtin(instance_index) instanceId: u32) -> GeoEdgeInput
+               @builtin(instance_index) instanceId_: u32) -> GeoEdgeInput
 {
-  let p1 = vec3f(u_vertices[instanceId * 6],
+#ifdef SYMMETRY
+  let instanceId = symGetElementIndex(instanceId_);
+#else SYMMETRY
+  let instanceId = instanceId_;
+#endif SYMMETRY
+  var p1 = vec3f(u_vertices[instanceId * 6],
                  u_vertices[instanceId * 6 + 1],
                  u_vertices[instanceId * 6 + 2]);
-  let p2 = vec3f(u_vertices[instanceId * 6 + 3],
+  var p2 = vec3f(u_vertices[instanceId * 6 + 3],
                  u_vertices[instanceId * 6 + 4],
                  u_vertices[instanceId * 6 + 5]);
+#ifdef SYMMETRY
+  p1 = symApplyPosition(p1, instanceId_);
+  p2 = symApplyPosition(p2, instanceId_);
+#endif SYMMETRY
 
   // thick lines in screen space, 
   // see https://www.iquilezles.org/www/articles/thicklines/thicklines.htm

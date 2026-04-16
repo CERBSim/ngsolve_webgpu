@@ -23,8 +23,9 @@ class IsoSurfaceRenderer(ClippingCF):
         levelset_data,
         clipping: Clipping | None = None,
         colormap: Colormap | None = None,
+        symmetry=None,
     ):
-        super().__init__(func_data, clipping, colormap)
+        super().__init__(func_data, clipping, colormap, symmetry=symmetry)
         self.levelset = levelset_data
         self.levelset.need_3d = True
         self.subdivision = 0
@@ -38,8 +39,8 @@ class IsoSurfaceRenderer(ClippingCF):
         self.levelset_buffer = self.levelset.get_buffers()["data_3d"]
         super().update(options)
 
-    def get_bindings(self, compute=False):
-        bindings = super().get_bindings(compute)
+    def get_bindings(self, compute=False, count=False):
+        bindings = super().get_bindings(compute, count)
         if compute:
             bindings.append(UniformBinding(27, self.uniform_subdiv))
         bindings += [
@@ -50,10 +51,10 @@ class IsoSurfaceRenderer(ClippingCF):
 
 class NegativeSurfaceRenderer(CFRenderer):
     def __init__(
-        self, functiondata, levelsetdata, clipping: Clipping = None, colormap: Colormap = None
+        self, functiondata, levelsetdata, clipping: Clipping = None, colormap: Colormap = None, symmetry=None
     ):
         super().__init__(
-            functiondata, label="NegativeSurfaceRenderer", clipping=clipping, colormap=colormap
+            functiondata, label="NegativeSurfaceRenderer", clipping=clipping, colormap=colormap, symmetry=symmetry
         )
         self.fragment_entry_point = "fragmentCheckLevelset"
         self.levelset = levelsetdata
@@ -74,8 +75,8 @@ class NegativeSurfaceRenderer(CFRenderer):
 class NegativeClippingRenderer(ClippingCF):
     fragment_entry_point = "fragment_neg_clip"
 
-    def __init__(self, data, levelsetdata, clipping: Clipping = None, colormap: Colormap = None):
-        super().__init__(data, clipping, colormap)
+    def __init__(self, data, levelsetdata, clipping: Clipping = None, colormap: Colormap = None, symmetry=None):
+        super().__init__(data, clipping, colormap, symmetry=symmetry)
         self.levelset = levelsetdata
         self.levelset.need_3d = True
 
@@ -85,8 +86,8 @@ class NegativeClippingRenderer(ClippingCF):
         self.levelset_buffer = buffers["data_3d"]
         super().update(options)
 
-    def get_bindings(self, compute=False):
-        bindings = super().get_bindings(compute)
+    def get_bindings(self, compute=False, count=False):
+        bindings = super().get_bindings(compute, count)
         if not compute:
             bindings += [BufferBinding(80, self.levelset_buffer)]
         return bindings

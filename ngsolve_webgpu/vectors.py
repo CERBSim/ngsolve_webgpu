@@ -30,6 +30,8 @@ class VectorRenderer(ShapeRenderer):
         grid_size: float = 20,
         clipping: Clipping = None,
         colormap: Colormap = None,
+        symmetry=None,
+        vector_symmetry="polar",
     ):
         self.u_nvectors = None
         self.clipping = clipping or Clipping()
@@ -39,6 +41,9 @@ class VectorRenderer(ShapeRenderer):
         self.box_size = np.linalg.norm(np.array(bbox[1]) - np.array(bbox[0]))
         self.set_grid_size(grid_size)
         self.__buffers = {}
+        self.symmetry = symmetry
+        self.vector_symmetry = vector_symmetry
+        self._expanded_buffers = {}
         super().__init__(self.generate_shape(), None, None, colormap=colormap)
 
     def set_grid_size(self, grid_size: float):
@@ -125,7 +130,53 @@ class VectorRenderer(ShapeRenderer):
         self.positions_buffer = self.__buffers["positions"]
         self.directions_buffer = self.__buffers["directions"]
         self.values_buffer = self.__buffers["values"]
+        if self.symmetry and self.symmetry.n_copies > 1:
+            self._expand_vectors_for_symmetry()
         
+    def _expand_vectors_for_symmetry(self):
+        """Run a GPU compute shader to copy+transform vectors for all symmetry copies."""
+        n = self.n_vectors
+        nc = self.symmetry.n_copies
+        total = n * nc
+
+        # Allocate expanded buffers
+        for name in ["positions", "directions", "values"]:
+            size = 4 * total if name == "values" else 3 * 4 * total
+            self._expanded_buffers[name] = create_buffer(
+                size=size,
+                usage=BufferUsage.VERTEX | BufferUsage.STORAGE,
+                label=f"sym_{name}",
+                reuse=self._expanded_buffers.get(name, None),
+            )
+
+        sym_bindings = self.symmetry.get_bindings(n)
+
+        bindings = [
+            BufferBinding(0, self.__buffers["positions"]),
+            BufferBinding(1, self.__buffers["directions"]),
+            BufferBinding(2, self.__buffers["values"]),
+            BufferBinding(3, self._expanded_buffers["positions"], read_only=False),
+            BufferBinding(4, self._expanded_buffers["directions"], read_only=False),
+            BufferBinding(5, self._expanded_buffers["values"], read_only=False),
+            *sym_bindings,
+        ]
+        defines = {}
+        if self.vector_symmetry == "axial":
+            defines["AXIAL_VECTORS"] = "1"
+
+        n_work_groups = min(total // 256 + 1, 1024)
+        run_compute_shader(
+            read_shader_file("ngsolve/symmetry_expand_vectors.wgsl"),
+            bindings,
+            n_work_groups,
+            entry_point="expand_vectors",
+            defines=defines,
+        )
+
+        self.positions_buffer = self._expanded_buffers["positions"]
+        self.directions_buffer = self._expanded_buffers["directions"]
+        self.values_buffer = self._expanded_buffers["values"]
+
     def update(self, options):
         self.function_data.update(options)
         self.compute_vectors()
@@ -133,11 +184,11 @@ class VectorRenderer(ShapeRenderer):
             super().update(options)
 
 class SurfaceVectors(VectorRenderer):
-    def __init__(self, function_data: FunctionData, grid_size: float = 20, clipping: Clipping = None, colormap: Colormap = None):
+    def __init__(self, function_data: FunctionData, grid_size: float = 20, clipping: Clipping = None, colormap: Colormap = None, symmetry=None, vector_symmetry="polar"):
         self.compute_shader_file = "ngsolve/surface_vectors.wgsl"
         self.compute_entry_point = "compute_surface_vectors"
         self.u_ntrigs = None
-        super().__init__(function_data=function_data, grid_size=grid_size, clipping=clipping, colormap=colormap)
+        super().__init__(function_data=function_data, grid_size=grid_size, clipping=clipping, colormap=colormap, symmetry=symmetry, vector_symmetry=vector_symmetry)
         
     def update(self, options):
         self.n_search_els = self.function_data.mesh_data.ngs_mesh.GetNE(ngs.BND)
@@ -163,6 +214,8 @@ class ClippingVectors(VectorRenderer):
         grid_size: float = 20,
         clipping: Clipping = None,
         colormap: Colormap = None,
+        symmetry=None,
+        vector_symmetry="polar",
     ):
         self.compute_shader_file = "ngsolve/clipping_vectors.wgsl"
         self.compute_entry_point = "compute_clipping_vectors"
@@ -170,7 +223,7 @@ class ClippingVectors(VectorRenderer):
         function_data.need_3d = True
         super().__init__(
             function_data=function_data, grid_size=grid_size, clipping=clipping,
-            colormap=colormap)
+            colormap=colormap, symmetry=symmetry, vector_symmetry=vector_symmetry)
         self.__clipping = Clipping()
         self.clipping.callbacks.append(self.set_needs_update)
         

@@ -4,6 +4,9 @@
 #import colormap
 #import ngsolve/eval/common3d
 #import ngsolve/mesh/render
+#ifdef SYMMETRY
+#import ngsolve/symmetry
+#endif SYMMETRY
 
 // @group(0) @binding(12) var<storage> vertices : array<f32>;
 // @group(0) @binding(25) var<storage> u_tets : array<u32>;
@@ -13,19 +16,28 @@
 
 fn calcMeshFace(p: array<vec3<f32>, 3>,
                 vertId: u32, nr: u32, index: u32,
-                lams: array<vec3<f32>,3>) -> MeshFragmentInput
+                lams: array<vec3<f32>,3>, rawInstanceId: u32) -> MeshFragmentInput
 {
-    let n = cross(p[2] - p[0], p[1] - p[0]);
-    let point = p[vertId % 3];
+    var n = cross(p[2] - p[0], p[1] - p[0]);
+    var point = p[vertId % 3];
+#ifdef SYMMETRY
+    point = symApplyPosition(point, rawInstanceId);
+    n = symApplyNormal(n, rawInstanceId);
+#endif SYMMETRY
     let position = cameraMapPoint(point);
     return MeshFragmentInput(position, point, n, nr, index);
 }
 
 @vertex
 fn vertex_main(@builtin(vertex_index) vertId: u32,
-               @builtin(instance_index) instanceId: u32)
+               @builtin(instance_index) instanceId_: u32)
   -> MeshFragmentInput
 {
+#ifdef SYMMETRY
+    let instanceId = symGetElementIndex(instanceId_);
+#else SYMMETRY
+    let instanceId = instanceId_;
+#endif SYMMETRY
     let MESHDATA_OFFSET: u32 = 5;
     let offset_3d = mesh.offset_3d_data;
     let numElements = bitcast<u32>(mesh.data[offset_3d + 0]);
@@ -93,7 +105,7 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
 
 
     return calcMeshFace(face.p, vertId, instanceId, face.index,
-                        array<vec3<f32>, 3> (lams[0], lams[1], lams[2]));
+                        array<vec3<f32>, 3> (lams[0], lams[1], lams[2]), instanceId_);
 }
 
 @fragment
@@ -106,5 +118,3 @@ fn fragment_main(input: MeshFragmentInput) -> @location(0) vec4<f32>
   }
   return lightCalcColor(input.p, input.n, color);
 }
-
-

@@ -5,7 +5,7 @@
 @group(0) @binding(23) var<uniform> only_count: u32;
 @group(0) @binding(24) var<storage, read_write> subtrigs: array<SubTrig>;
 @group(0) @binding(26) var<storage> levelset_values: array<f32>;
-@group(0) @binding(27) var<uniform> u_subdivision: u32;
+@group(0) @binding(27) var<uniform> u_iso_subdivision: u32;
 
 fn my_pow(x: u32, y: u32) -> u32 {
   var res = 1u;
@@ -17,16 +17,16 @@ fn my_pow(x: u32, y: u32) -> u32 {
 
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-  let n_tets = u_tets[0]; // + u_tets[1] + 2*u_tets[2] + 5*u_tets[3];
-  for (var i = id.x; i<n_tets*my_pow(4u,u_subdivision); i+=256u*1024u) {
+  let n_tets = u_ntets;
+  for (var i = id.x; i<n_tets*my_pow(4u,u_iso_subdivision); i+=256u*1024u) {
     var b0 = vec4<f32> (1.0, 0.0, 0.0, 0.0);
     var b1 = vec4<f32> (0.0, 1.0, 0.0, 0.0);
     var b2 = vec4<f32> (0.0, 0.0, 1.0, 0.0);
     var b3 = vec4<f32> (0.0, 0.0, 0.0, 1.0);
-    var elnr = i / my_pow(4u,u_subdivision);
+    var elnr = i / my_pow(4u,u_iso_subdivision);
     var scale: f32 = 1.;
     var ind = i;
-    for(var level = 0u; level < u_subdivision; level++)
+    for(var level = 0u; level < u_iso_subdivision; level++)
       {
         var b = ind % 4u;
         ind /= 4u;
@@ -41,16 +41,15 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         }
       }
     let element = getElem(elnr);
-    let p = array(getPoint(element, 0), getPoint(element, 1), getPoint(element, 2), getPoint(element, 3));
+    let p = array(getElementVertex(element, 0), getElementVertex(element, 1), getElementVertex(element, 2), getElementVertex(element, 3));
     let lam = array(b0.xyz,
                     b1.xyz,
                     b2.xyz,
                     b3.xyz);
-    // let f = array(evalTet(&levelset_values, elnr, 0, b0.xyz),
-    //               evalTet(&levelset_values, elnr, 0, b1.xyz),
-    //               evalTet(&levelset_values, elnr, 0, b2.xyz),
-    //               evalTet(&levelset_values, elnr, 0, b3.xyz));
-    let f = array(-1,-1, 1,1);
+    let f = array(evalTet(&levelset_values, elnr, 0, b0.xyz),
+                  evalTet(&levelset_values, elnr, 0, b1.xyz),
+                  evalTet(&levelset_values, elnr, 0, b2.xyz),
+                  evalTet(&levelset_values, elnr, 0, b3.xyz));
     let cuts = clipTet(lam, f, elnr);
     if(cuts.n == 0) {
       continue;
@@ -64,4 +63,3 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
   }
 }
-

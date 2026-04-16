@@ -32,8 +32,9 @@ class BaseGeometryRenderer(Renderer):
 class GeometryFaceRenderer(BaseGeometryRenderer):
     n_vertices: int = 3
 
-    def __init__(self, geo, clipping):
+    def __init__(self, geo, clipping, symmetry=None):
         super().__init__(clipping, label="GeometryFaces")
+        self.symmetry = symmetry
         self.geo = geo
         self.colors = None
         self.active = True
@@ -53,6 +54,10 @@ class GeometryFaceRenderer(BaseGeometryRenderer):
         self.bounding_box = (vis_data["min"], vis_data["max"])
         verts = vis_data["vertices"]
         self.n_instances = len(verts) // 9
+        self._original_n_instances = self.n_instances
+        if self.symmetry:
+            self.n_instances *= self.symmetry.n_copies
+            self.shader_defines["SYMMETRY"] = "1"
         normals = vis_data["normals"]
         indices = vis_data["indices"]
         if self.colors is None:
@@ -65,13 +70,16 @@ class GeometryFaceRenderer(BaseGeometryRenderer):
             self._buffers[key] = buffer_from_array(data)
 
     def get_bindings(self):
-        return [
+        bindings = [
             *self.clipping.get_bindings(),
             webgpu.BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
             webgpu.BufferBinding(Binding.NORMALS, self._buffers["normals"]),
             webgpu.BufferBinding(Binding.INDICES, self._buffers["indices"]),
             webgpu.BufferBinding(Binding.COLORS, self._buffers["colors"]),
         ]
+        if self.symmetry:
+            bindings += self.symmetry.get_bindings(self._original_n_instances)
+        return bindings
 
     def get_shader_code(self):
         return read_shader_file("ngsolve/geo_face.wgsl")
@@ -85,9 +93,10 @@ class GeometryEdgeRenderer(BaseGeometryRenderer):
     depthBias: int = -5
     depthBiasSlopeScale: int = -5
 
-    def __init__(self, geo, clipping):
+    def __init__(self, geo, clipping, symmetry=None):
         self.geo = geo
         super().__init__(clipping, label="GeometryEdges")
+        self.symmetry = symmetry
         self.active = True
         self.thickness = 0.005
         self._buffers = {}
@@ -103,6 +112,10 @@ class GeometryEdgeRenderer(BaseGeometryRenderer):
         verts = vis_data["edges"]
         self.colors = vis_data["edge_colors"]
         self.n_instances = len(verts) // 6
+        self._original_n_instances = self.n_instances
+        if self.symmetry:
+            self.n_instances *= self.symmetry.n_copies
+            self.shader_defines["SYMMETRY"] = "1"
         self.thickness_uniform = uniform_from_array(np.array([self.thickness], dtype=np.float32))
         self._buffers = {}
         self._buffers["vertices"] = buffer_from_array(verts)
@@ -113,13 +126,16 @@ class GeometryEdgeRenderer(BaseGeometryRenderer):
         return read_shader_file("ngsolve/geo_edge.wgsl")
 
     def get_bindings(self):
-        return [
+        bindings = [
             *self.clipping.get_bindings(),
             webgpu.BufferBinding(90, self._buffers["vertices"]),
             webgpu.BufferBinding(91, self._buffers["colors"]),
             webgpu.UniformBinding(92, self.thickness_uniform),
             webgpu.BufferBinding(93, self._buffers["index"]),
         ]
+        if self.symmetry:
+            bindings += self.symmetry.get_bindings(self._original_n_instances)
+        return bindings
 
 
 class GeometryVertexRenderer(BaseGeometryRenderer):
@@ -165,11 +181,11 @@ class GeometryVertexRenderer(BaseGeometryRenderer):
 
 
 class GeometryRenderer(MultipleRenderer):
-    def __init__(self, geo, label="Geometry", clipping=None):
+    def __init__(self, geo, label="Geometry", clipping=None, symmetry=None):
         self.geo = geo
         self.clipping = clipping or Clipping()
-        self.faces = GeometryFaceRenderer(geo, self.clipping)
-        self.edges = GeometryEdgeRenderer(geo, self.clipping)
+        self.faces = GeometryFaceRenderer(geo, self.clipping, symmetry=symmetry)
+        self.edges = GeometryEdgeRenderer(geo, self.clipping, symmetry=symmetry)
         self.vertices = GeometryVertexRenderer(geo, self.clipping)
         self.faces.clipping = self.clipping
         self.edges.clipping = self.clipping

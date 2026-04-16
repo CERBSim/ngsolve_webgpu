@@ -37,7 +37,7 @@ class VolumeCF(MeshElements3d):
         ]
 
     def get_shader_code(self):
-        return read_shader_file("ngsolve/mesh.wgsl")
+        return read_shader_file("ngsolve/mesh/render.wgsl")
 
 
 class ClippingCF(Renderer):
@@ -49,7 +49,7 @@ class ClippingCF(Renderer):
     subdivision = 0
 
     def __init__(
-        self, data: FunctionData, clipping: Clipping = None, colormap: Colormap = None, component=-1
+        self, data: FunctionData, clipping: Clipping = None, colormap: Colormap = None, component=-1, symmetry=None
     ):
         super().__init__()
         self._clipping = clipping or Clipping()
@@ -69,6 +69,7 @@ class ClippingCF(Renderer):
         if component is None:
             component = -1 if self.data.cf.dim > 1 else 0
         self.gpu_objects.settings = FunctionSettings(component=component)
+        self.symmetry = symmetry
 
     @property
     def colormap(self):
@@ -98,6 +99,9 @@ class ClippingCF(Renderer):
 
         self._buffers = self.data.get_buffers()
         self.build_clip_plane()
+        if self.symmetry:
+            self.n_instances = self._original_n_instances * self.symmetry.n_copies
+            self.shader_defines["SYMMETRY"] = "1"
 
     def get_bounding_box(self):
         return self.data.get_bounding_box()
@@ -144,6 +148,8 @@ class ClippingCF(Renderer):
                 *self.gpu_objects.settings.get_bindings(),
                 BufferBinding(24, self.cut_trigs),
             ]
+            if self.symmetry:
+                bindings += self.symmetry.get_bindings(self._original_n_instances)
         return bindings
 
     def build_clip_plane(self):
@@ -182,6 +188,7 @@ class ClippingCF(Renderer):
             )
             if count:
                 self.n_instances = int(read_buffer(self.trig_counter, np.uint32)[0])
+                self._original_n_instances = self.n_instances
 
     def render(self, options: RenderOptions):
         if bytes(self._clipping.uniforms) != bytes(self.clipping.uniforms):

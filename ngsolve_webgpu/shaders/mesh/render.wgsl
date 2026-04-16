@@ -5,6 +5,9 @@
 
 #import ngsolve/eval/trig
 #import ngsolve/mesh/utils
+#ifdef SYMMETRY
+#import ngsolve/symmetry
+#endif SYMMETRY
 
 struct VertexOutput1d {
   @builtin(position) fragPosition: vec4<f32>,
@@ -21,6 +24,7 @@ struct VertexOutput2d {
   @location(3) n: vec3<f32>,
   @location(4) @interpolate(flat) index: u32,
   @location(5) @interpolate(flat) instanceId: u32,
+  @location(6) @interpolate(flat) value_sign: f32,
 };
 
 struct VertexOutput3d {
@@ -32,14 +36,23 @@ struct VertexOutput3d {
 };
 
 @vertex
-fn vertexTrigP1Indexed(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) instanceId: u32) -> VertexOutput2d {
-
+fn vertexTrigP1Indexed(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) instanceId_: u32) -> VertexOutput2d {
+#ifdef SYMMETRY
+    let instanceId = symGetElementIndex(instanceId_);
+#else SYMMETRY
+    let instanceId = instanceId_;
+#endif SYMMETRY
     let tri = loadTriangle(instanceId);
-    return calcTrig(tri, vertexId, instanceId);
+    return calcTrig(tri, vertexId, instanceId, instanceId_);
 }
 
 @vertex
-fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) trigId: u32) -> VertexOutput2d {
+fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) trigId_: u32) -> VertexOutput2d {
+#ifdef SYMMETRY
+    let trigId = symGetElementIndex(trigId_);
+#else SYMMETRY
+    let trigId = trigId_;
+#endif SYMMETRY
     // let MESHDATA_OFFSET : u32 = 2;
     let tri = loadTriangle(trigId);
 
@@ -95,9 +108,18 @@ fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_ind
     if (u_deformation_values_2d[0] != -1.) {
       position += u_deformation_scale * evalTrigVec3(&u_deformation_values_2d, trigId, lam, 0u);
     }
+    var normal = normalize(cross(tri.p[1] - tri.p[0], tri.p[2] - tri.p[0]));
+#ifdef SYMMETRY
+    position = symApplyPosition(position, trigId_);
+    normal = symApplyNormal(normal, trigId_);
+#endif SYMMETRY
+#ifdef SYMMETRY
+    let value_sign = symGetValueSign(trigId_);
+#else SYMMETRY
+    let value_sign = 1.0;
+#endif SYMMETRY
     return VertexOutput2d(cameraMapPoint(position), position, lam, tri.nr,
-                          normalize(cross(tri.p[1] - tri.p[0], tri.p[2] - tri.p[0])),
-                          index, trigId);
+                          normal, index, trigId, value_sign);
 }
 
 
@@ -105,7 +127,7 @@ fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_ind
 fn fragmentTrig(input: VertexOutput2d) -> @location(0) vec4<f32> {
     checkClipping(input.p);
     let p = &u_function_values_2d;
-    let value = evalTrig(p, input.instanceId, u_function_component, input.lam);
+    let value = evalTrig(p, input.instanceId, u_function_component, input.lam) * input.value_sign;
     let color = getColor(value);
     if(color.a < 0.01) {
         discard;
@@ -269,7 +291,7 @@ fn fragmentWireframe2d(input: VertexOutput2d) -> @location(0) vec4<f32> {
   return lightCalcColor(input.p, input.n, u_mesh_color);
 }
 
-fn calcTrig(tri: Triangle, vertexId: u32, instanceId: u32)
+fn calcTrig(tri: Triangle, vertexId: u32, instanceId: u32, rawInstanceId: u32)
   -> VertexOutput2d {
     let p = tri.p;
     let trigId = tri.nr;
@@ -320,7 +342,16 @@ fn calcTrig(tri: Triangle, vertexId: u32, instanceId: u32)
             // position = vec3f(0., 0., 0.);
         }
 
+#ifdef SYMMETRY
+    position = symApplyPosition(position, rawInstanceId);
+    normal = symApplyNormal(normal, rawInstanceId);
+#endif SYMMETRY
     let mapped_position = cameraMapPoint(position);
+#ifdef SYMMETRY
+    let value_sign = symGetValueSign(rawInstanceId);
+#else SYMMETRY
+    let value_sign = 1.0;
+#endif SYMMETRY
     return VertexOutput2d(mapped_position, position, lam, trigId, normal,
-                          index, instanceId);
+                          index, instanceId, value_sign);
 }

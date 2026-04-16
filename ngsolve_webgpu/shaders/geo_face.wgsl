@@ -1,6 +1,9 @@
 #import camera
 #import light
 #import clipping
+#ifdef SYMMETRY
+#import ngsolve/symmetry
+#endif SYMMETRY
 
 @group(0) @binding(90) var<storage> u_vertices : array<f32>;
 @group(0) @binding(91) var<storage> u_normals : array<f32>;
@@ -17,13 +20,22 @@ struct GeoFragmentInput {
 
 @vertex
 fn vertex_main(@builtin(vertex_index) vertId: u32,
-               @builtin(instance_index) trigId: u32) -> GeoFragmentInput {
-  let point = vec3<f32>(u_vertices[trigId * 9 + vertId * 3],
+               @builtin(instance_index) trigId_: u32) -> GeoFragmentInput {
+#ifdef SYMMETRY
+  let trigId = symGetElementIndex(trigId_);
+#else SYMMETRY
+  let trigId = trigId_;
+#endif SYMMETRY
+  var point = vec3<f32>(u_vertices[trigId * 9 + vertId * 3],
                         u_vertices[trigId * 9 + vertId * 3 + 1],
                         u_vertices[trigId * 9 + vertId * 3 + 2]);
-  let normal = vec3<f32>(u_normals[trigId * 9 + vertId * 3],
+  var normal = vec3<f32>(u_normals[trigId * 9 + vertId * 3],
                          u_normals[trigId * 9 + vertId * 3 + 1],
                          u_normals[trigId * 9 + vertId * 3 + 2]);
+#ifdef SYMMETRY
+  point = symApplyPosition(point, trigId_);
+  normal = symApplyNormal(normal, trigId_);
+#endif SYMMETRY
   let position = cameraMapPoint(point);
   return GeoFragmentInput(position,
                           point,

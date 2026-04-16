@@ -488,8 +488,9 @@ class CFRenderer(BaseMeshElements2d):
         label="CFRenderer",
         clipping: Clipping = None,
         colormap: Colormap = None,
+        symmetry=None,
     ):
-        super().__init__(data=data.mesh_data, label=label, clipping=clipping)
+        super().__init__(data=data.mesh_data, label=label, clipping=clipping, symmetry=symmetry)
         self.data = data
         self.gpu_objects.colormap = colormap or Colormap()
         self._on_component_change = []
@@ -544,6 +545,9 @@ class CFRenderer(BaseMeshElements2d):
         
     def set_component(self, component: int):
         self.gpu_objects.settings.component = component
+        for cb in self._on_component_change:
+            cb(component)
+        self.set_needs_update()
 
     def get_bindings(self):
         return [
