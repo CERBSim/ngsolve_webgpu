@@ -653,6 +653,10 @@ class FieldLines(ShapeRenderer):
         from ngsolve.webgui import FieldLines
 
         data = FieldLines(self.cf, self.start_region, **self.fieldline_options)
+        bbox = self.mesh.ngmesh.bounding_box
+        thickness = (bbox[1] - bbox[0]).Norm() * self.fieldline_options["thickness"]
+        self.shape_data = generate_cylinder(8, thickness, 1.0, top_face=False, bottom_face=False)
+
         self.positions = data["pstart"]
         self.directions = data["pend"]
         self.directions = self.directions - self.positions
