@@ -265,7 +265,7 @@ fn fragmentMesh(input: MeshFragmentInput) -> @location(0) vec4<f32> {
 @fragment
 fn fragment2dElement(input: VertexOutput2d) -> @location(0) vec4<f32> {
   checkClipping(input.p);
-  let color = getColor(f32(input.index));
+  let color = getColor(f32(input.index) + 0.5);
   if(color.a < 0.01) {
     discard;
   }
@@ -277,7 +277,7 @@ fn fragment2dElement(input: VertexOutput2d) -> @location(0) vec4<f32> {
     input: VertexOutput2d
 ) -> @location(0) vec4<u32> {
     checkClipping(input.p);
-    let color = getColor(f32(input.index));
+    let color = getColor(f32(input.index) + 0.5);
     if(color.a < 0.01) {
       discard;
     }

@@ -590,12 +590,18 @@ class MeshElements2d(BaseMeshElements2d):
         self, data: MeshData, clipping=None, colors: list | None = None, label="MeshElements2d"
     ):
         super().__init__(data, label=label, clipping=clipping)
+        
+        def get_color(fd):
+            color = [int(ci*255) for ci in fd.color]
+            if len(color) == 3:
+                color = color + [255]
+            return color
         if colors is None:
             mesh = data.mesh
-            colors = [[int(ci * 255) for ci in fd.color] for fd in mesh.FaceDescriptors()]
-        self.gpu_objects.colormap = Colormap(colormap=colors, minval=-0.5, maxval=len(colors) - 0.5)
+            colors = [get_color(fd) for fd in mesh.FaceDescriptors()]
+        self.gpu_objects.colormap = Colormap(colormap=colors, minval=0, maxval=len(colors)-1)
         self.gpu_objects.colormap.discrete = 0
-        self.gpu_objects.colormap.n_colors = 4 * len(colors)
+        self.gpu_objects.colormap.n_colors = len(colors)
 
     @property
     def colormap(self):
@@ -731,8 +737,8 @@ class MeshElements3d(Renderer):
         if colors is None:
             colors = [[255, 0, 0, 255] for _ in range(len(data.ngs_mesh.GetMaterials()))]
         self.gpu_objects.colormap = Colormap(colormap=colors, minval=-0.5, maxval=len(colors) - 0.5)
-        self.gpu_objects.colormap.discrete = 0
-        self.gpu_objects.colormap.n_colors = 4 * len(colors)
+        self.gpu_objects.colormap.discrete = 1
+        self.gpu_objects.colormap.n_colors = len(colors)
         self.symmetry = symmetry
 
     @property
