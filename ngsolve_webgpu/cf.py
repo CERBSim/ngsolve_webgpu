@@ -623,6 +623,8 @@ class FieldLines(ShapeRenderer):
         thickness: float = 0.0015,
         tolerance: float = 0.0005,
         direction: int = 0,
+        colormap=None,
+        clipping=None,
     ):
         import ngsolve as ngs
         self.fieldline_options = {
@@ -646,7 +648,7 @@ class FieldLines(ShapeRenderer):
 
         cyl = generate_cylinder(8, thickness, 1.0, top_face=False, bottom_face=False)
 
-        super().__init__(cyl, None, None)
+        super().__init__(cyl, None, None, colormap=colormap, clipping=clipping)
         self.scale_mode = ShapeRenderer.SCALE_Z
 
     def get_bounding_box(self):
