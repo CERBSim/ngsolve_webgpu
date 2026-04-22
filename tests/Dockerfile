@@ -1,7 +1,12 @@
 ARG BASE_IMAGE=webgpu-base
 FROM ${BASE_IMAGE}
 
-RUN pip install --no-cache-dir --break-system-packages ngsolve ipython git+https://github.com/CERBSim/webgpu.git
+RUN git clone https://github.com/CERBSim/webgpu.git /tmp/webgpu \
+    && cd /tmp/webgpu && git lfs pull \
+    && pip install --no-cache-dir --break-system-packages /tmp/webgpu \
+    && rm -rf /tmp/webgpu
+
+RUN pip install --no-cache-dir --break-system-packages ngsolve ipython
 
 WORKDIR /app
 COPY pyproject.toml .
