@@ -1,7 +1,7 @@
 ARG BASE_IMAGE=webgpu-base
 FROM ${BASE_IMAGE}
 
-RUN pip install --no-cache-dir --break-system-packages ngsolve ipython
+RUN pip install --no-cache-dir --break-system-packages ngsolve ipython webgpu
 
 WORKDIR /app
 COPY pyproject.toml .

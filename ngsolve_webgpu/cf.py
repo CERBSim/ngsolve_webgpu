@@ -572,16 +572,24 @@ class VectorCFRenderer(VectorRenderer):
     ):
         # calling super-super class to not create points and vectors
         BaseVectorRenderer.__init__(self)
+        self.scale_with_vector_length = False
         self.cf = cf
         self.mesh = mesh
         # this somehow segfaults in pyodide?
         self.grid_size = grid_size
         self.size = size
 
+    def get_bounding_box(self):
+        bb = self.mesh.ngmesh.bounding_box
+        pmin = [bb[0][0], bb[0][1], bb[0][2]]
+        pmax = [bb[1][0], bb[1][1], bb[1][2]]
+        return (pmin, pmax)
+
     def redraw(self, timestamp=None):
         super().redraw(timestamp=timestamp, cf=self.cf, mesh=self.mesh, grid_size=self.grid_size)
 
     def update(self, options: RenderOptions):
+        self.options = options
         bb = self.mesh.ngmesh.bounding_box
         self.bounding_box = np.array(
             [[bb[0][0], bb[0][1], bb[0][2]], [bb[1][0], bb[1][1], bb[1][2]]]

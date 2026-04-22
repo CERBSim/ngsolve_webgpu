@@ -1,3 +1,4 @@
+import numpy as np
 import ngsolve as ngs
 import webgpu.jupyter as wj
 from webgpu.clipping import Clipping
@@ -204,16 +205,21 @@ def Draw(
         contact_renderer = ContactPairs(mesh, contact, **kwargs)
         render_objects.append(contact_renderer)
 
-    scene = wj.Draw(render_objects, width, height)
+    boxes = [o.get_bounding_box() for o in render_objects]
+    boxes = [b for b in boxes if b is not None]
+    if boxes:
+        pmin = np.array(boxes[0][0])
+        pmax = np.array(boxes[0][1])
+        for b in boxes[1:]:
+            pmin = np.minimum(pmin, np.array(b[0]))
+            pmax = np.maximum(pmax, np.array(b[1]))
+        center = 0.5 * (pmin + pmax)
+        if _clip is not None and isinstance(_clip, dict):
+            clipping.center = [_clip.get("x", center[0]), _clip.get("y", center[1]), _clip.get("z", center[2])]
+        else:
+            clipping.center = list(center)
 
-    center = 0.5 * (scene.bounding_box[0] + scene.bounding_box[1])
-    if _clip is not None and isinstance(_clip, dict):
-        clipping.center = [_clip.get("x", center[0]), _clip.get("y", center[1]), _clip.get("z", center[2])]
-    else:
-        clipping.center = center
-    import time
-    clipping.update(time.time())
-    scene.render()
+    scene = wj.Draw(render_objects, width, height)
     if dim == 3:
         clipping.add_options_to_gui(scene.gui)
     for r in render_objects:
