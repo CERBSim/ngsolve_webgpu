@@ -4,3 +4,5 @@ __pycache__
 /pyodide/
 **/.ipynb_checkpoints
 ngsolve_webgpu/_version.py
+/tests/output/
+/tests/*.html

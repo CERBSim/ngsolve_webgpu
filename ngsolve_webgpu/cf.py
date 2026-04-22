@@ -204,7 +204,7 @@ class FunctionData:
 
     @property
     def needs_update(self) -> bool:
-        return self.mesh_data.needs_update
+        return self.mesh_data.needs_update or self._timestamp < 0
 
     def set_needs_update(self):
         """Set this data to be updated on the next render call"""
