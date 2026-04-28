@@ -242,7 +242,8 @@ class ClippingVectors(VectorRenderer):
         return super().compute_vectors()
 
     def update(self, options):
-        self.n_search_els = self.function_data.mesh_data.ngs_mesh.GetNE(ngs.VOL)
+        self.function_data.update(options)
+        self.n_search_els = self.function_data.mesh_data.num_elements["tets"]
         self.clipping.update(options)
         if not hasattr(self.__clipping, "uniforms"):
             self.__clipping.update(options)

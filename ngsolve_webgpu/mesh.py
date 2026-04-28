@@ -672,7 +672,7 @@ class MeshSegments(Renderer):
 
         # indices and colors: one color entry per segment index
         indices = segs["index"].astype(np.uint32)
-        edge_indices = indices - 1
+        edge_indices = indices
         max_index = int(edge_indices.max()) if edge_indices.size > 0 else -1
         # TODO: Colors not yet available in NGSolve
         colors = np.zeros((max_index + 1, 4), dtype=np.float32)

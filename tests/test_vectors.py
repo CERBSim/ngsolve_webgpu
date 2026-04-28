@@ -64,6 +64,35 @@ class TestVectors:
 
         webgpu_env.assert_matches_baseline(scene, "clipping_vectors_direct.png")
 
+    def test_clipping_vectors_mixed_elements(self, webgpu_env):
+        import ngsolve as ngs
+        import webgpu.jupyter as wj
+        from netgen.occ import Box, Pnt, OCCGeometry
+        from netgen.meshing import BoundaryLayerParameters
+        from ngsolve_webgpu.mesh import MeshData
+        from ngsolve_webgpu.cf import FunctionData
+        from ngsolve_webgpu.vectors import ClippingVectors
+        from webgpu.clipping import Clipping
+
+        webgpu_env.ensure_canvas(600, 600)
+        box = Box(Pnt(0, 0, 0), Pnt(1, 1, 1))
+        geo = OCCGeometry(box)
+        blayer = [
+            BoundaryLayerParameters(boundary=".*", thickness=[0.05], domain=".*", outside=False)]
+        ngmesh = geo.GenerateMesh(maxh=0.3, boundary_layers=blayer)
+        mesh = ngs.Mesh(ngmesh)
+        assert sum(1 for el in mesh.Elements() if el.type == ngs.ET.PRISM) > 0, "Mesh should contain prism elements"
+        mesh_data = MeshData(mesh)
+        cf = ngs.CF((ngs.x, ngs.y, ngs.z))
+        function_data = FunctionData(mesh_data, cf, order=2)
+        clipping = Clipping()
+        clipping.mode = clipping.Mode.PLANE
+        clipping.center = [0.5, 0.5, 0.5]
+        renderer = ClippingVectors(function_data, grid_size=200, clipping=clipping)
+        scene = wj.Draw([renderer], 600, 600)
+
+        webgpu_env.assert_matches_baseline(scene, "clipping_vectors_mixed_elements.png")
+
     def test_fieldlines(self, webgpu_env):
         import ngsolve as ngs
         import webgpu.jupyter as wj
