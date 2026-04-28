@@ -98,6 +98,13 @@ class ClippingCF(Renderer):
         self.clipping.uniforms.update_buffer()
 
         self._buffers = self.data.get_buffers()
+        if self.gpu_objects.colormap.autoscale:
+            component = self.gpu_objects.settings.component
+            self.gpu_objects.colormap.set_min_max(
+                self.data.minval[component + 1],
+                self.data.maxval[component + 1],
+                set_autoscale=False,
+            )
         self.build_clip_plane()
         if self.symmetry:
             self.n_instances = self._original_n_instances * self.symmetry.n_copies

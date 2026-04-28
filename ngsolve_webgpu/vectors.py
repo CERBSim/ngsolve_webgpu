@@ -180,6 +180,12 @@ class VectorRenderer(ShapeRenderer):
     def update(self, options):
         self.function_data.update(options)
         self.compute_vectors()
+        if self.gpu_objects.colormap.autoscale:
+            self.gpu_objects.colormap.set_min_max(
+                self.function_data.minval[0],
+                self.function_data.maxval[0],
+                set_autoscale=False,
+            )
         if self.active:
             super().update(options)
 
