@@ -638,13 +638,14 @@ class MeshSegments(Renderer):
     depthBias: int = -5
     depthBiasSlopeScale: int = -5
 
-    def __init__(self, data: MeshData, clipping=None, label: str = "MeshSegments"):
+    def __init__(self, data: MeshData, clipping=None, colors: list | None = None, label: str = "MeshSegments"):
         super().__init__(label=label)
         self.data = data
         self.clipping = clipping or Clipping()
         self.thickness = 0.005
         self._buffers: dict[str, Buffer] = {}
         self._thickness_uniform: Buffer | None = None
+        self._user_colors = colors
 
     def get_bounding_box(self):
         return self.data.get_bounding_box()
@@ -674,9 +675,14 @@ class MeshSegments(Renderer):
         indices = segs["index"].astype(np.uint32)
         edge_indices = indices
         max_index = int(edge_indices.max()) if edge_indices.size > 0 else -1
-        # TODO: Colors not yet available in NGSolve
         colors = np.zeros((max_index + 1, 4), dtype=np.float32)
-        colors[:, :] = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
+        if self._user_colors is not None:
+            for i, c in enumerate(self._user_colors):
+                if i > max_index:
+                    break
+                colors[i] = np.array([ci / 255 if ci > 1 else ci for ci in c[:4]], dtype=np.float32)
+        else:
+            colors[:, :] = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
 
 
         self.n_instances = seg_coords.shape[0]

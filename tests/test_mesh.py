@@ -59,6 +59,25 @@ class TestMesh:
 
         webgpu_env.assert_matches_baseline(scene, "mesh_3d_clipping.png")
 
+    def test_draw_mesh_segments_colors(self, webgpu_env):
+        import ngsolve as ngs
+        import webgpu.jupyter as wj
+        from ngsolve_webgpu.mesh import MeshData, MeshSegments
+
+        webgpu_env.ensure_canvas(600, 600)
+        mesh = ngs.Mesh(ngs.unit_square.GenerateMesh(maxh=0.3))
+        mesh_data = MeshData(mesh)
+        colors = [
+            [255, 0, 0, 255],
+            [0, 255, 0, 255],
+            [0, 0, 255, 255],
+            [255, 255, 0, 255],
+        ]
+        segments = MeshSegments(mesh_data, colors=colors)
+        scene = wj.Draw([segments], 600, 600)
+
+        webgpu_env.assert_matches_baseline(scene, "mesh_segments_colors.png")
+
     def test_draw_subdivision(self, webgpu_env):
         import ngsolve as ngs
         from netgen.occ import Circle
