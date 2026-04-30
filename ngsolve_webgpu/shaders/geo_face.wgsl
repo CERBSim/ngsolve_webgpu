@@ -53,6 +53,12 @@ fn fragment_main(input: GeoFragmentInput) -> @location(0) vec4<f32> {
   if (color.a == 0.) {
     discard;
   }
+#ifdef OPAQUE_PASS
+  if (color.a < 1.0) { discard; }
+#endif OPAQUE_PASS
+#ifdef TRANSPARENT_PASS
+  if (color.a >= 1.0) { discard; }
+#endif TRANSPARENT_PASS
   return lightCalcColor(input.p, input.n, color);
 }
 

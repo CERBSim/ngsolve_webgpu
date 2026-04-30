@@ -62,6 +62,8 @@ class GeometryFaceRenderer(BaseGeometryRenderer):
         indices = vis_data["indices"]
         if self.colors is None:
             self.colors = vis_data["face_colors"]
+        alphas = self.colors[3::4]
+        self.transparent = bool(np.any((alphas > 0) & (alphas < 1.0)))
         self._buffers = {}
         for key, data in zip(
             ("vertices", "normals", "indices", "colors"),

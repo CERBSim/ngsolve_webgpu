@@ -85,10 +85,11 @@ fn fragment_main(input: GeoEdgeInput) -> @location(0) vec4<f32> {
   if (u_color[input.index*4+3] == 0.0) {
     discard;
   }
-  return vec4<f32>(u_color[input.index * 4],
-                   u_color[input.index * 4 + 1],
-                   u_color[input.index * 4 + 2],
-                   u_color[input.index * 4 + 3]);
+  let a = u_color[input.index * 4 + 3];
+  return vec4<f32>(u_color[input.index * 4] * a,
+                   u_color[input.index * 4 + 1] * a,
+                   u_color[input.index * 4 + 2] * a,
+                   a);
 }
 
 @fragment

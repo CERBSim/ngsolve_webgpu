@@ -257,6 +257,12 @@ fn clipTet(lam: array<vec3f, 4>, values: array<f32, 4>, ei: u32) -> ClipTetResul
 @fragment
 fn fragmentMesh(input: MeshFragmentInput) -> @location(0) vec4<f32> {
     let color = getColor(f32(input.index));
+#ifdef OPAQUE_PASS
+    if (color.a < 1.0) { discard; }
+#endif OPAQUE_PASS
+#ifdef TRANSPARENT_PASS
+    if (color.a >= 1.0) { discard; }
+#endif TRANSPARENT_PASS
     return lightCalcColor(input.p, input.n, color);
 }
 
@@ -269,6 +275,12 @@ fn fragment2dElement(input: VertexOutput2d) -> @location(0) vec4<f32> {
   if(color.a < 0.01) {
     discard;
   }
+#ifdef OPAQUE_PASS
+  if (color.a < 1.0) { discard; }
+#endif OPAQUE_PASS
+#ifdef TRANSPARENT_PASS
+  if (color.a >= 1.0) { discard; }
+#endif TRANSPARENT_PASS
   return lightCalcColor(input.p, input.n, color);
 }
 
