@@ -1,4 +1,6 @@
 import math
+import time
+import threading
 from typing_extensions import deprecated
 import typing
 
@@ -38,6 +40,7 @@ class Binding:
     FUNCTION_VALUES_2D = 10
     FUNCTION_VALUES_3D = 13
     FUNCTION_SETTINGS = 55
+    COMPLEX_SETTINGS = 56
 
 
 _intrules_3d = {}
@@ -115,11 +118,12 @@ def _get_bernstein_matrix_trig(n, intrule):
 
 def evaluate_cf(cf, mesh, order):
     """Evaluate a coefficient function on a mesh and returns the values as a flat array, ready to copy to the GPU as storage buffer.
-    The first two entries are the function dimension and the polynomial order of the stored values.
+    The first three entries are the function dimension, the polynomial order, and the is_complex flag.
     """
     import ngsolve as ngs
     import ngsolve.webgui
     comps = cf.dim
+    is_complex = cf.is_complex
     int_points = ngsolve.webgui._make_trig(order)
     ndof = len(int_points)
     
@@ -151,23 +155,49 @@ def evaluate_cf(cf, mesh, order):
         pmat2 = cf(pts2)
     
     pmat = np.concatenate((pmat, pmat2), axis=0)
-        
     pmat = pmat.reshape(-1, ndof, comps)
-    minval = np.min(pmat, axis=(0, 1))
-    maxval = np.max(pmat, axis=(0, 1))
-    norm = np.linalg.norm(pmat, axis=2)
-    minval = [float(np.min(norm))] + [float(v) for v in minval]
-    maxval = [float(np.max(norm))] + [float(v) for v in maxval]
 
-    values = np.zeros((ndof, pmat.shape[0], comps), dtype=np.float32)
+    if is_complex:
+        # For complex: compute min/max from absolute values
+        pmat_abs = np.abs(pmat)  # element-wise absolute value
+        minval = np.min(pmat_abs, axis=(0, 1))
+        maxval = np.max(pmat_abs, axis=(0, 1))
+        norm = np.linalg.norm(pmat_abs, axis=2)
+        minval = [float(np.min(norm))] + [float(v) for v in minval]
+        maxval = [float(np.max(norm))] + [float(v) for v in maxval]
 
-    with ngs.TaskManager():
-        for i in range(comps):
-            ngsmat = ngs.Matrix(pmat[:, :, i].transpose())
-            values[:, :, i] = ibmat * ngsmat
+        # Bernstein transform: split into real/imag, transform separately
+        # Output layout: interleaved [Re(comp0), Im(comp0), Re(comp1), Im(comp1), ...]
+        # stride per DOF = 2 * comps
+        pmat_re = pmat.real
+        pmat_im = pmat.imag
 
-    values = values.transpose((1, 0, 2)).flatten()
-    ret = np.concatenate(([np.float32(cf.dim), np.float32(order)], values.reshape(-1)))
+        values = np.zeros((ndof, pmat.shape[0], comps * 2), dtype=np.float32)
+        with ngs.TaskManager():
+            for i in range(comps):
+                ngsmat_re = ngs.Matrix(pmat_re[:, :, i].transpose().copy())
+                ngsmat_im = ngs.Matrix(pmat_im[:, :, i].transpose().copy())
+                values[:, :, i * 2] = ibmat * ngsmat_re
+                values[:, :, i * 2 + 1] = ibmat * ngsmat_im
+
+        values = values.transpose((1, 0, 2)).flatten()
+        ret = np.concatenate(([np.float32(comps), np.float32(order), np.float32(1.0)], values.reshape(-1)))
+    else:
+        minval = np.min(pmat.real, axis=(0, 1))
+        maxval = np.max(pmat.real, axis=(0, 1))
+        norm = np.linalg.norm(pmat.real, axis=2)
+        minval = [float(np.min(norm))] + [float(v) for v in minval]
+        maxval = [float(np.max(norm))] + [float(v) for v in maxval]
+
+        values = np.zeros((ndof, pmat.shape[0], comps), dtype=np.float32)
+        with ngs.TaskManager():
+            for i in range(comps):
+                ngsmat = ngs.Matrix(pmat[:, :, i].transpose())
+                values[:, :, i] = ibmat * ngsmat
+
+        values = values.transpose((1, 0, 2)).flatten()
+        ret = np.concatenate(([np.float32(comps), np.float32(order), np.float32(0.0)], values.reshape(-1)))
+
     return ret, minval, maxval
 
 
@@ -325,7 +355,7 @@ class FunctionData:
         vmax = [float(np.max(norm))] + [float(v) for v in maxval]
 
         ret = np.concatenate(
-            ([np.float32(cf.dim), np.float32(order)], vals.reshape(-1)),
+            ([np.float32(cf.dim), np.float32(order), np.float32(0.0)], vals.reshape(-1)),
             dtype=np.float32,
         )
         return ret, vmin, vmax
@@ -408,7 +438,7 @@ class FunctionData:
         vmax = [float(np.max(norm))] + [float(v) for v in maxval]
 
         ret = np.concatenate(
-            ([np.float32(cf.dim), np.float32(order)], vals.reshape(-1)),
+            ([np.float32(cf.dim), np.float32(order), np.float32(0.0)], vals.reshape(-1)),
             dtype=np.float32,
         )
         return ret, vmin, vmax
@@ -476,6 +506,94 @@ class FunctionSettings(BaseRenderer):
             self.uniform.update_buffer()
 
 
+class ComplexUniform(UniformBase):
+    _binding = Binding.COMPLEX_SETTINGS
+    _fields_ = [
+        ("mode", ct.c_uint32),      # 0=PhaseRotate, 1=Abs, 2=Arg
+        ("phase", ct.c_float),      # phase angle for mode 0
+        ("padding", ct.c_uint32*2),
+    ]
+
+
+class ComplexSettings(BaseRenderer):
+    PHASE_ROTATE = 0
+    ABS = 1
+    ARG = 2
+
+    def __init__(self, mode=0, phase=0.0):
+        super().__init__()
+        self._mode = mode
+        self._phase = phase
+        self.uniform = None
+
+    def update(self, options: RenderOptions):
+        if self.uniform is None:
+            self.uniform = ComplexUniform(mode=self._mode, phase=self._phase)
+            self.uniform.update_buffer()
+
+    def get_bindings(self):
+        return self.uniform.get_bindings()
+
+    @property
+    def mode(self):
+        return self._mode
+
+    @mode.setter
+    def mode(self, value):
+        self._mode = value
+        if self.uniform is not None:
+            self.uniform.mode = value
+            self.uniform.update_buffer()
+
+    @property
+    def phase(self):
+        return self._phase
+
+    @phase.setter
+    def phase(self, value):
+        self._phase = value
+        if self.uniform is not None:
+            self.uniform.phase = value
+            self.uniform.update_buffer()
+
+
+class PhaseAnimation:
+    """Sweeps the complex phase uniform and re-renders the scene."""
+
+    def __init__(self, complex_settings, scene, speed=1.0, fps=60):
+        self.complex_settings = complex_settings
+        self.scene = scene
+        self.speed = speed
+        self._fps = fps
+        self._running = False
+        self._thread = None
+
+    def start(self):
+        if self._running:
+            return
+        self.complex_settings.mode = ComplexSettings.PHASE_ROTATE
+        self._running = True
+        self._t0 = time.time()
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+
+    def stop(self):
+        self._running = False
+        self._thread = None
+
+    @property
+    def running(self):
+        return self._running
+
+    def _loop(self):
+        while self._running:
+            t = time.time() - self._t0
+            phase = (t * self.speed * 2 * math.pi) % (2 * math.pi)
+            self.complex_settings.phase = phase
+            self.scene.render()
+            time.sleep(1 / self._fps)
+
+
 class CFRenderer(BaseMeshElements2d):
     """Use "vertices", "index" and "trig_function_values" buffers to render a mesh"""
 
@@ -497,6 +615,10 @@ class CFRenderer(BaseMeshElements2d):
         if component is None:
             component = -1 if self.data.cf.dim > 1 else 0
         self.gpu_objects.settings = FunctionSettings(component=component)
+        self.gpu_objects.complex_settings = ComplexSettings()
+        self._phase_animation = None
+        self._scene = None
+        self._anim_speed = 1.0
         
     @property
     def colormap(self):
@@ -538,6 +660,13 @@ class CFRenderer(BaseMeshElements2d):
             for d in range(self.data.cf.dim):
                 options[str(d)] = d
             gui.dropdown(func=self.set_component, label="Component", values=options)
+        if self.data.cf.is_complex:
+            f = gui.folder("Complex")
+            complex_options = {"Real": "real", "Imag": "imag", "Abs": "abs", "Arg": "arg"}
+            f.dropdown(func=self.set_complex_mode, label="Mode", values=complex_options)
+            f.slider(0.0, func=self._set_phase_from_gui, min=0.0, max=6.283, label="Phase")
+            f.checkbox(func=self._toggle_animation, label="Animate", value=False)
+            f.slider(1.0, func=self._set_speed_from_gui, min=0.1, max=5.0, label="Speed")
 
     @deprecated("Use set_component instead")
     def change_cf_dim(self, value):
@@ -549,11 +678,70 @@ class CFRenderer(BaseMeshElements2d):
             cb(component)
         self.set_needs_update()
 
+    def set_complex_mode(self, mode):
+        """Set complex visualization mode: 'real', 'imag', 'abs', 'arg'"""
+        import math
+        mode_map = {
+            "real": (ComplexSettings.PHASE_ROTATE, 0.0),
+            "imag": (ComplexSettings.PHASE_ROTATE, -math.pi / 2),
+            "abs": (ComplexSettings.ABS, None),
+            "arg": (ComplexSettings.ARG, None),
+        }
+        if isinstance(mode, str):
+            shader_mode, phase = mode_map[mode.lower()]
+        else:
+            shader_mode, phase = mode, None
+        self.gpu_objects.complex_settings.mode = shader_mode
+        if phase is not None:
+            self.gpu_objects.complex_settings.phase = phase
+
+    def set_phase(self, phase: float):
+        """Set the phase angle for complex animate mode"""
+        self.gpu_objects.complex_settings.phase = phase
+
+    def animate_phase(self, scene=None, speed=1.0, fps=60):
+        """Start phase-sweep animation."""
+        scene = scene or self._scene
+        if scene is None:
+            raise ValueError("No scene available. Pass scene or call from a Draw()-created renderer.")
+        self.stop_animation()
+        self._phase_animation = PhaseAnimation(
+            self.gpu_objects.complex_settings, scene, speed=speed, fps=fps
+        )
+        self._phase_animation.start()
+
+    def stop_animation(self):
+        """Stop phase-sweep animation."""
+        if self._phase_animation is not None:
+            self._phase_animation.stop()
+            self._phase_animation = None
+
+    def _set_phase_from_gui(self, value):
+        self.gpu_objects.complex_settings.mode = ComplexSettings.PHASE_ROTATE
+        self.set_phase(value)
+        if self._scene:
+            self._scene.render()
+
+    def _set_speed_from_gui(self, value):
+        self._anim_speed = value
+        if self._phase_animation is not None:
+            self._phase_animation.speed = value
+
+    def _toggle_animation(self, value):
+        if value:
+            self.animate_phase(speed=self._anim_speed)
+        else:
+            self.stop_animation()
+            self.set_complex_mode("real")
+            if self._scene:
+                self._scene.render()
+
     def get_bindings(self):
         return [
             *super().get_bindings(),
             *self.gpu_objects.colormap.get_bindings(),
             *self.gpu_objects.settings.get_bindings(),
+            *self.gpu_objects.complex_settings.get_bindings(),
             BufferBinding(Binding.FUNCTION_VALUES_2D, self._buffers["data_2d"]),
         ]
 

@@ -220,6 +220,13 @@ def Draw(
             clipping.center = list(center)
 
     scene = wj.Draw(render_objects, width, height)
+
+    # Give CFRenderer a reference to the scene for animation
+    for ro in render_objects:
+        if isinstance(ro, CFRenderer):
+            ro._scene = scene
+            break
+
     if dim == 3:
         clipping.add_options_to_gui(scene.gui)
     for r in render_objects:
