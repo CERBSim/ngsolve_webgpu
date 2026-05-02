@@ -17,6 +17,7 @@ running natively in Jupyter notebooks via WebGPU.
    :caption: Core Concepts
 
    mesh.ipynb
+   entity_numbers.ipynb
    functions.ipynb
    clipping.ipynb
 
