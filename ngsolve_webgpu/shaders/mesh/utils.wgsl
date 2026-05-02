@@ -6,6 +6,7 @@ struct MeshData {
     offset_2d_data: u32,
     offset_3d_data: u32,
     offset_curvature_2d: u32,
+    offset_curvature_3d: u32,
     num_verts: u32,
     num_segments: u32,
     num_trigs: u32,

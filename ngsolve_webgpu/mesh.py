@@ -96,6 +96,7 @@ class _MeshMetaData(ct.Structure):
         ("offset_2d_data", ct.c_uint32),
         ("offset_3d_data", ct.c_uint32),
         ("offset_curvature_2d", ct.c_uint32),
+        ("offset_curvature_3d", ct.c_uint32),
         ("num_verts", ct.c_uint32),
         ("num_segments", ct.c_uint32),
         ("num_trigs", ct.c_uint32),
@@ -217,12 +218,18 @@ class MeshData:
                 curvature_2d = b''
                 if self.curvature_data:
                     curvature_2d = self.curvature_data.data_2d.tobytes()
+                curvature_3d = b''
+                if self.curvature_3d_data is not None:
+                    curvature_3d = self.curvature_3d_data.tobytes()
+                    self.mesh_metadata.offset_curvature_3d = (
+                        self.mesh_metadata.offset_curvature_2d + len(curvature_2d) // 4
+                    )
                 vertices = self.elements['vertices'].tobytes()
                 data_2d = self.elements[ElType.TRIG].tobytes()
                 data_3d = b''
                 if self.need_3d:
                     data_3d = self.elements[ElType.TET].tobytes()
-                self.cpu_data = bytes(self.mesh_metadata) + vertices + data_2d + data_3d + curvature_2d
+                self.cpu_data = bytes(self.mesh_metadata) + vertices + data_2d + data_3d + curvature_2d + curvature_3d
                 self._gpu_dirty = True
 
             if self.deformation_data:
@@ -338,20 +345,25 @@ class MeshData:
             rest_mask = np.isin(np_vals, (5, 6, 8, 10))
             rest_numbers = els_numbers[rest_mask]
 
-            # pyramides → prismes → hex
-            element_numbers_sorted_by_type = np.concatenate([
-                rest_numbers[np_vals[rest_numbers] == 5],
-                rest_numbers[np_vals[rest_numbers] == 6],
-                rest_numbers[np_vals[rest_numbers] == 8],
-            ]).astype(np.int32)
-
             n_pyra  = np.count_nonzero(np_vals == 5)
             n_prims = np.count_nonzero(np_vals == 6)
             n_hex   = np.count_nonzero(np_vals == 8)
             n_tets = len(els) - n_pyra - n_prims - n_hex
+
+            # Detect curved tets for instance layout
+            curved_tet_ids = np.flatnonzero(els['curved'] & (np_vals == 4)).astype(np.int32)
+            n_curved_tets = len(curved_tet_ids)
+
+            # curved tets → pyramids → prisms → hex
+            element_numbers_sorted_by_type = np.concatenate([
+                curved_tet_ids,
+                rest_numbers[np_vals[rest_numbers] == 5],
+                rest_numbers[np_vals[rest_numbers] == 6],
+                rest_numbers[np_vals[rest_numbers] == 8],
+            ]).astype(np.int32)
                                                 
             num_rests = np.sum(rest_index)
-            base_offset = 5 + len(els) * 5 + num_rests
+            base_offset = 5 + len(els) * 5 + n_curved_tets + num_rests
 
             for i in range(len(els)):
                 np_val = els["np"][i]
@@ -371,8 +383,9 @@ class MeshData:
             all_data = np.concatenate( (metadata, els_data.flatten(), element_numbers_sorted_by_type, np.array(rest_data, dtype=np.int32)))
             
             self.elements[ElType.TET] = all_data
-            self.num_elements["faces"] = 4*len(els) + 2 * n_pyra + 4 * n_prims + 8 * n_hex
+            self.num_elements["faces"] = 4*len(els) + 4 * n_curved_tets + 2 * n_pyra + 4 * n_prims + 8 * n_hex
             self.num_elements["tets"] = len(els) + n_pyra + 2 * n_prims + 5 * n_hex
+            self.num_elements["n_3d_elements"] = len(els)
 
         try:
             curve_order = mesh.GetCurveOrder()
@@ -388,7 +401,14 @@ class MeshData:
 
             cf = ngs.CF((ngs.x, ngs.y, ngs.z))
             self.curvature_data = FunctionData(self, cf, curve_order)
+
+            # Compute sparse 3D curvature data for curved elements only
+            if self.need_3d:
+                self._compute_curvature_3d(mesh, curve_order)
+            else:
+                self.curvature_3d_data = None
         else:
+            self.curvature_3d_data = None
             if self.subdivision is None:
                 self.subdivision = 1
         if self.subdivision is None:
@@ -433,11 +453,75 @@ class MeshData:
             data_3d = self.elements[ElType.TET].tobytes()
             
         mesh_metadata.offset_curvature_2d = mesh_metadata.offset_3d_data + len(data_3d)//4
+        mesh_metadata.offset_curvature_3d = mesh_metadata.offset_curvature_2d  # updated below if data exists
         mesh_metadata.is_curved = 0 if self.curvature_data is None else 1
     
         self.mesh_metadata = mesh_metadata
 
         self._last_mesh_timestamp = mesh._timestamp
+
+    def _compute_curvature_3d(self, mesh, order):
+        """Compute Bernstein coefficients for curved 3D (tet) elements only (sparse)."""
+        import ngsolve as ngs
+        from .cf import get_3d_intrules, vandermonde_3d
+
+        els = mesh.Elements3D().NumPy()
+        n_total = len(els)
+        if n_total == 0:
+            self.curvature_3d_data = None
+            return
+
+        # Only process tet elements (np==4) that are curved
+        np_vals = els['np']
+        tet_mask = np_vals == 4
+        curved_mask = els['curved'] & tet_mask
+        n_curved = int(np.sum(curved_mask))
+
+        # Build lookup: global element ID → local curved index (-1 if straight)
+        lookup = np.full(n_total, -1, dtype=np.int32)
+
+        if n_curved == 0:
+            # Header only — shader reads n_curved == 0 and skips
+            header = np.array([order, 0], dtype=np.int32)
+            self.curvature_3d_data = np.concatenate([header, lookup])
+            return
+
+        curved_indices = np.flatnonzero(curved_mask)
+        lookup[curved_indices] = np.arange(n_curved, dtype=np.int32)
+
+        # Evaluate CF((x,y,z)) on all tet elements, then filter curved
+        intrules = get_3d_intrules(order)
+        tet_rule = intrules[ngs.ET.TET]
+        ndof = len(tet_rule)
+
+        cf = ngs.CF((ngs.x, ngs.y, ngs.z))
+        region = self.ngs_mesh.Materials(".*")
+        with ngs.TaskManager():
+            pts = region.mesh.MapToAllElements({ngs.ET.TET: tet_rule}, region)
+            pmat = cf(pts).reshape(-1, ndof, 3)
+
+        # Filter only curved tet elements
+        # pmat has one row per tet (in global order among tets only)
+        # We need to map global curved tet indices to pmat row indices
+        tet_indices = np.flatnonzero(tet_mask)
+        # curved_mask restricted to tets: which tets are curved
+        curved_among_tets = els['curved'][tet_indices]
+        curved_pmat = pmat[curved_among_tets]
+
+        # Apply inverse Vandermonde → Bernstein coefficients
+        V_inv = vandermonde_3d(order)
+        ibmat = ngs.Matrix(V_inv)
+        coeffs = np.zeros((n_curved, ndof, 3), dtype=np.float32)
+        with ngs.TaskManager():
+            for k in range(3):
+                ngsmat = ngs.Matrix(curved_pmat[:, :, k].T.copy())
+                result = ibmat * ngsmat
+                coeffs[:, :, k] = np.array(result, dtype=np.float32).T
+
+        # Pack: [order, n_curved, lookup..., coefficients...]
+        header = np.array([order, n_curved], dtype=np.int32)
+        flat_coeffs = coeffs.reshape(-1).view(np.int32)
+        self.curvature_3d_data = np.concatenate([header, lookup, flat_coeffs])
 
     def get_bounding_box(self):
         pmin, pmax = self.mesh.bounding_box
@@ -688,6 +772,33 @@ class MeshSegments(Renderer):
         else:
             colors[:, :] = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
 
+        subdivision = self.data.subdivision or 1
+
+        if self.data.curvature_data is not None and subdivision > 1:
+            # Curved: evaluate geometry on 1D elements at subdivided points
+            import ngsolve as ngs
+
+            n_pts = subdivision + 1
+            ref_pts = [[i / subdivision] for i in range(n_pts)]
+            rule = ngs.IntegrationRule(ref_pts, [0] * n_pts)
+
+            ngs_mesh = self.data.ngs_mesh
+            if ngs_mesh.dim == 3:
+                region = ngs_mesh.Boundaries(".*").Boundaries()
+            else:
+                region = ngs_mesh.Boundaries(".*")
+
+            cf = ngs.CF((ngs.x, ngs.y, ngs.z))
+            pts = ngs_mesh.MapToAllElements({ngs.ET.SEGM: rule}, region)
+            pmat = cf(pts).reshape(-1, n_pts, 3)  # (n_segs, n_pts, 3)
+
+            # Build sub-segments: consecutive point pairs
+            p1 = pmat[:, :-1, :]  # (n_segs, subdivision, 3)
+            p2 = pmat[:, 1:, :]   # (n_segs, subdivision, 3)
+            seg_coords = np.concatenate([p1, p2], axis=2).reshape(-1, 6).astype(np.float32)
+
+            # Repeat edge_indices for each sub-segment
+            edge_indices = np.repeat(edge_indices, subdivision)
 
         self.n_instances = seg_coords.shape[0]
 
@@ -780,14 +891,41 @@ class MeshElements3d(Renderer):
         self.data.update(options)
         self.clipping.update(options)
         self._buffers = self.data.get_buffers()
+        self._subdivision = self.data.subdivision
+        self.uniforms.subdivision = self._subdivision
         self.uniforms.update_buffer()
         self.n_instances = self.data.num_elements["faces"]
-        order = self.data.deformation_data.order if self.data.deformation_data else 1
-        order = 3
-        self.shader_defines = {"MAX_EVAL_ORDER": str(order), "MAX_EVAL_ORDER_VEC3": str(order)}
+        n_3d = self.data.num_elements.get("n_3d_elements", 0)
+        self._n_instances_flat = 4 * n_3d
+        self._n_instances_subdiv = self.n_instances - self._n_instances_flat
+        self.n_vertices = 3 * self._subdivision ** 2
+        self.shader_defines = self.data.get_shader_defines()
         if self.symmetry:
             self.n_instances *= self.symmetry.n_copies
+            self._n_instances_flat *= self.symmetry.n_copies
+            self._n_instances_subdiv = self.n_instances - self._n_instances_flat
             self.shader_defines["SYMMETRY"] = "1"
+
+    def render(self, options):
+        render_pass = options.begin_render_pass()
+        render_pass.setPipeline(self.pipeline)
+        render_pass.setBindGroup(0, self.group)
+        if self._n_instances_subdiv <= 0 or not self.symmetry:
+            # Draw 1: flat first-4 faces (n_vertices=3)
+            render_pass.draw(3, self._n_instances_flat)
+        if self._n_instances_subdiv > 0:
+            if self.symmetry:
+                # Symmetry: single draw, shader skips excess sub-triangles
+                render_pass.draw(3 * self._subdivision ** 2, self.n_instances)
+            else:
+                # Draw 2: curved tet faces + non-tet extras (subdivided)
+                render_pass.draw(
+                    3 * self._subdivision ** 2,
+                    self._n_instances_subdiv,
+                    firstVertex=0,
+                    firstInstance=self._n_instances_flat,
+                )
+        render_pass.end()
 
     def add_options_to_gui(self, gui):
         if gui is None:

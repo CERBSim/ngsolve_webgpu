@@ -89,6 +89,11 @@ class ClippingCF(Renderer):
             self.active = False
             return
         self.shader_defines = self.data.mesh_data.get_shader_defines()
+        clip_subdiv = self.data.mesh_data.subdivision or 1
+        if self.data.mesh_data.curvature_3d_data is None:
+            clip_subdiv = 1
+        self.shader_defines["CLIPPING_SUBDIVISION"] = clip_subdiv
+        self.n_vertices = 3 * clip_subdiv * clip_subdiv
         self._clipping.update(options)
 
         if not hasattr(self.clipping, "uniforms"):
