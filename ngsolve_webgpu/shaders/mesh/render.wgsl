@@ -106,7 +106,7 @@ fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_ind
         position = evalTrigVec3(&mesh.data, trigId, lam, mesh.offset_curvature_2d);
       }
     if (u_deformation_values_2d[0] != -1.) {
-      position += u_deformation_scale * evalTrigVec3(&u_deformation_values_2d, trigId, lam, 0u);
+      position += u_deformation_scale * evalTrigVec3Complex(&u_deformation_values_2d, trigId, lam, 0u);
     }
     var normal = normalize(cross(tri.p[1] - tri.p[0], tri.p[2] - tri.p[0]));
 #ifdef SYMMETRY
@@ -319,7 +319,7 @@ fn calcTrig(tri: Triangle, vertexId: u32, instanceId: u32, rawInstanceId: u32)
     if subdivision == 1 {
         position = p[vertexId];
         if (u_deformation_values_2d[0] != -1.) {
-          let pos_and_gradients = u_deformation_scale * evalTrigVec3Grad(&u_deformation_values_2d, instanceId, lam, 0u);
+          let pos_and_gradients = u_deformation_scale * evalTrigVec3GradComplex(&u_deformation_values_2d, instanceId, lam, 0u);
           position += u_deformation_scale * pos_and_gradients[0];
           var v1 = p[0] - p[2] + u_deformation_scale * pos_and_gradients[1];
           var v2 = p[1] - p[2] + u_deformation_scale * pos_and_gradients[2];
@@ -341,7 +341,7 @@ fn calcTrig(tri: Triangle, vertexId: u32, instanceId: u32, rawInstanceId: u32)
 
         var pos_and_gradients = evalTrigVec3Grad(&mesh.data, instanceId, lam, mesh.offset_curvature_2d);
         if (u_deformation_values_2d[0] != -1.) {
-          pos_and_gradients += u_deformation_scale * evalTrigVec3Grad(&u_deformation_values_2d, instanceId, lam, 0u);
+          pos_and_gradients += u_deformation_scale * evalTrigVec3GradComplex(&u_deformation_values_2d, instanceId, lam, 0u);
         }
         position = pos_and_gradients[0];
         normal = normalize(cross(pos_and_gradients[1], pos_and_gradients[2]));

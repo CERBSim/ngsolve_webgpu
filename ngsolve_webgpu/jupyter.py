@@ -221,11 +221,10 @@ def Draw(
 
     scene = wj.Draw(render_objects, width, height)
 
-    # Give CFRenderer a reference to the scene for animation
+    # Give renderers a reference to the scene for animation
     for ro in render_objects:
-        if isinstance(ro, CFRenderer):
+        if hasattr(ro, '_scene'):
             ro._scene = scene
-            break
 
     if dim == 3:
         clipping.add_options_to_gui(scene.gui)

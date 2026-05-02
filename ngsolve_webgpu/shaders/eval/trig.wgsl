@@ -156,6 +156,47 @@ fn evalTrigVec3(data: ptr<storage, array<f32>, read>, id: u32, lam: vec2<f32>, o
     return _evalTrigVec3Data(order, v, lam, order+1);
 }
 
+struct Vec3ReIm {
+    re: vec3f,
+    im: vec3f,
+};
+
+fn evalTrigVec3ReIm(data: ptr<storage, array<f32>, read>, id: u32, lam: vec2<f32>, offset_: u32) -> Vec3ReIm {
+    var order: i32 = i32((*data)[offset_ + 1]);
+    let ncomp: u32 = u32((*data)[offset_ + 0]);
+    let is_complex: u32 = u32((*data)[offset_ + 2]);
+    var ndof: u32 = u32((order + 1) * (order + 2) / 2);
+
+    let stride: u32 = ncomp * (1u + is_complex);
+    let offset: u32 = offset_ + ndof * id * stride + VALUES_OFFSET;
+
+    var v_re: array<vec3f, N_DOFS_TRIG_VEC3>;
+    var v_im: array<vec3f, N_DOFS_TRIG_VEC3>;
+
+    if is_complex == 0u {
+        for (var i: u32 = 0u; i < ndof; i++) {
+            v_re[i].x = (*data)[offset + i * stride + 0];
+            v_re[i].y = (*data)[offset + i * stride + 1];
+            v_re[i].z = (*data)[offset + i * stride + 2];
+            v_im[i] = vec3f(0.0);
+        }
+    } else {
+        for (var i: u32 = 0u; i < ndof; i++) {
+            v_re[i].x = (*data)[offset + i * stride + 0];
+            v_im[i].x = (*data)[offset + i * stride + 1];
+            v_re[i].y = (*data)[offset + i * stride + 2];
+            v_im[i].y = (*data)[offset + i * stride + 3];
+            v_re[i].z = (*data)[offset + i * stride + 4];
+            v_im[i].z = (*data)[offset + i * stride + 5];
+        }
+    }
+
+    var result: Vec3ReIm;
+    result.re = _evalTrigVec3Data(order, v_re, lam, order + 1);
+    result.im = _evalTrigVec3Data(order, v_im, lam, order + 1);
+    return result;
+}
+
 fn evalTrigVec3Grad(data: ptr<storage, array<f32>, read>, id: u32, lam: vec2<f32>, offset_: u32) -> mat3x3<f32> {
     var order: i32 = i32((*data)[offset_ + 1]);
     let ncomp: u32 = u32((*data)[offset_ + 0]);
@@ -198,4 +239,90 @@ fn evalTrigVec3Grad(data: ptr<storage, array<f32>, read>, id: u32, lam: vec2<f32
     result[2] = _evalTrigVec3Data(order-1, vd, lam, dy);
 
     return result;
+}
+
+// Complex-aware version of evalTrigVec3 for deformation: always uses phase rotation
+fn evalTrigVec3Complex(data: ptr<storage, array<f32>, read>, id: u32, lam: vec2<f32>, offset_: u32) -> vec3f {
+    let is_complex: u32 = u32((*data)[offset_ + 2]);
+    if is_complex == 0u {
+        return evalTrigVec3(data, id, lam, offset_);
+    }
+    let ri = evalTrigVec3ReIm(data, id, lam, offset_);
+    let c = cos(u_complex.phase);
+    let s = sin(u_complex.phase);
+    return ri.re * c - ri.im * s;
+}
+
+struct Vec3GradReIm {
+    re: mat3x3<f32>,
+    im: mat3x3<f32>,
+};
+
+fn _evalTrigVec3GradFromData(order: i32, v: array<vec3f, N_DOFS_TRIG_VEC3>, lam: vec2f, dy: i32) -> mat3x3<f32> {
+    var result: mat3x3<f32>;
+    result[0] = _evalTrigVec3Data(order, v, lam, dy);
+    var vd: array<vec3f, N_DOFS_TRIG_VEC3>;
+
+    var i0 = 0;
+    for (var iy = 0; iy < order; iy++) {
+        for (var ix = 0; ix < order - iy; ix++) {
+            vd[i0 + ix] = v[i0 + ix] - v[i0 + ix + dy - iy];
+        }
+        i0 += dy - iy;
+    }
+    result[1] = _evalTrigVec3Data(order-1, vd, lam, dy);
+
+    i0 = 0;
+    for (var iy = 0; iy < order; iy++) {
+        for (var ix = 0; ix < order - iy; ix++) {
+            vd[i0 + ix] = v[i0 + ix + 1] - v[i0 + ix + dy - iy];
+        }
+        i0 += dy - iy;
+    }
+    result[2] = _evalTrigVec3Data(order-1, vd, lam, dy);
+    return result;
+}
+
+// Complex-aware version of evalTrigVec3Grad for deformation: always uses phase rotation
+fn evalTrigVec3GradComplex(data: ptr<storage, array<f32>, read>, id: u32, lam: vec2<f32>, offset_: u32) -> mat3x3<f32> {
+    var order: i32 = i32((*data)[offset_ + 1]);
+    let ncomp: u32 = u32((*data)[offset_ + 0]);
+    let is_complex: u32 = u32((*data)[offset_ + 2]);
+    var ndof: u32 = u32((order + 1) * (order + 2) / 2);
+    let dy = order + 1;
+
+    let stride: u32 = ncomp * (1u + is_complex);
+    let offset: u32 = offset_ + ndof * id * stride + VALUES_OFFSET;
+
+    if is_complex == 0u {
+        var v: array<vec3f, N_DOFS_TRIG_VEC3>;
+        for (var i: u32 = 0u; i < ndof; i++) {
+            v[i].x = (*data)[offset + i * stride + 0];
+            v[i].y = (*data)[offset + i * stride + 1];
+            v[i].z = (*data)[offset + i * stride + 2];
+        }
+        return _evalTrigVec3GradFromData(order, v, lam, dy);
+    }
+
+    var v_re: array<vec3f, N_DOFS_TRIG_VEC3>;
+    var v_im: array<vec3f, N_DOFS_TRIG_VEC3>;
+    for (var i: u32 = 0u; i < ndof; i++) {
+        v_re[i].x = (*data)[offset + i * stride + 0];
+        v_im[i].x = (*data)[offset + i * stride + 1];
+        v_re[i].y = (*data)[offset + i * stride + 2];
+        v_im[i].y = (*data)[offset + i * stride + 3];
+        v_re[i].z = (*data)[offset + i * stride + 4];
+        v_im[i].z = (*data)[offset + i * stride + 5];
+    }
+
+    let grad_re = _evalTrigVec3GradFromData(order, v_re, lam, dy);
+    let grad_im = _evalTrigVec3GradFromData(order, v_im, lam, dy);
+
+    let c = cos(u_complex.phase);
+    let s = sin(u_complex.phase);
+    return mat3x3<f32>(
+        grad_re[0] * c - grad_im[0] * s,
+        grad_re[1] * c - grad_im[1] * s,
+        grad_re[2] * c - grad_im[2] * s,
+    );
 }

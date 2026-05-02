@@ -22,62 +22,137 @@ fn evalTet(data: ptr<storage, array<f32>, read>,
            id: u32, icomp: i32, lam: vec3<f32>) -> f32 {
   let ncomp: u32 = u32((*data)[0]);
   let order: u32 = u32((*data)[1]);
+  let is_complex: u32 = u32((*data)[2]);
   var ndof: u32 = ((order + 1u) * (order + 2u) * (order + 3u)) / 6u;
 
-  let offset: u32 = ndof * id * ncomp + VALUES_OFFSET;
-  let stride: u32 = ncomp;
-  var lam_res = clamp(vec4f(lam.xyz, 1.0 - lam.x - lam.y - lam.z),
-                      vec4f(0.0, 0.0, 0.0, 0.0),
-                      vec4f(1.0, 1.0, 1.0, 1.0));
-  lam_res *= 1.0 / (lam_res.x + lam_res.y + lam_res.z + lam_res.w);
+  let stride: u32 = ncomp * (1u + is_complex);
+  let offset: u32 = ndof * id * stride + VALUES_OFFSET;
 
-  var value : f32 = 0.0;
-  var first_comp = 0u;
-  if(icomp != -1) {
-    first_comp = u32(icomp);
-  }
-  var last_comp = ncomp;
-  if(icomp != -1) {
-    last_comp = u32(icomp) + 1u;
+  if is_complex == 0u {
+    // Real path
+    var value : f32 = 0.0;
+    var first_comp = 0u;
+    if(icomp != -1) {
+      first_comp = u32(icomp);
+    }
+    var last_comp = ncomp;
+    if(icomp != -1) {
+      last_comp = u32(icomp) + 1u;
+    }
+
+    for(var jcomp: u32 = first_comp; jcomp < last_comp; jcomp++) {
+      var j: u32 = 0u;
+      var comp_value = 0.0;
+      for(var d: u32 = 0u; d < order+1u; d++) {
+        for(var c: u32 = 0u; c < order+1u-d; c++) {
+          for(var b: u32 = 0u; b < order+1u-c-d; b++) {
+            let a = order - b - c - d;
+            let fac = f32(factorial(order))/f32((factorial(a) * factorial(b) * factorial(c) * factorial(d)));
+            comp_value = comp_value + fac * (*data)[offset + jcomp + j * stride] * mypow(lam.x, a) * mypow(lam.y, b) * mypow(lam.z, c) * mypow(1.0 - lam.x - lam.y - lam.z, d);
+            j++;
+          }
+        }
+      }
+      if(icomp != -1) {
+        return comp_value;
+      }
+      value = value + comp_value*comp_value;
+    }
+    return sqrt(value);
   }
 
-  for(var jcomp: u32 = first_comp; jcomp < last_comp; jcomp++) {
+  // Complex path
+  if icomp == -1 {
+    // Norm: sqrt(sum_k(re_k^2 + im_k^2)) per DOF, then Bernstein eval
+    var value = 0.0;
     var j: u32 = 0u;
-    var comp_value = 0.0;
     for(var d: u32 = 0u; d < order+1u; d++) {
       for(var c: u32 = 0u; c < order+1u-d; c++) {
-        for(var b: u32 = 0u; b < order+1u-c-d;b++) {
+        for(var b: u32 = 0u; b < order+1u-c-d; b++) {
           let a = order - b - c - d;
           let fac = f32(factorial(order))/f32((factorial(a) * factorial(b) * factorial(c) * factorial(d)));
-          comp_value = comp_value + fac * (*data)[offset + u32(jcomp) + j * stride] * mypow(lam.x, a) * mypow(lam.y, b) * mypow(lam.z, c) * mypow(1.0 - lam.x - lam.y - lam.z, d);
+          var dof_norm = 0.0;
+          for (var k: u32 = 0u; k < ncomp; k++) {
+            let re = (*data)[offset + j * stride + k * 2u];
+            let im = (*data)[offset + j * stride + k * 2u + 1u];
+            dof_norm += re * re + im * im;
+          }
+          dof_norm = sqrt(dof_norm);
+          value += fac * dof_norm * mypow(lam.x, a) * mypow(lam.y, b) * mypow(lam.z, c) * mypow(1.0 - lam.x - lam.y - lam.z, d);
           j++;
         }
       }
     }
-    if(icomp != -1)
-      {
-        return comp_value;
-      }
-      value = value + comp_value*comp_value;
+    return value;
   }
-  return sqrt(value);
-    // let dy = order + 1u;
-    // let dz = (order + 1u) * (order + 2u) / 2u;
-    // let b = vec4f(lam.x, lam.y, lam.z, 1.0 - lam.x - lam.y - lam.z);
 
-    // for (var n = order; n > 0u; n--) {
-    //     var iz0 = 0u;
-    //     for (var iz = 0u; iz < n; iz++) {
-    //         var iy0 = iz0;
-    //         for (var iy = 0u; iy < n - iz; iy++) {
-    //             for (var ix = 0u; ix < n - iz - iy; ix++) {
-    //                 v[iy0 + ix] = dot(b, vec4f(v[iy0 + ix], v[iy0 + ix + 1u], v[iy0 + ix + dy - iy], v[iy0 + ix + dz - iz]));
-    //             }
-    //             iy0 += dy - iy - iz;
-    //         }
-    //         iz0 += dz - (n - 1u - iz);
-    //     }
-    // }
+  // Specific component: evaluate Re and Im separately
+  let comp_offset = u32(icomp) * 2u;
+  var re_value = 0.0;
+  var im_value = 0.0;
+  var j: u32 = 0u;
+  for(var d: u32 = 0u; d < order+1u; d++) {
+    for(var c: u32 = 0u; c < order+1u-d; c++) {
+      for(var b: u32 = 0u; b < order+1u-c-d; b++) {
+        let a = order - b - c - d;
+        let fac = f32(factorial(order))/f32((factorial(a) * factorial(b) * factorial(c) * factorial(d)));
+        let basis = fac * mypow(lam.x, a) * mypow(lam.y, b) * mypow(lam.z, c) * mypow(1.0 - lam.x - lam.y - lam.z, d);
+        re_value += (*data)[offset + j * stride + comp_offset] * basis;
+        im_value += (*data)[offset + j * stride + comp_offset + 1u] * basis;
+        j++;
+      }
+    }
+  }
 
-    // return v[0];
+  switch u_complex.mode {
+    case 0u: {
+      let co = cos(u_complex.phase);
+      let si = sin(u_complex.phase);
+      return re_value * co - im_value * si;
+    }
+    case 1u: { return sqrt(re_value * re_value + im_value * im_value); }
+    case 2u: { return atan2(im_value, re_value); }
+    default: {
+      let co = cos(u_complex.phase);
+      let si = sin(u_complex.phase);
+      return re_value * co - im_value * si;
+    }
+  }
+}
+
+// Complex-aware evalTet for deformation: always uses phase rotation (ignores mode)
+fn evalTetComplex(data: ptr<storage, array<f32>, read>,
+           id: u32, icomp: i32, lam: vec3<f32>) -> f32 {
+  let ncomp: u32 = u32((*data)[0]);
+  let order: u32 = u32((*data)[1]);
+  let is_complex: u32 = u32((*data)[2]);
+
+  if is_complex == 0u {
+    return evalTet(data, id, icomp, lam);
+  }
+
+  var ndof: u32 = ((order + 1u) * (order + 2u) * (order + 3u)) / 6u;
+  let stride: u32 = ncomp * 2u;
+  let offset: u32 = ndof * id * stride + VALUES_OFFSET;
+  let comp_offset = u32(icomp) * 2u;
+
+  var re_value = 0.0;
+  var im_value = 0.0;
+  var j: u32 = 0u;
+  for(var d: u32 = 0u; d < order+1u; d++) {
+    for(var c: u32 = 0u; c < order+1u-d; c++) {
+      for(var b: u32 = 0u; b < order+1u-c-d; b++) {
+        let a = order - b - c - d;
+        let fac = f32(factorial(order))/f32((factorial(a) * factorial(b) * factorial(c) * factorial(d)));
+        let basis = fac * mypow(lam.x, a) * mypow(lam.y, b) * mypow(lam.z, c) * mypow(1.0 - lam.x - lam.y - lam.z, d);
+        re_value += (*data)[offset + j * stride + comp_offset] * basis;
+        im_value += (*data)[offset + j * stride + comp_offset + 1u] * basis;
+        j++;
+      }
+    }
+  }
+
+  let co = cos(u_complex.phase);
+  let si = sin(u_complex.phase);
+  return re_value * co - im_value * si;
 }

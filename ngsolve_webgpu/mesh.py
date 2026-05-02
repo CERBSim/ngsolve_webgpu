@@ -535,6 +535,8 @@ class BaseMeshElements2d(Renderer):
         self.clipping = clipping or Clipping()
         self.color_uniform = None
         self.symmetry = symmetry
+        from .cf import ComplexSettings
+        self.gpu_objects.complex_settings = ComplexSettings()
 
     def update(self, options: RenderOptions):
         self.clipping.update(options)
@@ -571,6 +573,7 @@ class BaseMeshElements2d(Renderer):
             *self.clipping.get_bindings(),
             *mesh_data.get_bindings(),
             UniformBinding(Binding.SUBDIVISION, self._buffers["subdivision"]),
+            *self.gpu_objects.complex_settings.get_bindings(),
         ]
         if hasattr(self, "color_uniform"):
             bindings.append(BufferBinding(54, self.color_uniform))
@@ -673,7 +676,7 @@ class MeshSegments(Renderer):
         seg_coords = vertices[node_ids].reshape(-1, 6).astype(np.float32)
 
         # indices and colors: one color entry per segment index
-        indices = segs["index"].astype(np.uint32)
+        indices = segs["index"].astype(np.uint32) - 1
         edge_indices = indices
         max_index = int(edge_indices.max()) if edge_indices.size > 0 else -1
         colors = np.zeros((max_index + 1, 4), dtype=np.float32)

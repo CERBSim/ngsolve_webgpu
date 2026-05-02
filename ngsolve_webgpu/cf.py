@@ -416,29 +416,45 @@ class FunctionData:
         pmat = np.concatenate((pmat, pmat_pyra, pmat_prism, pmat_hex))
         pmat = pmat.reshape(-1, ndof, comps)
 
+        is_complex = cf.is_complex
+
         with ngs.TaskManager():
             V_inv = vandermonde_3d(order).T
             I, K, L = pmat.shape[0], pmat.shape[2], V_inv.shape[1]
-            vals = np.zeros((I, L, K))
 
             ibmat = ngs.Matrix(V_inv.T)  # note the transpose for matching dimensions
 
-            for k in range(K):
-                ngsmat = ngs.Matrix(pmat[:, :, k].T)
-                result = ibmat * ngsmat
-                vals[:, :, k] = np.array(result).T
+            if is_complex:
+                vals = np.zeros((I, L, K * 2), dtype=np.float32)
+                for k in range(K):
+                    ngsmat_re = ngs.Matrix(pmat[:, :, k].real.T.copy())
+                    ngsmat_im = ngs.Matrix(pmat[:, :, k].imag.T.copy())
+                    vals[:, :, k * 2] = np.array(ibmat * ngsmat_re).T
+                    vals[:, :, k * 2 + 1] = np.array(ibmat * ngsmat_im).T
+            else:
+                vals = np.zeros((I, L, K))
+                for k in range(K):
+                    ngsmat = ngs.Matrix(pmat[:, :, k].T)
+                    result = ibmat * ngsmat
+                    vals[:, :, k] = np.array(result).T
 
-        minval = np.min(pmat, axis=(0, 1))
-        maxval = np.max(pmat, axis=(0, 1))
-        if comps > 1:
-            norm = np.linalg.norm(pmat, axis=2)
+        if is_complex:
+            pmat_abs = np.abs(pmat)
+            minval = np.min(pmat_abs, axis=(0, 1))
+            maxval = np.max(pmat_abs, axis=(0, 1))
+            norm = np.linalg.norm(pmat_abs, axis=2)
         else:
-            norm = np.abs(pmat)
+            minval = np.min(pmat, axis=(0, 1))
+            maxval = np.max(pmat, axis=(0, 1))
+            if comps > 1:
+                norm = np.linalg.norm(pmat, axis=2)
+            else:
+                norm = np.abs(pmat)
         vmin = [float(np.min(norm))] + [float(v) for v in minval]
         vmax = [float(np.max(norm))] + [float(v) for v in maxval]
 
         ret = np.concatenate(
-            ([np.float32(cf.dim), np.float32(order), np.float32(0.0)], vals.reshape(-1)),
+            ([np.float32(cf.dim), np.float32(order), np.float32(1.0 if is_complex else 0.0)], vals.reshape(-1)),
             dtype=np.float32,
         )
         return ret, vmin, vmax
@@ -741,7 +757,6 @@ class CFRenderer(BaseMeshElements2d):
             *super().get_bindings(),
             *self.gpu_objects.colormap.get_bindings(),
             *self.gpu_objects.settings.get_bindings(),
-            *self.gpu_objects.complex_settings.get_bindings(),
             BufferBinding(Binding.FUNCTION_VALUES_2D, self._buffers["data_2d"]),
         ]
 

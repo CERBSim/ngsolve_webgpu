@@ -10,7 +10,7 @@ from webgpu.webgpu_api import *
 
 import numpy as np
 
-from .cf import FunctionData, FunctionSettings
+from .cf import FunctionData, FunctionSettings, ComplexSettings, PhaseAnimation
 from .cf import Binding as CFBinding
 
 from .mesh import MeshElements3d, ElType
@@ -69,6 +69,10 @@ class ClippingCF(Renderer):
         if component is None:
             component = -1 if self.data.cf.dim > 1 else 0
         self.gpu_objects.settings = FunctionSettings(component=component)
+        self.gpu_objects.complex_settings = ComplexSettings()
+        self._phase_animation = None
+        self._scene = None
+        self._anim_speed = 1.0
         self.symmetry = symmetry
 
     @property
@@ -105,6 +109,7 @@ class ClippingCF(Renderer):
                 self.data.maxval[component + 1],
                 set_autoscale=False,
             )
+        self.gpu_objects.complex_settings.update(options)
         self.build_clip_plane()
         if self.symmetry:
             self.n_instances = self._original_n_instances * self.symmetry.n_copies
@@ -119,6 +124,64 @@ class ClippingCF(Renderer):
     def set_component(self, component: int):
         self.gpu_objects.settings.component = component
 
+    def set_complex_mode(self, mode):
+        """Set complex visualization mode: 'real', 'imag', 'abs', 'arg'"""
+        import math
+        mode_map = {
+            "real": (ComplexSettings.PHASE_ROTATE, 0.0),
+            "imag": (ComplexSettings.PHASE_ROTATE, -math.pi / 2),
+            "abs": (ComplexSettings.ABS, None),
+            "arg": (ComplexSettings.ARG, None),
+        }
+        if isinstance(mode, str):
+            shader_mode, phase = mode_map[mode.lower()]
+        else:
+            shader_mode, phase = mode, None
+        self.gpu_objects.complex_settings.mode = shader_mode
+        if phase is not None:
+            self.gpu_objects.complex_settings.phase = phase
+
+    def set_phase(self, phase: float):
+        """Set the phase angle for complex animate mode"""
+        self.gpu_objects.complex_settings.phase = phase
+
+    def animate_phase(self, scene=None, speed=1.0, fps=60):
+        """Start phase-sweep animation."""
+        scene = scene or self._scene
+        if scene is None:
+            raise ValueError("No scene available. Pass scene or call from a Draw()-created renderer.")
+        self.stop_animation()
+        self._phase_animation = PhaseAnimation(
+            self.gpu_objects.complex_settings, scene, speed=speed, fps=fps
+        )
+        self._phase_animation.start()
+
+    def stop_animation(self):
+        """Stop phase-sweep animation."""
+        if self._phase_animation is not None:
+            self._phase_animation.stop()
+            self._phase_animation = None
+
+    def _toggle_animation(self, value):
+        if value:
+            self.animate_phase(speed=self._anim_speed)
+        else:
+            self.stop_animation()
+            self.set_complex_mode("real")
+            if self._scene:
+                self._scene.render()
+
+    def _set_phase_from_gui(self, value):
+        self.gpu_objects.complex_settings.mode = ComplexSettings.PHASE_ROTATE
+        self.set_phase(value)
+        if self._scene:
+            self._scene.render()
+
+    def _set_speed_from_gui(self, value):
+        self._anim_speed = value
+        if self._phase_animation is not None:
+            self._phase_animation.speed = value
+
     def add_options_to_gui(self, gui):
         if gui is None:
             return
@@ -127,6 +190,13 @@ class ClippingCF(Renderer):
             self.set_needs_update()
         folder = gui.folder("Clipping", closed=True)
         folder.checkbox("function", self.active, set_enabled)
+        if self.data.cf.is_complex:
+            f = folder.folder("Complex")
+            complex_options = {"Real": "real", "Imag": "imag", "Abs": "abs", "Arg": "arg"}
+            f.dropdown(func=self.set_complex_mode, label="Mode", values=complex_options)
+            f.slider(0.0, func=self._set_phase_from_gui, min=0.0, max=6.283, label="Phase")
+            f.checkbox(func=self._toggle_animation, label="Animate", value=False)
+            f.slider(1.0, func=self._set_speed_from_gui, min=0.1, max=5.0, label="Speed")
 
     def get_bindings(self, compute=False, count: bool = False):
         bindings = [
@@ -148,11 +218,13 @@ class ClippingCF(Renderer):
                 BufferBinding(
                     24, self.cut_trigs_counter if count else self.cut_trigs, read_only=False
                 ),
+                *self.gpu_objects.complex_settings.get_bindings(),
             ]
         else:
             bindings += [
                 *self.gpu_objects.colormap.get_bindings(),
                 *self.gpu_objects.settings.get_bindings(),
+                *self.gpu_objects.complex_settings.get_bindings(),
                 BufferBinding(24, self.cut_trigs),
             ]
             if self.symmetry:

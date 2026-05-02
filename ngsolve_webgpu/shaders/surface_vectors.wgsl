@@ -1,9 +1,12 @@
 #import ngsolve/eval/trig
-#import ngsolve/mesh/render
+#import ngsolve/mesh/utils
 
 @group(0) @binding(21) var<storage, read_write> count_vectors: atomic<u32>;
 @group(0) @binding(22) var<storage, read_write> positions: array<f32>;
 @group(0) @binding(23) var<storage, read_write> directions: array<f32>;
+#ifdef IS_COMPLEX
+@group(0) @binding(25) var<storage, read_write> directions_imag: array<f32>;
+#endif IS_COMPLEX
 @group(0) @binding(29) var<storage, read_write> values: array<f32>;
 @group(0) @binding(31) var<uniform> u_gridsize: f32;
 
@@ -14,7 +17,6 @@ fn compute_surface_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
     let p = loadTriangle(trigId).p;
     
     let gridsize = u_gridsize;
-    // let pmin = min(p[0], min(p[1], p[2]));
     let pmin = vec3f(-1, -1, -1);
     let rad = 1.0;
 
@@ -68,36 +70,36 @@ fn compute_surface_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
                 {
                   var cp = lam.x*p[0] + lam.y * p[1] + (1.0 - lam.x - lam.y) * p[2];
                   
-                  if(@MODE@ == 0) {
-  // just count
-                      atomicAdd(&count_vectors, 1);
-                    }
-                    else {
-                      // write output to buffer
-                      let v = evalTrigVec3(&u_function_values_2d, trigId, lam, 0u);
-                      
-                      let val = length(v);
-                      // var scale = (val - u_cmap_uniforms.min) / (u_cmap_uniforms.max - u_cmap_uniforms.min);
-                      let scale = 2 * gridsize * 1.0; //clamp(scale, 0.5, 1.0);
-                      let direction = scale * normalize(v) ;
-                      let index = atomicAdd(&count_vectors, 1);
-                      if (mesh.is_curved == 1u) {
-                        cp = evalTrigVec3(&mesh.data, trigId, lam, mesh.offset_curvature_2d);
-                      }
-                      cp += 0.5 * gridsize * normalize(n);
+                  let v_ri = evalTrigVec3ReIm(&u_function_values_2d, trigId, lam, 0u);
+                  let val = sqrt(dot(v_ri.re, v_ri.re) + dot(v_ri.im, v_ri.im));
 
-                      positions[index*3+0] = cp[0];
-                      positions[index*3+1] = cp[1];
-                      positions[index*3+2] = cp[2];
-                      values[index] = val;
-                      directions[index*3+0] = direction[0];
-                      directions[index*3+1] = direction[1];
-                      directions[index*3+2] = direction[2];
-                    }
+#ifdef SCALE_BY_VALUE
+                  let dir_re = v_ri.re;
+                  let dir_im = v_ri.im;
+#else SCALE_BY_VALUE
+                  let scale = 2 * gridsize * 1.0;
+                  let dir_re = scale * v_ri.re / max(val, 1e-10);
+                  let dir_im = scale * v_ri.im / max(val, 1e-10);
+#endif SCALE_BY_VALUE
+                  let index = atomicAdd(&count_vectors, 1);
+                  if (mesh.is_curved == 1u) {
+                    cp = evalTrigVec3(&mesh.data, trigId, lam, mesh.offset_curvature_2d);
+                  }
+                  cp += 0.5 * gridsize * normalize(n);
 
+                  positions[index*3+0] = cp[0];
+                  positions[index*3+1] = cp[1];
+                  positions[index*3+2] = cp[2];
+                  values[index] = val;
+                  directions[index*3+0] = dir_re[0];
+                  directions[index*3+1] = dir_re[1];
+                  directions[index*3+2] = dir_re[2];
+#ifdef IS_COMPLEX
+                  directions_imag[index*3+0] = dir_im[0];
+                  directions_imag[index*3+1] = dir_im[1];
+                  directions_imag[index*3+2] = dir_im[2];
+#endif IS_COMPLEX
                 }
-
-
   }
     }
       }
