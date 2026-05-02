@@ -103,6 +103,17 @@ fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_ind
       }
     else
       {
+        // For curved quads, reorder: side2 → side0 → side1(collapsed)
+        // so the diagonal (side 1) comes last and can be collapsed to a point.
+        if (tri.npElement == 4u) {
+            if (side == 0u) {
+                lam = vec2f(0.0, 1.0 - h * f32(subId));
+            } else if (side == 1u) {
+                lam = vec2f(h * f32(subId), 0.0);
+            } else {
+                lam = vec2f(1.0, 0.0);
+            }
+        }
         position = evalTrigVec3(&mesh.data, trigId, lam, mesh.offset_curvature_2d);
       }
     if (u_deformation_values_2d[0] != -1.) {

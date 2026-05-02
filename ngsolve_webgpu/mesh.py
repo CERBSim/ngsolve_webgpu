@@ -350,20 +350,24 @@ class MeshData:
             n_hex   = np.count_nonzero(np_vals == 8)
             n_tets = len(els) - n_pyra - n_prims - n_hex
 
-            # Detect curved tets for instance layout
-            curved_tet_ids = np.flatnonzero(els['curved'] & (np_vals == 4)).astype(np.int32)
-            n_curved_tets = len(curved_tet_ids)
+            # Detect curved elements for instance layout
+            curved_tet_ids   = np.flatnonzero(els['curved'] & (np_vals == 4)).astype(np.int32)
+            curved_hex_ids   = np.flatnonzero(els['curved'] & (np_vals == 8)).astype(np.int32)
+            curved_prism_ids = np.flatnonzero(els['curved'] & (np_vals == 6)).astype(np.int32)
+            n_curved_all = len(curved_tet_ids) + len(curved_hex_ids) + len(curved_prism_ids)
 
-            # curved tets → pyramids → prisms → hex
+            # curved tets → curved hexes → curved prisms → pyramids → prisms → hex
             element_numbers_sorted_by_type = np.concatenate([
                 curved_tet_ids,
+                curved_hex_ids,
+                curved_prism_ids,
                 rest_numbers[np_vals[rest_numbers] == 5],
                 rest_numbers[np_vals[rest_numbers] == 6],
                 rest_numbers[np_vals[rest_numbers] == 8],
             ]).astype(np.int32)
                                                 
             num_rests = np.sum(rest_index)
-            base_offset = 5 + len(els) * 5 + n_curved_tets + num_rests
+            base_offset = 5 + len(els) * 5 + n_curved_all + num_rests
 
             for i in range(len(els)):
                 np_val = els["np"][i]
@@ -383,7 +387,7 @@ class MeshData:
             all_data = np.concatenate( (metadata, els_data.flatten(), element_numbers_sorted_by_type, np.array(rest_data, dtype=np.int32)))
             
             self.elements[ElType.TET] = all_data
-            self.num_elements["faces"] = 4*len(els) + 4 * n_curved_tets + 2 * n_pyra + 4 * n_prims + 8 * n_hex
+            self.num_elements["faces"] = 4*len(els) + 4 * n_curved_all + 2 * n_pyra + 4 * n_prims + 8 * n_hex
             self.num_elements["tets"] = len(els) + n_pyra + 2 * n_prims + 5 * n_hex
             self.num_elements["n_3d_elements"] = len(els)
 
@@ -461,9 +465,11 @@ class MeshData:
         self._last_mesh_timestamp = mesh._timestamp
 
     def _compute_curvature_3d(self, mesh, order):
-        """Compute Bernstein coefficients for curved 3D (tet) elements only (sparse)."""
+        """Compute Bernstein coefficients for curved 3D elements (tet, hex, prism)."""
         import ngsolve as ngs
-        from .cf import get_3d_intrules, vandermonde_3d
+        from .cf import (get_3d_intrules, vandermonde_3d,
+                         vandermonde_hex, vandermonde_prism,
+                         get_hex_intrule, get_prism_intrule)
 
         els = mesh.Elements3D().NumPy()
         n_total = len(els)
@@ -471,57 +477,110 @@ class MeshData:
             self.curvature_3d_data = None
             return
 
-        # Only process tet elements (np==4) that are curved
         np_vals = els['np']
-        tet_mask = np_vals == 4
-        curved_mask = els['curved'] & tet_mask
-        n_curved = int(np.sum(curved_mask))
-
-        # Build lookup: global element ID → local curved index (-1 if straight)
+        curved_flag = els['curved']
         lookup = np.full(n_total, -1, dtype=np.int32)
-
-        if n_curved == 0:
-            # Header only — shader reads n_curved == 0 and skips
-            header = np.array([order, 0], dtype=np.int32)
-            self.curvature_3d_data = np.concatenate([header, lookup])
-            return
-
-        curved_indices = np.flatnonzero(curved_mask)
-        lookup[curved_indices] = np.arange(n_curved, dtype=np.int32)
-
-        # Evaluate CF((x,y,z)) on all tet elements, then filter curved
-        intrules = get_3d_intrules(order)
-        tet_rule = intrules[ngs.ET.TET]
-        ndof = len(tet_rule)
+        all_coeffs = []
+        running_offset = 0
 
         cf = ngs.CF((ngs.x, ngs.y, ngs.z))
         region = self.ngs_mesh.Materials(".*")
-        with ngs.TaskManager():
-            pts = region.mesh.MapToAllElements({ngs.ET.TET: tet_rule}, region)
-            pmat = cf(pts).reshape(-1, ndof, 3)
 
-        # Filter only curved tet elements
-        # pmat has one row per tet (in global order among tets only)
-        # We need to map global curved tet indices to pmat row indices
-        tet_indices = np.flatnonzero(tet_mask)
-        # curved_mask restricted to tets: which tets are curved
-        curved_among_tets = els['curved'][tet_indices]
-        curved_pmat = pmat[curved_among_tets]
+        # Process tets
+        tet_mask = np_vals == 4
+        curved_tets = curved_flag & tet_mask
+        if np.any(curved_tets):
+            intrules = get_3d_intrules(order)
+            tet_rule = intrules[ngs.ET.TET]
+            ndof_tet = len(tet_rule)
+            with ngs.TaskManager():
+                pts = region.mesh.MapToAllElements({ngs.ET.TET: tet_rule}, region)
+                pmat = cf(pts).reshape(-1, ndof_tet, 3)
+            tet_indices = np.flatnonzero(tet_mask)
+            curved_among_tets = els['curved'][tet_indices]
+            curved_pmat = pmat[curved_among_tets]
 
-        # Apply inverse Vandermonde → Bernstein coefficients
-        V_inv = vandermonde_3d(order)
-        ibmat = ngs.Matrix(V_inv)
-        coeffs = np.zeros((n_curved, ndof, 3), dtype=np.float32)
-        with ngs.TaskManager():
-            for k in range(3):
-                ngsmat = ngs.Matrix(curved_pmat[:, :, k].T.copy())
-                result = ibmat * ngsmat
-                coeffs[:, :, k] = np.array(result, dtype=np.float32).T
+            V_inv = vandermonde_3d(order)
+            ibmat = ngs.Matrix(V_inv)
+            n_ct = len(curved_pmat)
+            coeffs = np.zeros((n_ct, ndof_tet, 3), dtype=np.float32)
+            with ngs.TaskManager():
+                for k in range(3):
+                    ngsmat = ngs.Matrix(curved_pmat[:, :, k].T.copy())
+                    result = ibmat * ngsmat
+                    coeffs[:, :, k] = np.array(result, dtype=np.float32).T
 
-        # Pack: [order, n_curved, lookup..., coefficients...]
+            curved_global = np.flatnonzero(curved_tets)
+            for i, gid in enumerate(curved_global):
+                lookup[gid] = running_offset
+                running_offset += ndof_tet * 3
+            all_coeffs.append(coeffs.reshape(-1))
+
+        # Process hexes
+        hex_mask = np_vals == 8
+        curved_hexes = curved_flag & hex_mask
+        if np.any(curved_hexes):
+            hex_rule = get_hex_intrule(order)
+            ndof_hex = (order + 1) ** 3
+            with ngs.TaskManager():
+                pts = region.mesh.MapToAllElements({ngs.ET.HEX: hex_rule}, region)
+                pmat = cf(pts).reshape(-1, ndof_hex, 3)
+            hex_indices = np.flatnonzero(hex_mask)
+            curved_among_hexes = els['curved'][hex_indices]
+            curved_pmat = pmat[curved_among_hexes]
+
+            V_inv = vandermonde_hex(order)
+            ibmat = ngs.Matrix(V_inv)
+            n_ch = len(curved_pmat)
+            coeffs = np.zeros((n_ch, ndof_hex, 3), dtype=np.float32)
+            with ngs.TaskManager():
+                for k in range(3):
+                    ngsmat = ngs.Matrix(curved_pmat[:, :, k].T.copy())
+                    result = ibmat * ngsmat
+                    coeffs[:, :, k] = np.array(result, dtype=np.float32).T
+
+            curved_global = np.flatnonzero(curved_hexes)
+            for i, gid in enumerate(curved_global):
+                lookup[gid] = running_offset
+                running_offset += ndof_hex * 3
+            all_coeffs.append(coeffs.reshape(-1))
+
+        # Process prisms
+        prism_mask = np_vals == 6
+        curved_prisms = curved_flag & prism_mask
+        if np.any(curved_prisms):
+            prism_rule = get_prism_intrule(order)
+            ndof_prism = (order + 1) * (order + 2) // 2 * (order + 1)
+            with ngs.TaskManager():
+                pts = region.mesh.MapToAllElements({ngs.ET.PRISM: prism_rule}, region)
+                pmat = cf(pts).reshape(-1, ndof_prism, 3)
+            prism_indices = np.flatnonzero(prism_mask)
+            curved_among_prisms = els['curved'][prism_indices]
+            curved_pmat = pmat[curved_among_prisms]
+
+            V_inv = vandermonde_prism(order)
+            ibmat = ngs.Matrix(V_inv)
+            n_cp = len(curved_pmat)
+            coeffs = np.zeros((n_cp, ndof_prism, 3), dtype=np.float32)
+            with ngs.TaskManager():
+                for k in range(3):
+                    ngsmat = ngs.Matrix(curved_pmat[:, :, k].T.copy())
+                    result = ibmat * ngsmat
+                    coeffs[:, :, k] = np.array(result, dtype=np.float32).T
+
+            curved_global = np.flatnonzero(curved_prisms)
+            for i, gid in enumerate(curved_global):
+                lookup[gid] = running_offset
+                running_offset += ndof_prism * 3
+            all_coeffs.append(coeffs.reshape(-1))
+
+        n_curved = int(np.sum(lookup >= 0))
         header = np.array([order, n_curved], dtype=np.int32)
-        flat_coeffs = coeffs.reshape(-1).view(np.int32)
-        self.curvature_3d_data = np.concatenate([header, lookup, flat_coeffs])
+        if n_curved == 0:
+            self.curvature_3d_data = np.concatenate([header, lookup])
+        else:
+            flat_coeffs = np.concatenate(all_coeffs).astype(np.float32).view(np.int32)
+            self.curvature_3d_data = np.concatenate([header, lookup, flat_coeffs])
 
     def get_bounding_box(self):
         pmin, pmax = self.mesh.bounding_box

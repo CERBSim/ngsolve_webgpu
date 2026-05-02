@@ -3,6 +3,8 @@
 #import colormap
 #import clipping
 #import ngsolve/clipping/common
+#import ngsolve/eval/hex
+#import ngsolve/eval/prism
 #ifdef SYMMETRY
 #import ngsolve/symmetry
 #endif SYMMETRY
@@ -57,15 +59,34 @@ fn vertex_clipping(@builtin(vertex_index) vertId: u32,
       let oc3d = mesh.offset_curvature_3d;
       let n_curved = bitcast<i32>(mesh.data[oc3d + 1u]);
       if (n_curved > 0) {
-          let numElements = bitcast<u32>(mesh.data[mesh.offset_3d_data]);
-          if (trig.id < numElements) {
-              let lookup_val = bitcast<i32>(mesh.data[oc3d + 2u + trig.id]);
-              if (lookup_val >= 0) {
-                  let order = bitcast<i32>(mesh.data[oc3d]);
-                  let ndof = u32((order + 1) * (order + 2) * (order + 3) / 6);
-                  p = evalTetVec3At(oc3d, numElements, u32(lookup_val), ndof, lam.xyz);
-                  is_curved = true;
+          let tet = getTetrahedron(trig.id);
+          let lookup_val = bitcast<i32>(mesh.data[oc3d + 2u + tet.id]);
+          if (lookup_val >= 0) {
+              let order = bitcast<i32>(mesh.data[oc3d]);
+              let n_total = bitcast<u32>(mesh.data[mesh.offset_3d_data]);
+              let coeff_start = oc3d + 2u + n_total + u32(lookup_val);
+
+              // Map virtual-tet barycentric → parent reference coords
+              var ref_verts: array<vec3f, 4>;
+              if (tet.np == 4u) {
+                  for (var i = 0; i < 4; i++) { ref_verts[i] = NODE_REF[tet.pi[i]]; }
+              } else if (tet.np == 6u) {
+                  for (var i = 0; i < 4; i++) { ref_verts[i] = NODE_REF_PRISM[tet.pi[i]]; }
+              } else if (tet.np == 8u) {
+                  for (var i = 0; i < 4; i++) { ref_verts[i] = NODE_REF_HEX[tet.pi[i]]; }
               }
+
+              let parent_lam = lam.x * ref_verts[0] + lam.y * ref_verts[1]
+                             + lam.z * ref_verts[2] + (1.0 - lam.x - lam.y - lam.z) * ref_verts[3];
+
+              if (tet.np == 4u) {
+                  p = evalTetVec3AtDirect(coeff_start, order, parent_lam);
+              } else if (tet.np == 6u) {
+                  p = evalPrismVec3At(coeff_start, order, parent_lam);
+              } else if (tet.np == 8u) {
+                  p = evalHexVec3At(coeff_start, order, parent_lam);
+              }
+              is_curved = true;
           }
       }
   }

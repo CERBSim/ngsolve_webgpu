@@ -45,9 +45,11 @@ struct Element {
 
 struct Tetrahedron {
     p: vec4u,
+    pi: vec4u,
     id: u32,
     tetOfElement: u32,
     index: u32,
+    np: u32,
 }
 
 fn getVertex(vertexId: u32) -> vec3f {
@@ -185,6 +187,12 @@ fn getTetrahedron(tetId: u32) -> Tetrahedron {
         let num_prisms = bitcast<u32>(mesh.data[o3 + 3]);
         let hex_start = num_pyramids + 2u * num_prisms;
         
+        // Skip curved element entries at front of sorted array
+        var n_curved_offset = 0u;
+        if (mesh.is_curved != 0u) {
+            n_curved_offset = bitcast<u32>(mesh.data[mesh.offset_curvature_3d + 1u]);
+        }
+        
         var extraElemId = elId-n_els;
         
         if(extraElemId < num_pyramids) {
@@ -201,9 +209,7 @@ fn getTetrahedron(tetId: u32) -> Tetrahedron {
             extraElemId = extraElemId/5u + num_pyramids + num_prisms;
         }
         
-        elId = bitcast<u32>(mesh.data[o3 + MESHDATA_OFFSET + 5u*n_els + extraElemId]);
-        
-        // tet.tetOfElement = 0;
+        elId = bitcast<u32>(mesh.data[o3 + MESHDATA_OFFSET + 5u*n_els + n_curved_offset + extraElemId]);
     }
     
     let element = getElem(elId);
@@ -223,6 +229,8 @@ fn getTetrahedron(tetId: u32) -> Tetrahedron {
     
     
     tet.p = vec4u( element.p[pi[0]], element.p[pi[1]], element.p[pi[2]], element.p[pi[3]] );
+    tet.pi = pi;
+    tet.np = element.np;
     return tet;
 }
 

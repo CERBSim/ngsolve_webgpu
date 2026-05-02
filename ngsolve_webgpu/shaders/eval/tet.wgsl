@@ -55,31 +55,32 @@ fn evalTetVec3(data: ptr<storage, array<f32>, read>, local_id: u32, lam: vec3f, 
     return _evalTetVec3DeCasteljau(&v, order, lam);
 }
 
+// Direct variant: takes coeff_start directly (new data layout)
+fn evalTetVec3AtDirect(coeff_start: u32, order: i32, lam: vec3f) -> vec3f {
+    let ndof = u32((order + 1) * (order + 2) * (order + 3) / 6);
+    var v: array<vec3f, N_DOFS_TET_VEC3>;
+    for (var i = 0u; i < ndof; i++) {
+        let base = coeff_start + i * 3u;
+        v[i] = vec3f(mesh.data[base], mesh.data[base + 1u], mesh.data[base + 2u]);
+    }
+    return _evalTetVec3DeCasteljau(&v, order, lam);
+}
+
 // Evaluate tet vec3 Bernstein at given element, reading from mesh.data
 // n_total: total number of 3D elements (needed to skip lookup table)
 // local_id: curved element local index (from lookup)
 fn evalTetVec3At(offset_: u32, n_total: u32, local_id: u32, ndof: u32, lam: vec3f) -> vec3f {
     let order = bitcast<i32>(mesh.data[offset_]);
-    let coeff_base = offset_ + 2u + n_total + local_id * ndof * 3u;
-
-    var v: array<vec3f, N_DOFS_TET_VEC3>;
-    for (var i = 0u; i < ndof; i++) {
-        let base = coeff_base + i * 3u;
-        v[i] = vec3f(mesh.data[base], mesh.data[base + 1u], mesh.data[base + 2u]);
-    }
-
-    return _evalTetVec3DeCasteljau(&v, order, lam);
+    let coeff_start = offset_ + 2u + n_total + local_id * ndof * 3u;
+    return evalTetVec3AtDirect(coeff_start, order, lam);
 }
 
-// Gradient: returns [position, dF/dx, dF/dy, dF/dz] packed as mat4x3
-// Uses derivative of Bernstein = order * differences, evaluated via de Casteljau at order-1
-fn evalTetVec3GradAt(offset_: u32, n_total: u32, local_id: u32, ndof: u32, lam: vec3f) -> mat4x3f {
-    let order = bitcast<i32>(mesh.data[offset_]);
-    let coeff_base = offset_ + 2u + n_total + local_id * ndof * 3u;
-
+// Direct gradient variant: takes coeff_start directly
+fn evalTetVec3GradAtDirect(coeff_start: u32, order: i32, lam: vec3f) -> mat4x3f {
+    let ndof = u32((order + 1) * (order + 2) * (order + 3) / 6);
     var v: array<vec3f, N_DOFS_TET_VEC3>;
     for (var i = 0u; i < ndof; i++) {
-        let base = coeff_base + i * 3u;
+        let base = coeff_start + i * 3u;
         v[i] = vec3f(mesh.data[base], mesh.data[base + 1u], mesh.data[base + 2u]);
     }
 
@@ -87,9 +88,7 @@ fn evalTetVec3GradAt(offset_: u32, n_total: u32, local_id: u32, ndof: u32, lam: 
     var vp = v;
     let pos = _evalTetVec3DeCasteljau(&vp, order, lam);
 
-    // Derivative in x-direction (lam.x): d/dx B = order * (B_{a-1,b+1,c,d} - B_{a-1,b,c,d+1})
-    // In terms of our indexing: dF/dx = order * (v[ix+1,iy,iz] - v[ix,iy,iz+1])
-    // These differences form a degree order-1 polynomial
+    // Derivative differences form degree order-1 polynomial
     var vdx: array<vec3f, N_DOFS_TET_VEC3>;
     var vdy: array<vec3f, N_DOFS_TET_VEC3>;
     var vdz: array<vec3f, N_DOFS_TET_VEC3>;
@@ -103,11 +102,8 @@ fn evalTetVec3GradAt(offset_: u32, n_total: u32, local_id: u32, ndof: u32, lam: 
 
             for (var ix = 0; ix < order - iz - iy; ix++) {
                 let p = src_idx + ix;
-                // dP/dx: v[ix,iy,iz] - v[ix,iy,iz+1]
                 vdx[dst_idx] = v[p] - v[p + stride_z];
-                // dP/dy: v[ix+1,iy,iz] - v[ix,iy,iz+1]
                 vdy[dst_idx] = v[p + 1] - v[p + stride_z];
-                // dP/dz: v[ix,iy+1,iz] - v[ix,iy,iz+1]
                 vdz[dst_idx] = v[p + stride_y] - v[p + stride_z];
                 dst_idx++;
             }
@@ -125,6 +121,14 @@ fn evalTetVec3GradAt(offset_: u32, n_total: u32, local_id: u32, ndof: u32, lam: 
     let dz = _evalTetVec3DeCasteljau(&vdz, order - 1, lam) * fo;
 
     return mat4x3f(pos, dx, dy, dz);
+}
+
+// Gradient: returns [position, dF/dx, dF/dy, dF/dz] packed as mat4x3
+// Uses derivative of Bernstein = order * differences, evaluated via de Casteljau at order-1
+fn evalTetVec3GradAt(offset_: u32, n_total: u32, local_id: u32, ndof: u32, lam: vec3f) -> mat4x3f {
+    let order = bitcast<i32>(mesh.data[offset_]);
+    let coeff_start = offset_ + 2u + n_total + local_id * ndof * 3u;
+    return evalTetVec3GradAtDirect(coeff_start, order, lam);
 }
 
 fn factorial(n: u32) -> u32 {

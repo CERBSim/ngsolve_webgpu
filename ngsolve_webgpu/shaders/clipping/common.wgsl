@@ -1,4 +1,6 @@
 #import ngsolve/eval/tet
+#import ngsolve/eval/hex
+#import ngsolve/eval/prism
 #import ngsolve/elements3d
 
 struct Tet { p: array<u32, 4>, nr: u32, index: u32 };
@@ -14,11 +16,21 @@ fn getTetPoints(ei: u32) -> array<vec3f, 4> {
             let lookup_val = bitcast<i32>(mesh.data[oc3d + 2u + tet.id]);
             if (lookup_val >= 0) {
                 let order = bitcast<i32>(mesh.data[oc3d]);
-                let ndof = u32((order + 1) * (order + 2) * (order + 3) / 6);
-                let numElements = bitcast<u32>(mesh.data[mesh.offset_3d_data]);
-                let local_id = u32(lookup_val);
-                for (var pi = 0; pi < 4; pi++) {
-                    p[pi] = evalTetVec3At(oc3d, numElements, local_id, ndof, lam[pi]);
+                let n_total = bitcast<u32>(mesh.data[mesh.offset_3d_data]);
+                let coeff_start = oc3d + 2u + n_total + u32(lookup_val);
+
+                for (var vi = 0; vi < 4; vi++) {
+                    var ref_coord: vec3f;
+                    if (tet.np == 4u) {
+                        ref_coord = NODE_REF[tet.pi[vi]];
+                        p[vi] = evalTetVec3AtDirect(coeff_start, order, ref_coord);
+                    } else if (tet.np == 6u) {
+                        ref_coord = NODE_REF_PRISM[tet.pi[vi]];
+                        p[vi] = evalPrismVec3At(coeff_start, order, ref_coord);
+                    } else if (tet.np == 8u) {
+                        ref_coord = NODE_REF_HEX[tet.pi[vi]];
+                        p[vi] = evalHexVec3At(coeff_start, order, ref_coord);
+                    }
                 }
             }
         }

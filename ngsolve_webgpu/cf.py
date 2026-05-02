@@ -460,6 +460,10 @@ class FunctionData:
         return ret, vmin, vmax
     
 _vandermonde_mats = {}
+_vandermonde_1d_mats = {}
+_vandermonde_trig_mats = {}
+_vandermonde_hex_mats = {}
+_vandermonde_prism_mats = {}
 
 
 def vandermonde_3d(order):
@@ -487,6 +491,95 @@ def vandermonde_3d(order):
             )
     _vandermonde_mats[order] = np.linalg.inv(V)
     return _vandermonde_mats[order]
+
+
+def vandermonde_1d(order):
+    if order in _vandermonde_1d_mats:
+        return _vandermonde_1d_mats[order]
+    n = order
+    ndof = n + 1
+    V = np.zeros((ndof, ndof))
+    for r in range(ndof):
+        t = r / n
+        for c in range(ndof):
+            V[r, c] = math.comb(n, c) * t**c * (1 - t)**(n - c)
+    _vandermonde_1d_mats[order] = np.linalg.inv(V)
+    return _vandermonde_1d_mats[order]
+
+
+def vandermonde_trig(order):
+    if order in _vandermonde_trig_mats:
+        return _vandermonde_trig_mats[order]
+    basis_indices = [
+        (order - j - k, k, j)
+        for j in range(order + 1)
+        for k in range(order + 1 - j)
+    ]
+    n = len(basis_indices)
+    V = np.zeros((n, n))
+    for r, (ri, rj, rk) in enumerate(basis_indices):
+        x, y = ri / order, rj / order
+        for c, (a, b, c2) in enumerate(basis_indices):
+            coef = math.factorial(order) / (
+                math.factorial(a) * math.factorial(b) * math.factorial(c2)
+            )
+            V[r, c] = coef * x**a * y**b * (1 - x - y)**c2
+    _vandermonde_trig_mats[order] = np.linalg.inv(V)
+    return _vandermonde_trig_mats[order]
+
+
+def vandermonde_hex(order):
+    if order in _vandermonde_hex_mats:
+        return _vandermonde_hex_mats[order]
+    V1d = np.linalg.inv(vandermonde_1d(order))
+    V_hex = np.kron(np.kron(V1d, V1d), V1d)
+    _vandermonde_hex_mats[order] = np.linalg.inv(V_hex)
+    return _vandermonde_hex_mats[order]
+
+
+def vandermonde_prism(order):
+    if order in _vandermonde_prism_mats:
+        return _vandermonde_prism_mats[order]
+    V_trig = np.linalg.inv(vandermonde_trig(order))
+    V_1d = np.linalg.inv(vandermonde_1d(order))
+    V_prism = np.kron(V_1d, V_trig)
+    _vandermonde_prism_mats[order] = np.linalg.inv(V_prism)
+    return _vandermonde_prism_mats[order]
+
+
+_hex_intrules = {}
+
+
+def get_hex_intrule(order):
+    if order in _hex_intrules:
+        return _hex_intrules[order]
+    import ngsolve as ngs
+    n = order
+    pts = []
+    for iz in range(n + 1):
+        for iy in range(n + 1):
+            for ix in range(n + 1):
+                pts.append((ix / n, iy / n, iz / n))
+    _hex_intrules[order] = ngs.IntegrationRule(pts)
+    return _hex_intrules[order]
+
+
+_prism_intrules = {}
+
+
+def get_prism_intrule(order):
+    if order in _prism_intrules:
+        return _prism_intrules[order]
+    import ngsolve as ngs
+    n = order
+    pts = []
+    for l in range(n + 1):
+        for j in range(n + 1):
+            for k in range(n + 1 - j):
+                a = n - j - k
+                pts.append((a / n, k / n, l / n))
+    _prism_intrules[order] = ngs.IntegrationRule(pts)
+    return _prism_intrules[order]
 
 
 class FunctionUniform(UniformBase):

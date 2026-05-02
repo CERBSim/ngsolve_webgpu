@@ -5,6 +5,8 @@
 #import ngsolve/eval/common3d
 #import ngsolve/mesh/render
 #import ngsolve/eval/tet
+#import ngsolve/eval/hex
+#import ngsolve/eval/prism
 #ifdef SYMMETRY
 #import ngsolve/symmetry
 #endif SYMMETRY
@@ -16,6 +18,15 @@ const NODE_REF = array<vec3f, 4>(
     vec3f(0.0, 1.0, 0.0),
     vec3f(0.0, 0.0, 1.0),
     vec3f(0.0, 0.0, 0.0),
+);
+
+const NODE_REF_HEX = array<vec3f, 8>(
+    vec3f(0,0,0), vec3f(1,0,0), vec3f(1,1,0), vec3f(0,1,0),
+    vec3f(0,0,1), vec3f(1,0,1), vec3f(1,1,1), vec3f(0,1,1),
+);
+const NODE_REF_PRISM = array<vec3f, 6>(
+    vec3f(1,0,0), vec3f(0,1,0), vec3f(0,0,0),
+    vec3f(1,0,1), vec3f(0,1,1), vec3f(0,0,1),
 );
 
 // Decode face instance → element, face, subdivision
@@ -112,17 +123,18 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
         return zero;
     }
 
-    // Check if element is a curved tet
+    // Check if element is curved
     var is_curved = false;
-    var curved_local_id = 0u;
-    if (mesh.is_curved != 0u && element.np == 4u) {
+    var curved_coeff_offset = 0u;
+    if (mesh.is_curved != 0u) {
         let oc3d = mesh.offset_curvature_3d;
         let n_curved = bitcast<i32>(mesh.data[oc3d + 1u]);
         if (n_curved > 0) {
             let lookup_val = bitcast<i32>(mesh.data[oc3d + 2u + info.elementId]);
             if (lookup_val >= 0) {
                 is_curved = true;
-                curved_local_id = u32(lookup_val);
+                let n_total = bitcast<u32>(mesh.data[mesh.offset_3d_data]);
+                curved_coeff_offset = oc3d + 2u + n_total + u32(lookup_val);
             }
         }
     }
@@ -154,23 +166,33 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
     var normal: vec3f;
 
     if (is_curved) {
-        // Map face (u, v) → tet reference coords via face vertex ref mapping
-        let fv = TET_FACES[info.faceId];
-        let R0 = NODE_REF[fv[0]];
-        let R1 = NODE_REF[fv[1]];
-        let R2 = NODE_REF[fv[2]];
-        let lam = (1.0 - u - v) * R0 + u * R1 + v * R2;
-
         let oc3d = mesh.offset_curvature_3d;
         let order = bitcast<i32>(mesh.data[oc3d]);
-        let ndof = u32((order + 1) * (order + 2) * (order + 3) / 6);
-        let numElements = bitcast<u32>(mesh.data[mesh.offset_3d_data]);
 
-        // result = [position, dF/dlam.x, dF/dlam.y, dF/dlam.z]
-        let result = evalTetVec3GradAt(oc3d, numElements, curved_local_id, ndof, lam);
+        var R0: vec3f; var R1: vec3f; var R2: vec3f;
+        if (element.np == 4u) {
+            let fv = TET_FACES[info.faceId];
+            R0 = NODE_REF[fv[0]]; R1 = NODE_REF[fv[1]]; R2 = NODE_REF[fv[2]];
+        } else if (element.np == 6u) {
+            let fv = PRISM_FACES[info.faceId];
+            R0 = NODE_REF_PRISM[fv[0]]; R1 = NODE_REF_PRISM[fv[1]]; R2 = NODE_REF_PRISM[fv[2]];
+        } else if (element.np == 8u) {
+            let fv = HEX_FACES[info.faceId];
+            R0 = NODE_REF_HEX[fv[0]]; R1 = NODE_REF_HEX[fv[1]]; R2 = NODE_REF_HEX[fv[2]];
+        }
+
+        let lam = (1.0 - u - v) * R0 + u * R1 + v * R2;
+
+        var result: mat4x3f;
+        if (element.np == 4u) {
+            result = evalTetVec3GradAtDirect(curved_coeff_offset, order, lam);
+        } else if (element.np == 6u) {
+            result = evalPrismVec3GradAt(curved_coeff_offset, order, lam);
+        } else if (element.np == 8u) {
+            result = evalHexVec3GradAt(curved_coeff_offset, order, lam);
+        }
+
         position = result[0];
-
-        // Face tangent vectors via chain rule: t = J * dlam/d(u or v)
         let dlam_du = R1 - R0;
         let dlam_dv = R2 - R0;
         let t1 = result[1] * dlam_du.x + result[2] * dlam_du.y + result[3] * dlam_du.z;
