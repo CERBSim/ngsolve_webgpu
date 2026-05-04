@@ -2,6 +2,7 @@
 #import colormap
 #import camera
 #import light
+#import ngsolve/highlight
 
 #import ngsolve/eval/trig
 #import ngsolve/mesh/utils
@@ -143,7 +144,7 @@ fn fragmentTrig(input: VertexOutput2d) -> @location(0) vec4<f32> {
     if(color.a < 0.01) {
         discard;
     }
-    return lightCalcColor(input.p, input.n, color);
+    return lightCalcColor(input.p, input.n, applyHighlight(color, input.instanceId, input.index));
 }
 
 @fragment
@@ -292,7 +293,7 @@ fn fragment2dElement(input: VertexOutput2d) -> @location(0) vec4<f32> {
 #ifdef TRANSPARENT_PASS
   if (color.a >= 1.0) { discard; }
 #endif TRANSPARENT_PASS
-  return lightCalcColor(input.p, input.n, color);
+  return lightCalcColor(input.p, input.n, applyHighlight(color, input.instanceId, input.index));
 }
 
 #ifdef SELECT_PIPELINE
@@ -304,7 +305,7 @@ fn fragment2dElement(input: VertexOutput2d) -> @location(0) vec4<f32> {
     if(color.a < 0.01) {
       discard;
     }
-    return vec4<u32>(@RENDER_OBJECT_ID@, bitcast<u32>(input.fragPosition.z), 0, 0);
+    return vec4<u32>(@RENDER_OBJECT_ID@, bitcast<u32>(input.fragPosition.z), input.instanceId, input.index);
 }
 #endif SELECT_PIPELINE
 

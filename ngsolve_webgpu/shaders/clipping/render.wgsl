@@ -2,6 +2,7 @@
 #import light
 #import colormap
 #import clipping
+#import ngsolve/highlight
 #import ngsolve/clipping/common
 #import ngsolve/eval/hex
 #import ngsolve/eval/prism
@@ -21,6 +22,7 @@ struct VertexOutputClip {
   @location(2) lam: vec3<f32>,
   @location(3) @interpolate(flat) elnr: u32,
   @location(4) @interpolate(flat) value_sign: f32,
+  @location(5) @interpolate(flat) index: u32,
 };
 
 @vertex
@@ -107,12 +109,21 @@ fn vertex_clipping(@builtin(vertex_index) vertId: u32,
 #else SYMMETRY
   let value_sign = 1.0;
 #endif SYMMETRY
-  return VertexOutputClip(cameraMapPoint(p), p, n, lam.xyz, trig.id, value_sign);
+  let tet_for_index = getTetrahedron(trig.id);
+  return VertexOutputClip(cameraMapPoint(p), p, n, lam.xyz, trig.id, value_sign, tet_for_index.index);
 }
 
 @fragment
 fn fragment_clipping(input: VertexOutputClip) -> @location(0) vec4<f32>
 {
   let value = evalTet(&u_function_values_3d, input.elnr, u_component, input.lam) * input.value_sign;
-  return lightCalcColor(input.p, input.n, getColor(value));
+  return lightCalcColor(input.p, input.n, applyHighlight(getColor(value), input.elnr, input.index));
 }
+
+#ifdef SELECT_PIPELINE
+@fragment fn select_clipping(
+    input: VertexOutputClip
+) -> @location(0) vec4<u32> {
+    return vec4<u32>(@RENDER_OBJECT_ID@, bitcast<u32>(input.fragPosition.z), input.elnr, input.index);
+}
+#endif SELECT_PIPELINE

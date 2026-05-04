@@ -906,6 +906,7 @@ class El3dUniform(UniformBase):
 
 class MeshElements3d(Renderer):
     n_vertices: int = 3
+    select_entry_point: str = "select3dElement"
 
     def __init__(self, data: MeshData, clipping=None, colors: list | None = None, symmetry=None):
         super().__init__(label="MeshElements3d")
