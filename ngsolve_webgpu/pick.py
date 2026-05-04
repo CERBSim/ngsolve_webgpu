@@ -11,11 +11,11 @@ class HighlightUniforms(UniformBase):
         ("renderer_id", ct.c_uint32),
         ("element_id", ct.c_uint32),
         ("region_index", ct.c_uint32),
-        ("_pad", ct.c_uint32),
+        ("solid_index", ct.c_uint32),
     ]
 
     def __init__(self, **kwargs):
-        super().__init__(renderer_id=0, element_id=0xFFFFFFFF, region_index=0xFFFFFFFF, **kwargs)
+        super().__init__(renderer_id=0, element_id=0xFFFFFFFF, region_index=0xFFFFFFFF, solid_index=0xFFFFFFFF, **kwargs)
 
 
 class MeshPickResult:
@@ -64,3 +64,31 @@ class MeshPickResult:
             f"region={self.region_name}, "
             f"pos=({pos[0]:.4g}, {pos[1]:.4g}, {pos[2]:.4g}))"
         )
+
+
+class GeoPickResult:
+    """Pick result for geometry renderers (OCC faces/edges).
+
+    Select texture encoding from geo shaders:
+      channel 2 (uint32[0]) = geo_type: 0=vertex, 1=edge, 2=face
+      channel 3 (uint32[1]) = index (face/edge descriptor index)
+    """
+
+    def __init__(self, event, geo, camera):
+        self.event = event
+        self.geo_type = int(event.uint32[0])  # 0=vertex, 1=edge, 2=face
+        self.index = int(event.uint32[1])
+        self.world_pos = event.calculate_position(camera)
+        try:
+            if self.geo_type == 2:
+                self.name = geo.faces[self.index].name or ""
+            elif self.geo_type == 1:
+                self.name = geo.edges[self.index].name or ""
+            else:
+                self.name = ""
+        except Exception:
+            self.name = ""
+
+    @property
+    def kind_label(self):
+        return {0: "Vertex", 1: "Edge", 2: "Face"}.get(self.geo_type, "?")
