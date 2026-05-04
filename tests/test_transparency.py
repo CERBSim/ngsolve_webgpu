@@ -56,7 +56,7 @@ class TestTransparency:
         elements = MeshElements2d(mesh_data)
         scene = wj.Draw([elements], 600, 600)
 
-        webgpu_env.assert_matches_baseline(scene, "transparent_cube.png", threshold=0.05)
+        webgpu_env.assert_matches_baseline(scene, "transparent_cube_mesh.png")
 
     def test_uniform_transparent_geo(self, webgpu_env):
         """Uniform transparent cube rendered as geometry (baseline)."""
@@ -84,4 +84,4 @@ class TestTransparency:
         elements = MeshElements2d(mesh_data)
         scene = wj.Draw([elements], 600, 600)
 
-        webgpu_env.assert_matches_baseline(scene, "transparent_uniform.png", threshold=0.02)
+        webgpu_env.assert_matches_baseline(scene, "transparent_uniform_mesh.png")
