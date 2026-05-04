@@ -2,6 +2,7 @@
 #import camera
 #import light
 #import colormap
+#import ngsolve/highlight
 #import ngsolve/eval/common3d
 #import ngsolve/mesh/render
 #import ngsolve/eval/tet
@@ -223,5 +224,18 @@ fn fragment_main(input: MeshFragmentInput) -> @location(0) vec4<f32>
   if(color.a < 0.01) {
     discard;
   }
-  return lightCalcColor(input.p, input.n, color);
+  return lightCalcColor(input.p, input.n, applyHighlight(color, input.id, input.index));
 }
+
+#ifdef SELECT_PIPELINE
+@fragment fn select3dElement(
+    input: MeshFragmentInput
+) -> @location(0) vec4<u32> {
+    checkClipping(input.p);
+    let color = getColor(f32(input.index));
+    if(color.a < 0.01) {
+      discard;
+    }
+    return vec4<u32>(@RENDER_OBJECT_ID@, bitcast<u32>(input.fragPosition.z), input.id, input.index);
+}
+#endif SELECT_PIPELINE

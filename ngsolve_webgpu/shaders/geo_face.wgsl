@@ -4,11 +4,13 @@
 #ifdef SYMMETRY
 #import ngsolve/symmetry
 #endif SYMMETRY
+#import ngsolve/highlight
 
 @group(0) @binding(90) var<storage> u_vertices : array<f32>;
 @group(0) @binding(91) var<storage> u_normals : array<f32>;
 @group(0) @binding(92) var<storage> u_indices : array<u32>;
 @group(0) @binding(93) var<storage> u_colors: array<f32>;
+@group(0) @binding(94) var<storage> u_solid_ids: array<u32>;
 
 struct GeoFragmentInput {
   @builtin(position) position: vec4<f32>,
@@ -59,7 +61,12 @@ fn fragment_main(input: GeoFragmentInput) -> @location(0) vec4<f32> {
 #ifdef TRANSPARENT_PASS
   if (color.a >= 1.0) { discard; }
 #endif TRANSPARENT_PASS
-  return lightCalcColor(input.p, input.n, color);
+  let lit = lightCalcColor(input.p, input.n, color);
+  var result = applyHighlight(lit, input.id, input.index);
+  if (u_highlight.solid_index != 0xFFFFFFFFu && u_solid_ids[input.index] == u_highlight.solid_index) {
+      result = highlightColor(lit, 0u);
+  }
+  return result;
 }
 
 @fragment

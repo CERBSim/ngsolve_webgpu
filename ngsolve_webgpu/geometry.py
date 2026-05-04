@@ -23,10 +23,29 @@ class BaseGeometryRenderer(Renderer):
     clipping: Clipping | None = None
     select_entry_point: str = "fragmentQueryIndex"
     vis_data: dict
+    _select_active: bool = True
 
     def __init__(self, clipping, *args, **kwargs):
         self.clipping = clipping
+        self._selection = None
         super().__init__(*args, **kwargs)
+
+    def select(self, options, x, y):
+        if not self._select_active:
+            return
+        super().select(options, x, y)
+
+    def set_selection(self, indices):
+        """Set which region indices are selected (list/set of ints)."""
+        if self._selection is None:
+            return
+        self._selection[:] = 0
+        for idx in indices:
+            if 0 <= idx < len(self._selection):
+                self._selection[idx] = 1
+        self.device.queue.writeBuffer(
+            self._buffers["selection"], 0, self._selection.tobytes()
+        )
 
 
 class GeometryFaceRenderer(BaseGeometryRenderer):
@@ -70,6 +89,29 @@ class GeometryFaceRenderer(BaseGeometryRenderer):
             (verts, normals, indices, self.colors),
         ):
             self._buffers[key] = buffer_from_array(data)
+        self._solid_ids = self._build_solid_ids()
+        self._buffers["solid_ids"] = buffer_from_array(self._solid_ids)
+        n_regions = max(len(self.colors) // 4, 1)
+        self._selection = np.zeros(n_regions, dtype=np.uint32)
+        self._buffers["selection"] = buffer_from_array(self._selection)
+        self.shader_defines["HAS_SELECTION"] = "1"
+
+    def _build_solid_ids(self):
+        n_faces = len(self.geo.faces)
+        solid_ids = np.full(max(n_faces, 1), 0xFFFFFFFF, dtype=np.uint32)
+        try:
+            solids = list(self.geo.shape.solids)
+            if not solids:
+                return solid_ids
+            for solid_idx, solid in enumerate(solids):
+                centers = {tuple(round(c, 8) for c in f.center) for f in solid.faces}
+                for fi in range(n_faces):
+                    gc = tuple(round(c, 8) for c in self.geo.faces[fi].center)
+                    if gc in centers and solid_ids[fi] == 0xFFFFFFFF:
+                        solid_ids[fi] = solid_idx
+        except Exception:
+            pass
+        return solid_ids
 
     def get_bindings(self):
         bindings = [
@@ -78,6 +120,8 @@ class GeometryFaceRenderer(BaseGeometryRenderer):
             webgpu.BufferBinding(Binding.NORMALS, self._buffers["normals"]),
             webgpu.BufferBinding(Binding.INDICES, self._buffers["indices"]),
             webgpu.BufferBinding(Binding.COLORS, self._buffers["colors"]),
+            webgpu.BufferBinding(94, self._buffers["solid_ids"]),
+            webgpu.BufferBinding(58, self._buffers["selection"]),
         ]
         if self.symmetry:
             bindings += self.symmetry.get_bindings(self._original_n_instances)
@@ -123,6 +167,10 @@ class GeometryEdgeRenderer(BaseGeometryRenderer):
         self._buffers["vertices"] = buffer_from_array(verts)
         self._buffers["colors"] = buffer_from_array(self.colors)
         self._buffers["index"] = buffer_from_array(vis_data["edge_indices"])
+        n_regions = max(len(self.colors) // 4, 1)
+        self._selection = np.zeros(n_regions, dtype=np.uint32)
+        self._buffers["selection"] = buffer_from_array(self._selection)
+        self.shader_defines["HAS_SELECTION"] = "1"
 
     def get_shader_code(self):
         return read_shader_file("ngsolve/geo_edge.wgsl")
@@ -134,6 +182,7 @@ class GeometryEdgeRenderer(BaseGeometryRenderer):
             webgpu.BufferBinding(91, self._buffers["colors"]),
             webgpu.UniformBinding(92, self.thickness_uniform),
             webgpu.BufferBinding(93, self._buffers["index"]),
+            webgpu.BufferBinding(58, self._buffers["selection"]),
         ]
         if self.symmetry:
             bindings += self.symmetry.get_bindings(self._original_n_instances)
@@ -143,6 +192,8 @@ class GeometryEdgeRenderer(BaseGeometryRenderer):
 class GeometryVertexRenderer(BaseGeometryRenderer):
     n_vertices: int = 4
     topology: PrimitiveTopology = PrimitiveTopology.triangle_strip
+    depthBias: int = -10
+    depthBiasSlopeScale: int = -10
 
     def __init__(self, geo, clipping):
         self.geo = geo
@@ -172,6 +223,10 @@ class GeometryVertexRenderer(BaseGeometryRenderer):
         self._buffers["vertices"] = buffer_from_array(vert_values)
         self._buffers["colors"] = buffer_from_array(self.colors)
         self.thickness_uniform = uniform_from_array(np.array([self.thickness], dtype=np.float32))
+        n_regions = max(self.n_instances, 1)
+        self._selection = np.zeros(n_regions, dtype=np.uint32)
+        self._buffers["selection"] = buffer_from_array(self._selection)
+        self.shader_defines["HAS_SELECTION"] = "1"
 
     def get_bindings(self):
         return [
@@ -179,6 +234,7 @@ class GeometryVertexRenderer(BaseGeometryRenderer):
             webgpu.BufferBinding(90, self._buffers["vertices"]),
             webgpu.BufferBinding(91, self._buffers["colors"]),
             webgpu.UniformBinding(92, self.thickness_uniform),
+            webgpu.BufferBinding(58, self._buffers["selection"]),
         ]
 
 

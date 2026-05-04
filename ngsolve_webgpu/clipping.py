@@ -44,7 +44,7 @@ class ClippingCF(Renderer):
     vertex_entry_point = "vertex_clipping"
     fragment_entry_point = "fragment_clipping"
     compute_shader = "ngsolve/clipping/compute.wgsl"
-    select_entry_point = "fragment_select_no_clipping"
+    select_entry_point = "select_clipping"
     n_vertices = 3
     subdivision = 0
 

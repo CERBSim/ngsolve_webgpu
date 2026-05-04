@@ -3,6 +3,7 @@
 #ifdef SYMMETRY
 #import ngsolve/symmetry
 #endif SYMMETRY
+#import ngsolve/highlight
 
 @group(0) @binding(90) var<storage> u_vertices: array<f32>;
 @group(0) @binding(91) var<storage> u_color: array<f32>;
@@ -14,6 +15,7 @@ struct GeoEdgeInput
   @builtin(position) position: vec4<f32>,
   @location(0) p: vec3<f32>,
   @location(1) @interpolate(flat) index: u32,
+  @location(2) @interpolate(flat) id: u32,
 };
 
 
@@ -76,7 +78,7 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
 
   pos = vec4<f32>(pos.xy + normal*pos.w, pos.zw);
   
-  return GeoEdgeInput(pos, p, u_indices[instanceId]);
+  return GeoEdgeInput(pos, p, u_indices[instanceId], instanceId);
 }
 
 @fragment
@@ -86,10 +88,11 @@ fn fragment_main(input: GeoEdgeInput) -> @location(0) vec4<f32> {
     discard;
   }
   let a = u_color[input.index * 4 + 3];
-  return vec4<f32>(u_color[input.index * 4] * a,
+  let color = vec4<f32>(u_color[input.index * 4] * a,
                    u_color[input.index * 4 + 1] * a,
                    u_color[input.index * 4 + 2] * a,
                    a);
+  return applyHighlight(color, input.id, input.index);
 }
 
 @fragment

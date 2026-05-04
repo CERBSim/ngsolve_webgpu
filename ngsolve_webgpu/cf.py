@@ -707,6 +707,7 @@ class CFRenderer(BaseMeshElements2d):
     """Use "vertices", "index" and "trig_function_values" buffers to render a mesh"""
 
     fragment_entry_point = "fragmentTrig"
+    select_entry_point = "select2dElement"
 
     def __init__(
         self,
