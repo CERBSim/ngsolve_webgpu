@@ -28,6 +28,8 @@ class BaseGeometryRenderer(Renderer):
     def __init__(self, clipping, *args, **kwargs):
         self.clipping = clipping
         self._selection = None
+        from .pick import HighlightUniforms
+        self._highlight_uniforms = HighlightUniforms()
         super().__init__(*args, **kwargs)
 
     def select(self, options, x, y):
@@ -122,6 +124,7 @@ class GeometryFaceRenderer(BaseGeometryRenderer):
             webgpu.BufferBinding(Binding.COLORS, self._buffers["colors"]),
             webgpu.BufferBinding(94, self._buffers["solid_ids"]),
             webgpu.BufferBinding(58, self._buffers["selection"]),
+            *self._highlight_uniforms.get_bindings(),
         ]
         if self.symmetry:
             bindings += self.symmetry.get_bindings(self._original_n_instances)
@@ -183,6 +186,7 @@ class GeometryEdgeRenderer(BaseGeometryRenderer):
             webgpu.UniformBinding(92, self.thickness_uniform),
             webgpu.BufferBinding(93, self._buffers["index"]),
             webgpu.BufferBinding(58, self._buffers["selection"]),
+            *self._highlight_uniforms.get_bindings(),
         ]
         if self.symmetry:
             bindings += self.symmetry.get_bindings(self._original_n_instances)
@@ -235,6 +239,7 @@ class GeometryVertexRenderer(BaseGeometryRenderer):
             webgpu.BufferBinding(91, self._buffers["colors"]),
             webgpu.UniformBinding(92, self.thickness_uniform),
             webgpu.BufferBinding(58, self._buffers["selection"]),
+            *self._highlight_uniforms.get_bindings(),
         ]
 
 

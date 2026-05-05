@@ -684,7 +684,9 @@ class BaseMeshElements2d(Renderer):
         self.color_uniform = None
         self.symmetry = symmetry
         from .cf import ComplexSettings
+        from .pick import HighlightUniforms
         self.gpu_objects.complex_settings = ComplexSettings()
+        self._highlight_uniforms = HighlightUniforms()
 
     def update(self, options: RenderOptions):
         self.clipping.update(options)
@@ -722,6 +724,7 @@ class BaseMeshElements2d(Renderer):
             *mesh_data.get_bindings(),
             UniformBinding(Binding.SUBDIVISION, self._buffers["subdivision"]),
             *self.gpu_objects.complex_settings.get_bindings(),
+            *self._highlight_uniforms.get_bindings(),
         ]
         if hasattr(self, "color_uniform"):
             bindings.append(BufferBinding(54, self.color_uniform))
@@ -915,11 +918,13 @@ class MeshElements3d(Renderer):
 
     def __init__(self, data: MeshData, clipping=None, colors: list | None = None, symmetry=None):
         super().__init__(label="MeshElements3d")
+        from .pick import HighlightUniforms
         data.need_3d = True
         self.data = data
         self.clipping = clipping or Clipping()
         self._shrink = 1.0
         self.uniforms = None
+        self._highlight_uniforms = HighlightUniforms()
         if colors is None:
             colors = [[255, 0, 0, 255] for _ in range(len(data.ngs_mesh.GetMaterials()))]
         self.gpu_objects.colormap = Colormap(colormap=colors, minval=-0.5, maxval=len(colors) - 0.5)
@@ -1010,6 +1015,7 @@ class MeshElements3d(Renderer):
             *self.data.get_bindings(),
             *self.uniforms.get_bindings(),
             *self.gpu_objects.colormap.get_bindings(),
+            *self._highlight_uniforms.get_bindings(),
         ]
         if self.symmetry:
             bindings += self.symmetry.get_bindings(self.data.num_elements["faces"])

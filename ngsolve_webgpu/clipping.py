@@ -52,6 +52,7 @@ class ClippingCF(Renderer):
         self, data: FunctionData, clipping: Clipping = None, colormap: Colormap = None, component=-1, symmetry=None
     ):
         super().__init__()
+        from .pick import HighlightUniforms
         self._clipping = clipping or Clipping()
         self.clipping = Clipping()
         self.gpu_objects.colormap = colormap or Colormap()
@@ -70,6 +71,7 @@ class ClippingCF(Renderer):
             component = -1 if self.data.cf.dim > 1 else 0
         self.gpu_objects.settings = FunctionSettings(component=component)
         self.gpu_objects.complex_settings = ComplexSettings()
+        self._highlight_uniforms = HighlightUniforms()
         self._phase_animation = None
         self._scene = None
         self._anim_speed = 1.0
@@ -231,6 +233,7 @@ class ClippingCF(Renderer):
                 *self.gpu_objects.settings.get_bindings(),
                 *self.gpu_objects.complex_settings.get_bindings(),
                 BufferBinding(24, self.cut_trigs),
+                *self._highlight_uniforms.get_bindings(),
             ]
             if self.symmetry:
                 bindings += self.symmetry.get_bindings(self._original_n_instances)
