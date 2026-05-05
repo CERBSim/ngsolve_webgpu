@@ -301,6 +301,9 @@ class VectorRenderer(ShapeRenderer):
             )
         if self.active:
             super().update(options)
+            self.n_instances = self.n_vectors
+            if self.symmetry and self.symmetry.n_copies > 1:
+                self.n_instances *= self.symmetry.n_copies
             if self._complex_uniforms is not None:
                 self._complex_uniforms.is_complex = 1 if is_complex else 0
                 self._complex_uniforms.color_override = 1 if (is_complex and self.scale_by_value) else 0
@@ -489,19 +492,22 @@ class ClippingVectors(VectorRenderer):
                 np.array([-1], dtype=np.int32),
                 reuse=getattr(self, '_u_component', None))),
         ]
+        vec3_order = mesh_data.get_shader_defines()["MAX_EVAL_ORDER_VEC3"]
         run_compute_shader(
             read_shader_file(self.compute_shader_file),
             count_bindings,
             n_work_groups,
             entry_point=self.compute_entry_point,
-            defines={"MODE": 0, "MAX_EVAL_ORDER": self.function_data.order, "MAX_EVAL_ORDER_VEC3": self.function_data.order},
+            defines={"MODE": 0, "MAX_EVAL_ORDER": self.function_data.order, "MAX_EVAL_ORDER_VEC3": 1},
         )
-        self.n_vectors = int(read_buffer(self.u_nvectors, np.uint32)[0])
+        count_approx = int(read_buffer(self.u_nvectors, np.uint32)[0])
+        self.n_vectors = count_approx * 2 + 100
         write_array_to_buffer(self.u_nvectors, np.array([0], dtype=np.uint32))
         self.allocate_buffers()
+        n_allocated = self.n_vectors
 
         # Eval pass: MODE=1, NEED_EVAL - needs function data + output buffers
-        eval_defines = {"MODE": 1, "NEED_EVAL": 1, "MAX_EVAL_ORDER": self.function_data.order, "MAX_EVAL_ORDER_VEC3": self.function_data.order}
+        eval_defines = {"MODE": 1, "NEED_EVAL": 1, "MAX_EVAL_ORDER": self.function_data.order, "MAX_EVAL_ORDER_VEC3": vec3_order}
         if self.function_data.cf.is_complex:
             eval_defines["IS_COMPLEX"] = 1
         if self.scale_by_value:
@@ -517,6 +523,7 @@ class ClippingVectors(VectorRenderer):
         self.directions_buffer = self._VectorRenderer__buffers["directions"]
         self.directions_imag_buffer = self._VectorRenderer__buffers.get("directions_imag", None)
         self.values_buffer = self._VectorRenderer__buffers["values"]
+        self.n_vectors = min(int(read_buffer(self.u_nvectors, np.uint32)[0]), n_allocated)
         if self.symmetry and self.symmetry.n_copies > 1:
             self._expand_vectors_for_symmetry()
 

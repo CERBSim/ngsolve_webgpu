@@ -184,6 +184,7 @@ fn compute_clipping_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
                       let dir_im = scale * v_im / max(val, 1e-10);
 #endif SCALE_BY_VALUE
                       let index = atomicAdd(&count_vectors, 1);
+                      if (index * 3u + 2u >= arrayLength(&positions)) { continue; }
                       cp += 0.5 * gridsize * normalize(cross(p[1]-p[0], p[2]-p[0]));
 
                       positions[index*3+0] = cp[0];
