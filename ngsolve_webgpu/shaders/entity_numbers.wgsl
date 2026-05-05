@@ -6,6 +6,7 @@
 @group(0) @binding(12) var<storage> u_edges : array<u32>;
 @group(0) @binding(13) var<storage> u_facets : array<u32>;
 @group(0) @binding(14) var<uniform> u_number_offset : u32;
+@group(0) @binding(15) var<storage> u_segments : array<u32>;
 
 fn numDigits(n: u32) -> u32 {
     var length = 1u;
@@ -90,4 +91,35 @@ fn vertexVolumeElementNumber(@builtin(vertex_index) vertexId: u32, @builtin(inst
     let elem = getElem(entityId);
     let p = getCenter(elem);
     return renderNumber(p, entityId + u_number_offset, vertexId);
+}
+
+@vertex
+fn vertexSegmentNumber(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) entityId: u32) -> FontFragmentInput {
+    let v0 = u_segments[3u * entityId];
+    let v1 = u_segments[3u * entityId + 1u];
+    let p = 0.5 * (getVertex(v0) + getVertex(v1));
+    return renderNumber(p, entityId + u_number_offset, vertexId);
+}
+
+@vertex
+fn vertexSurfaceIndex(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) entityId: u32) -> FontFragmentInput {
+    let tri = loadTriangle(entityId);
+    let p = (tri.p[0] + tri.p[1] + tri.p[2]) / 3.0;
+    return renderNumber(p, tri.index + u_number_offset, vertexId);
+}
+
+@vertex
+fn vertexSegmentIndex(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) entityId: u32) -> FontFragmentInput {
+    let v0 = u_segments[3u * entityId];
+    let v1 = u_segments[3u * entityId + 1u];
+    let seg_index = u_segments[3u * entityId + 2u];
+    let p = 0.5 * (getVertex(v0) + getVertex(v1));
+    return renderNumber(p, seg_index + u_number_offset, vertexId);
+}
+
+@vertex
+fn vertexVolumeIndex(@builtin(vertex_index) vertexId: u32, @builtin(instance_index) entityId: u32) -> FontFragmentInput {
+    let elem = getElem(entityId);
+    let p = getCenter(elem);
+    return renderNumber(p, elem.index + u_number_offset, vertexId);
 }

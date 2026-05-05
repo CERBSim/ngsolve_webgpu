@@ -26,6 +26,10 @@ class EntityNumbers(Renderer):
         "facets": "vertexFacetNumber",
         "surface_elements": "vertexSurfaceElementNumber",
         "volume_elements": "vertexVolumeElementNumber",
+        "segments": "vertexSegmentNumber",
+        "surface_indices": "vertexSurfaceIndex",
+        "segment_indices": "vertexSegmentIndex",
+        "volume_indices": "vertexVolumeIndex",
     }
 
     def __init__(self, data: MeshData, entity: str = "vertices", font_size=20, clipping=None, zero_based=True):
@@ -41,10 +45,11 @@ class EntityNumbers(Renderer):
         self.n_vertices = self.n_digits * 6
         self._edge_buffer = None
         self._facet_buffer = None
+        self._segment_buffer = None
         self._dummy_uniform = None
         self._dummy_buffer = None
         self._offset_buffer = None
-        if entity == "volume_elements":
+        if entity in ("volume_elements", "volume_indices"):
             data.need_3d = True
 
     def update(self, options: RenderOptions):
@@ -66,11 +71,15 @@ class EntityNumbers(Renderer):
             self._update_facets()
         elif self.entity == "surface_elements":
             self.n_instances = self.data.num_elements[ElType.TRIG]
-        elif self.entity == "volume_elements":
+        elif self.entity in ("volume_elements", "volume_indices"):
             n = 0
             for et in (ElType.TET, ElType.HEX, ElType.PRISM, ElType.PYRAMID):
                 n += self.data.num_elements.get(et, 0)
             self.n_instances = n
+        elif self.entity in ("segments", "segment_indices"):
+            self._update_segments()
+        elif self.entity == "surface_indices":
+            self.n_instances = self.data.num_elements[ElType.TRIG]
 
     def _update_edges(self):
         """Build edge connectivity buffer from NGSolve mesh."""
@@ -103,6 +112,18 @@ class EntityNumbers(Renderer):
         self.n_instances = len(facet_data)
         self._facet_buffer = buffer_from_array(facet_data, label="facet_connectivity", reuse=self._facet_buffer)
 
+    def _update_segments(self):
+        """Build segment buffer with (v0, v1, seg_index) per segment."""
+        segs = self.data.mesh.Elements1D().NumPy()
+        if len(segs) == 0:
+            self.n_instances = 0
+            return
+        seg_data = np.zeros((len(segs), 3), dtype=np.uint32)
+        seg_data[:, :2] = segs["nodes"][:, :2] - 1  # 0-based vertex indices
+        seg_data[:, 2] = segs["index"] - 1  # 0-based segment index
+        self.n_instances = len(seg_data)
+        self._segment_buffer = buffer_from_array(seg_data, label="segment_connectivity", reuse=self._segment_buffer)
+
     def get_shader_code(self):
         return read_shader_file("ngsolve/entity_numbers.wgsl")
 
@@ -115,20 +136,22 @@ class EntityNumbers(Renderer):
             *self.font.get_bindings(),
             *self.data.get_bindings(),
         ]
-        # mesh/utils.wgsl declares u_mesh at binding 20 — bind a dummy uniform
+        # mesh/utils.wgsl declares u_mesh at binding 20 - bind a dummy uniform
         if self._dummy_uniform is None:
             self._dummy_uniform = uniform_from_array(
                 np.zeros(4, dtype=np.float32), label="dummy_mesh_uniform"
             )
         bindings.append(UniformBinding(Binding.MESH, self._dummy_uniform))
-        # Edge/facet buffers — bind a dummy if not needed (shader still declares them)
+        # Edge/facet/segment buffers - bind a dummy if not needed (shader still declares them)
         if self._dummy_buffer is None:
             self._dummy_buffer = buffer_from_array(np.array([0], dtype=np.uint32), label="dummy_entity")
         edge_buf = self._edge_buffer if self._edge_buffer is not None else self._dummy_buffer
         facet_buf = self._facet_buffer if self._facet_buffer is not None else self._dummy_buffer
+        seg_buf = self._segment_buffer if self._segment_buffer is not None else self._dummy_buffer
         bindings.append(BufferBinding(12, edge_buf))
         bindings.append(BufferBinding(13, facet_buf))
         bindings.append(UniformBinding(14, self._offset_buffer))
+        bindings.append(BufferBinding(15, seg_buf))
         return bindings
 
 

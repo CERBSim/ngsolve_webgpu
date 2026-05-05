@@ -64,7 +64,14 @@ fn fragment_main(input: GeoFragmentInput) -> @location(0) vec4<f32> {
   let lit = lightCalcColor(input.p, input.n, color);
   var result = applyHighlight(lit, input.id, input.index);
   if (u_highlight.solid_index != 0xFFFFFFFFu && u_solid_ids[input.index] == u_highlight.solid_index) {
-      result = highlightColor(lit, 0u);
+      var face_selected = false;
+#ifdef HAS_SELECTION
+      if (input.index < arrayLength(&u_selection) && u_selection[input.index] != 0u) {
+          face_selected = true;
+      }
+#endif HAS_SELECTION
+      if (face_selected) { result = highlightColor(lit, 2u); }
+      else { result = highlightColor(lit, 0u); }
   }
   return result;
 }

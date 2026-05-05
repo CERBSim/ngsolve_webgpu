@@ -13,32 +13,37 @@ struct HighlightUniforms {
 #endif HAS_SELECTION
 
 fn highlightColor(color: vec4<f32>, mode: u32) -> vec4<f32> {
-    if (mode == 1u) {
-        // select: darker orange
-        return mix(color, vec4<f32>(1.0, 0.55, 0.0, color.a), 0.45);
+    if (mode == 2u) {
+        // selected + hover: intense red-orange
+        return mix(color, vec4<f32>(1.0, 0.2, 0.0, color.a), 0.65);
     }
-    // hover: light orange
-    return mix(color, vec4<f32>(1.0, 0.8, 0.3, color.a), 0.35);
+    if (mode == 1u) {
+        // selected: medium orange
+        return mix(color, vec4<f32>(1.0, 0.5, 0.0, color.a), 0.5);
+    }
+    // hover: light yellow tint
+    return mix(color, vec4<f32>(1.0, 0.9, 0.5, color.a), 0.25);
 }
 
 fn applyHighlight(color: vec4<f32>, instance_id: u32, region_id: u32) -> vec4<f32> {
     // Selection buffer check first (lower priority, drawn underneath)
+    var is_selected = false;
 #ifdef HAS_SELECTION
-    var base = color;
     if (region_id < arrayLength(&u_selection) && u_selection[region_id] != 0u) {
-        base = highlightColor(color, 1u);
+        is_selected = true;
     }
-#else HAS_SELECTION
-    let base = color;
 #endif HAS_SELECTION
-    // Hover uniform check (higher priority, overrides selection)
+    // Hover uniform check (higher priority)
     if (u_highlight.renderer_id == @RENDER_OBJECT_ID@ && u_highlight.element_id == instance_id) {
+        if (is_selected) { return highlightColor(color, 2u); }
         return highlightColor(color, 0u);
     }
     if (u_highlight.renderer_id == @RENDER_OBJECT_ID@ && u_highlight.region_index == region_id) {
+        if (is_selected) { return highlightColor(color, 2u); }
         return highlightColor(color, 0u);
     }
-    return base;
+    if (is_selected) { return highlightColor(color, 1u); }
+    return color;
 }
 #else RENDER_OBJECT_ID
 fn applyHighlight(color: vec4<f32>, instance_id: u32, region_id: u32) -> vec4<f32> {

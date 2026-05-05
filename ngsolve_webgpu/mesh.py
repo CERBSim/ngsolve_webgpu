@@ -246,16 +246,10 @@ class MeshData:
         self.elements = {}
         self.gpu_elements = {}
 
-        # Vertices
-        nv = len(mesh.Points())
-        self.num_elements["vertices"] = nv
-        vertices = np.array(mesh.Coordinates(), dtype=np.float32)
-        if vertices.shape[1] == 2:
-            vertices = np.hstack((vertices, np.zeros((nv, 1), dtype=np.float32)))
-
-        self.pmin = np.min(vertices, axis=0)
-        self.pmax = np.max(vertices, axis=0)
-        self.elements["vertices"] = vertices
+        # Read elements before vertices so that during live meshing the
+        # vertex array is guaranteed to be large enough for all element
+        # indices (netgen adds vertices before the elements that reference
+        # them).
 
         # Trigs TODO: Quads
         trigs = mesh.Elements2D().NumPy()
@@ -306,6 +300,17 @@ class MeshData:
         all_data = np.concatenate( (metadata, trigs_data.flatten(), quad_numbers, np.array(quads_data, dtype=np.int32)))
         self.elements[ElType.TRIG] = all_data
         self.num_elements[ElType.TRIG] += num_quads
+
+        # Vertices (read after elements for lock-free live meshing safety)
+        nv = len(mesh.Points())
+        self.num_elements["vertices"] = nv
+        vertices = np.array(mesh.Coordinates(), dtype=np.float32)
+        if vertices.shape[1] == 2:
+            vertices = np.hstack((vertices, np.zeros((nv, 1), dtype=np.float32)))
+
+        self.pmin = np.min(vertices, axis=0)
+        self.pmax = np.max(vertices, axis=0)
+        self.elements["vertices"] = vertices
 
         # 3d Elements
         if self.need_3d:
