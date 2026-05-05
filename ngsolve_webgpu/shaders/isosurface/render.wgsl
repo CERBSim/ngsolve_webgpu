@@ -45,8 +45,9 @@ fn vertex_isosurface(@builtin(vertex_index) vertId: u32,
 #else SYMMETRY
   let value_sign = 1.0;
 #endif SYMMETRY
+  let tet_for_index = getTetrahedron(trig.id);
   return VertexOutputClip(cameraMapPoint(p), p, -n, lam.xyz,
-                      trig.id, value_sign);
+                      trig.id, value_sign, tet_for_index.index);
 }
 
 

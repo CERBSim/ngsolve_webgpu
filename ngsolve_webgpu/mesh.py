@@ -795,12 +795,14 @@ class MeshSegments(Renderer):
 
     def __init__(self, data: MeshData, clipping=None, colors: list | None = None, label: str = "MeshSegments"):
         super().__init__(label=label)
+        from .pick import HighlightUniforms
         self.data = data
         self.clipping = clipping or Clipping()
         self.thickness = 0.005
         self._buffers: dict[str, Buffer] = {}
         self._thickness_uniform: Buffer | None = None
         self._user_colors = colors
+        self._highlight_uniforms = HighlightUniforms()
 
     def get_bounding_box(self):
         return self.data.get_bounding_box()
@@ -897,6 +899,7 @@ class MeshSegments(Renderer):
             BufferBinding(91, self._buffers["colors"]),
             UniformBinding(92, self._thickness_uniform),
             BufferBinding(93, self._buffers["index"]),
+            *self._highlight_uniforms.get_bindings(),
         ]
 
 
