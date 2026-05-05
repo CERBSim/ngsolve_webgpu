@@ -274,9 +274,17 @@ class FunctionData:
                 self.cf, self.mesh_data.ngs_mesh, self.order
             )
         except Exception:
-            self.data_2d = None
-            self.minval = [1e99] * (self.cf.dim + 1)
-            self.maxval = [-1e99] * (self.cf.dim + 1)
+            # Fallback: try BoundaryFromVolumeCF for volume-only CFs (e.g. MaterialCF)
+            try:
+                import ngsolve as ngs
+                cf_bnd = ngs.BoundaryFromVolumeCF(self.cf)
+                self.data_2d, self.minval, self.maxval = evaluate_cf(
+                    cf_bnd, self.mesh_data.ngs_mesh, self.order
+                )
+            except Exception:
+                self.data_2d = None
+                self.minval = [1e99] * (self.cf.dim + 1)
+                self.maxval = [-1e99] * (self.cf.dim + 1)
         if self.need_3d:
             try:
                 self.data_3d, minval, maxval = self.evaluate_3d(
@@ -297,13 +305,12 @@ class FunctionData:
             self.gpu_2d = buffer_from_array(
                 self.data_2d, label="function_data_2d", reuse=self.gpu_2d
             )
-            if self.data_3d is not None:
-                self.gpu_3d = buffer_from_array(
-                    self.data_3d, label="function_data_3d", reuse=self.gpu_3d
-                )
             buffers["data_2d"] = self.gpu_2d
 
         if self.data_3d is not None:
+            self.gpu_3d = buffer_from_array(
+                self.data_3d, label="function_data_3d", reuse=self.gpu_3d
+            )
             buffers["data_3d"] = self.gpu_3d
             self._need_gpu_update = False
 
