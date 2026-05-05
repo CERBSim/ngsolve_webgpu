@@ -179,9 +179,8 @@ fn compute_clipping_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
                       let dir_re = v_re;
                       let dir_im = v_im;
 #else SCALE_BY_VALUE
-                      let scale = 2 * gridsize * 1.0;
-                      let dir_re = scale * v_re / max(val, 1e-10);
-                      let dir_im = scale * v_im / max(val, 1e-10);
+                      let dir_re = v_re / max(val, 1e-10);
+                      let dir_im = v_im / max(val, 1e-10);
 #endif SCALE_BY_VALUE
                       let index = atomicAdd(&count_vectors, 1);
                       if (index * 3u + 2u >= arrayLength(&positions)) { continue; }

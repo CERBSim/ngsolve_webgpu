@@ -286,13 +286,12 @@ class VectorRenderer(ShapeRenderer):
         is_complex = self.function_data.cf.is_complex
         max_val = self.function_data.maxval[0]
         if self.scale_by_value:
-            # max arrow ~ 4 * grid_spacing
-            self._scale = self.grid_spacing * 4.0 / max(max_val, 1e-10) * self.user_scale
-            self._scale_mode = 0
+            # max arrow fills grid cell
+            self._scale = 1.6 * self.grid_spacing / max(max_val, 1e-10) * self.user_scale
         else:
-            # fixed size ~ 5% of bounding box diagonal
-            self._scale = self.box_size * 0.01 * self.user_scale
-            self._scale_mode = 2
+            # fixed size (directions are unit vectors)
+            self._scale = 1.6 * self.grid_spacing * self.user_scale
+        self._scale_mode = 0
         if self.gpu_objects.colormap.autoscale:
             self.gpu_objects.colormap.set_min_max(
                 self.function_data.minval[0],

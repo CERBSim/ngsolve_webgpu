@@ -907,9 +907,8 @@ class VectorCFRenderer(VectorRenderer):
         points = np.meshgrid(vs, vs)
         xvals = points[0].flatten()
         yvals = points[1].flatten()
-        self.size = self.size or 1 / 60 * np.linalg.norm(
-            self.bounding_box[1] - self.bounding_box[0]
-        )
+        x_range = self.bounding_box[1][0] - self.bounding_box[0][0]
+        self.size = self.size or 0.8 * x_range / (self.grid_size + 1)
         mpts_ = self.mesh(xvals, yvals, 0.0)
         pts, mpts = [], []
         for i in range(len(xvals)):

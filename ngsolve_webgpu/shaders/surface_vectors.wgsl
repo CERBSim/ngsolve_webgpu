@@ -77,9 +77,8 @@ fn compute_surface_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
                   let dir_re = v_ri.re;
                   let dir_im = v_ri.im;
 #else SCALE_BY_VALUE
-                  let scale = 2 * gridsize * 1.0;
-                  let dir_re = scale * v_ri.re / max(val, 1e-10);
-                  let dir_im = scale * v_ri.im / max(val, 1e-10);
+                  let dir_re = v_ri.re / max(val, 1e-10);
+                  let dir_im = v_ri.im / max(val, 1e-10);
 #endif SCALE_BY_VALUE
                   let index = atomicAdd(&count_vectors, 1);
                   if (mesh.is_curved == 1u) {
