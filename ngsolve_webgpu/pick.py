@@ -16,7 +16,6 @@ class HighlightUniforms(UniformBase):
 
     def __init__(self, **kwargs):
         super().__init__(renderer_id=0, element_id=0xFFFFFFFF, region_index=0xFFFFFFFF, solid_index=0xFFFFFFFF, **kwargs)
-        self.update_buffer()
 
 
 class MeshPickResult:
