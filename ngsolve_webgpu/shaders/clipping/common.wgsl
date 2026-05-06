@@ -38,7 +38,7 @@ fn getTetPoints(ei: u32) -> array<vec3f, 4> {
     if(u_deformation_values_3d[0] != -1) {
         for(var pi = 0; pi < 4; pi++) {
             for(var xi = 0; xi < 3; xi++) {
-                p[pi][xi] += evalTetComplex(&u_deformation_values_3d, ei, xi, lam[pi]);
+                p[pi][xi] += u_deformation_scale * evalTetComplex(&u_deformation_values_3d, ei, xi, lam[pi]);
             }
         }
     }

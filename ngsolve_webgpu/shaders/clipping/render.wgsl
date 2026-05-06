@@ -98,6 +98,11 @@ fn vertex_clipping(@builtin(vertex_index) vertId: u32,
           p = p + lam[i] * points[i];
       }
   }
+  if(u_deformation_values_3d[0] != -1 && is_curved) {
+      for(var xi = 0u; xi < 3u; xi++) {
+          p[xi] += u_deformation_scale * evalTetComplex(&u_deformation_values_3d, trig.id, i32(xi), lam.xyz);
+      }
+  }
   var n = u_clipping.plane.xyz;
 #ifdef SYMMETRY
   p = symApplyPosition(p, trigId_);
