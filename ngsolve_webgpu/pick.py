@@ -27,12 +27,12 @@ class MeshPickResult:
       channel 3 = region index (0-based)
     """
 
-    def __init__(self, event, mesh, camera, kind="surface"):
+    def __init__(self, event, mesh, options, kind="surface"):
         self.event = event
         self.kind = kind  # "surface", "volume", or "clipping"
         self.element_nr = int(event.uint32[0])
         self.region_index = int(event.uint32[1])
-        self.world_pos = event.calculate_position(camera)
+        self.world_pos = event.calculate_position(options)
 
         # Derive region name: surface uses boundaries, volume/clipping uses materials
         try:
@@ -74,11 +74,11 @@ class GeoPickResult:
       channel 3 (uint32[1]) = index (face/edge descriptor index)
     """
 
-    def __init__(self, event, geo, camera):
+    def __init__(self, event, geo, options):
         self.event = event
         self.geo_type = int(event.uint32[0])  # 0=vertex, 1=edge, 2=face
         self.index = int(event.uint32[1])
-        self.world_pos = event.calculate_position(camera)
+        self.world_pos = event.calculate_position(options)
         try:
             if self.geo_type == 2:
                 self.name = geo.faces[self.index].name or ""
