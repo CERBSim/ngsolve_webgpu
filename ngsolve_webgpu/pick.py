@@ -34,9 +34,9 @@ class MeshPickResult:
         self.region_index = int(event.uint32[1])
         self.world_pos = event.calculate_position(options)
 
-        # Derive region name: surface uses boundaries, volume/clipping uses materials
+        # Derive region name: surface on 3D uses boundaries; on 2D surface=volume uses materials
         try:
-            if kind == "surface":
+            if kind == "surface" and mesh.dim == 3:
                 names = mesh.GetBoundaries()
             else:
                 names = mesh.GetMaterials()
