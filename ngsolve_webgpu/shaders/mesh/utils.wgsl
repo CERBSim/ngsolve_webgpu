@@ -122,15 +122,13 @@ fn calcTriLam(tri: Triangle, vertexId: u32, h: f32) -> vec2<f32> {
     let i3 = vertexId % 3u;
     var lam = vec2f(0.0, 0.0);
     
-    if(tri.npElement ==3) {
-        if (i3) < 2 {
-            lam[i3] += h;
-        }
+    if(tri.npElement == 3) {
+        if (i3 == 0u) { lam.x += h; }
+        else if (i3 == 1u) { lam.y += h; }
     }
     else {
-        if(i3 > 0u) {
-            lam[i3-1] += h;
-        }
+        if (i3 == 1u) { lam.x += h; }
+        else if (i3 == 2u) { lam.y += h; }
     }
     
     return lam;
