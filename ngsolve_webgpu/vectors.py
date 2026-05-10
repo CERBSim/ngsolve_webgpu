@@ -293,10 +293,10 @@ class VectorRenderer(ShapeRenderer):
             self._scale = 1.6 * self.grid_spacing * self.user_scale
         self._scale_mode = 0
         if self.gpu_objects.colormap.autoscale:
-            self.gpu_objects.colormap.set_min_max(
+            self.gpu_objects.colormap.widen_range(
                 self.function_data.minval[0],
                 self.function_data.maxval[0],
-                set_autoscale=False,
+                timestamp=options.timestamp,
             )
         if self.active:
             super().update(options)

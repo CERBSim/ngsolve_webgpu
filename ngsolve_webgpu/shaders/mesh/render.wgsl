@@ -159,6 +159,8 @@ struct MeshFragmentInput {
   @location(1) n: vec3<f32>,
   @location(2) @interpolate(flat) id: u32,
   @location(3) @interpolate(flat) index: u32,
+  @location(4) lam: vec3<f32>,
+  @location(5) @interpolate(flat) elementId: u32,
 };
 
 // A triangle as part of a 3d element (thus, 3 barycentric coordinates)

@@ -107,7 +107,7 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
     let instanceId = instanceId_;
 #endif SYMMETRY
 
-    let zero = MeshFragmentInput(vec4f(0), vec3f(0), vec3f(0), 0u, 0u);
+    let zero = MeshFragmentInput(vec4f(0), vec3f(0), vec3f(0), 0u, 0u, vec3f(0), 0u);
     let info = decodeFaceInstance(instanceId);
 
     // Discard excess sub-triangles (needed when single-draw symmetry fallback
@@ -120,9 +120,13 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
     var element = getElem(info.elementId);
     let center = getCenter(element);
 
+#ifdef FACET_CF
+    // FACET_CF: no vertex-level clipping — fragment shader clips per-pixel
+#else FACET_CF
     if (!calcClipping(center)) {
         return zero;
     }
+#endif FACET_CF
 
     // Check if element is curved
     var is_curved = false;
@@ -165,6 +169,7 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
 
     var position: vec3f;
     var normal: vec3f;
+    var ref_lam = vec3f(0.0);
 
     if (is_curved) {
         let oc3d = mesh.offset_curvature_3d;
@@ -183,6 +188,7 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
         }
 
         let lam = (1.0 - u - v) * R0 + u * R1 + v * R2;
+        ref_lam = lam;
 
         var result: mat4x3f;
         if (element.np == 4u) {
@@ -203,6 +209,11 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
         // Flat: linear interpolation of face vertex positions
         position = (1.0 - u - v) * face.p[0] + u * face.p[1] + v * face.p[2];
         normal = cross(face.p[2] - face.p[0], face.p[1] - face.p[0]);
+        if (element.np == 4u) {
+            let fv = TET_FACES[info.faceId];
+            let R0f = NODE_REF[fv[0]]; let R1f = NODE_REF[fv[1]]; let R2f = NODE_REF[fv[2]];
+            ref_lam = (1.0 - u - v) * R0f + u * R1f + v * R2f;
+        }
     }
 
     // Apply shrink toward element center
@@ -214,7 +225,35 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
 #endif SYMMETRY
 
     let mapped_position = cameraMapPoint(position);
-    return MeshFragmentInput(mapped_position, position, normal, instanceId, element.index);
+#ifdef FACET_CF
+    // Map shader faceId to MtAE face index (MtAE face g = opposite local vertex g)
+    const MTAE_FOR_SHADER = array<u32, 4>(3u, 2u, 0u, 1u);
+    let faceIndex = info.elementId * 4u + MTAE_FOR_SHADER[info.faceId];
+
+    // Transform (u,v) to extraction barycentric coords.
+    // MtAE sorts face vertices by ascending global vertex index.
+    // evalTrig bary = (lam.x, lam.y, 1-lam.x-lam.y).
+    // Shader position = (1-u-v)*V_a + u*V_b + v*V_c  (TET_FACES[f] = a,b,c)
+    // So wa=1-u-v, wb=u, wc=v.  We need xi=weight of min-global, eta=weight of mid-global.
+    let fv = TET_FACES[info.faceId];
+    let ga = element.p[fv[0]];
+    let gb = element.p[fv[1]];
+    let gc = element.p[fv[2]];
+    let wa = 1.0 - u - v;
+    let wb = u;
+    let wc = v;
+    var ext_lam: vec2f;
+    if (ga <= gb && ga <= gc) {
+        ext_lam = vec2f(wa, select(wc, wb, gb <= gc));
+    } else if (gb <= gc) {
+        ext_lam = vec2f(wb, select(wc, wa, ga <= gc));
+    } else {
+        ext_lam = vec2f(wc, select(wb, wa, ga <= gb));
+    }
+    return MeshFragmentInput(mapped_position, position, normal, instanceId, element.index, vec3f(ext_lam, 0.0), faceIndex);
+#else FACET_CF
+    return MeshFragmentInput(mapped_position, position, normal, instanceId, element.index, ref_lam, info.elementId);
+#endif FACET_CF
 }
 
 @fragment
@@ -226,6 +265,23 @@ fn fragment_main(input: MeshFragmentInput) -> @location(0) vec4<f32>
   }
   return lightCalcColor(input.p, input.n, applyHighlight(color, input.id, input.index));
 }
+
+#ifdef FACET_CF
+@group(0) @binding(81) var<storage> u_facet_values : array<f32>;
+
+@fragment
+fn fragment_facet_cf(input: MeshFragmentInput) -> @location(0) vec4<f32>
+{
+    checkClipping(input.p);
+    let faceIndex = input.elementId;
+    let value = evalTrig(&u_facet_values, faceIndex, u_function_component, input.lam.xy);
+    let color = getColor(value);
+    if(color.a < 0.01) {
+        discard;
+    }
+    return lightCalcColor(input.p, -input.n, color);
+}
+#endif FACET_CF
 
 #ifdef SELECT_PIPELINE
 @fragment fn select3dElement(

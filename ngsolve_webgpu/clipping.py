@@ -111,10 +111,10 @@ class ClippingCF(Renderer):
         self._buffers = self.data.get_buffers()
         if self.gpu_objects.colormap.autoscale:
             component = self.gpu_objects.settings.component
-            self.gpu_objects.colormap.set_min_max(
+            self.gpu_objects.colormap.widen_range(
                 self.data.minval[component + 1],
                 self.data.maxval[component + 1],
-                set_autoscale=False,
+                timestamp=options.timestamp,
             )
         self.gpu_objects.complex_settings.update(options)
         self.build_clip_plane()

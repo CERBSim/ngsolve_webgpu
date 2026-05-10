@@ -632,7 +632,8 @@ class MeshData:
         result["deformation_3d"] = self._dummy_buffer
         if self.deformation_data:
             deform_buffers = self.deformation_data.get_buffers(include_mesh_data=False)
-            result["deformation_2d"] = deform_buffers["data_2d"]
+            if "data_2d" in deform_buffers:
+                result["deformation_2d"] = deform_buffers["data_2d"]
             if "data_3d" in deform_buffers:
                 result["deformation_3d"] = deform_buffers["data_3d"]
                 

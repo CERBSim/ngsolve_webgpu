@@ -1,6 +1,7 @@
 from .mesh import MeshData, MeshWireframe2d, MeshElements2d, MeshElements3d, MeshSegments
 from .entity_numbers import EntityNumbers, PointNumbers
 from .cf import FunctionData, CFRenderer
+from .facet_cf import FacetFunctionData, FacetCFRenderer, FacetCFRenderer3D
 from .pick import MeshPickResult, HighlightUniforms, GeoPickResult
 from .clipping import ClippingCF
 from webgpu.colormap import Colorbar, Colormap

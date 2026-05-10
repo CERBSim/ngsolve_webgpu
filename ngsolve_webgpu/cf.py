@@ -756,10 +756,10 @@ class CFRenderer(BaseMeshElements2d):
             return
         super().update(options)
         if self.gpu_objects.colormap.autoscale:
-            self.gpu_objects.colormap.set_min_max(
+            self.gpu_objects.colormap.widen_range(
                 self.data.minval[self.component + 1],
                 self.data.maxval[self.component + 1],
-                set_autoscale=False,
+                timestamp=options.timestamp,
             )
         self.shader_defines["MAX_EVAL_ORDER"] = self.data.order
 
