@@ -90,21 +90,6 @@ class TestEntityNumbers:
 
         webgpu_env.assert_matches_baseline(scene, "entity_numbers_volume_elements.png")
 
-    def test_point_numbers_backward_compat(self, webgpu_env):
-        import ngsolve as ngs
-        import webgpu.jupyter as wj
-        from ngsolve_webgpu.mesh import MeshData, MeshWireframe2d
-        from ngsolve_webgpu.entity_numbers import PointNumbers
-
-        webgpu_env.ensure_canvas(600, 600)
-        mesh = ngs.Mesh(ngs.unit_square.GenerateMesh(maxh=0.3))
-        mesh_data = MeshData(mesh)
-        wireframe = MeshWireframe2d(mesh_data)
-        numbers = PointNumbers(mesh_data, font_size=15)
-        scene = wj.Draw([wireframe, numbers], 600, 600)
-
-        webgpu_env.assert_matches_baseline(scene, "entity_numbers_point_compat.png")
-
     def test_multiple_entity_types(self, webgpu_env):
         import ngsolve as ngs
         import webgpu.jupyter as wj

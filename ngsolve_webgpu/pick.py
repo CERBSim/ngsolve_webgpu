@@ -23,8 +23,9 @@ class MeshPickResult:
 
     Decodes the raw SelectEvent user_data (2 x uint32) written by
     select2dElement / select3dElement / select_clipping shaders:
-      channel 2 = element instance id
-      channel 3 = region index (0-based)
+
+    * channel 2 = element instance id
+    * channel 3 = region index (0-based)
     """
 
     def __init__(self, event, mesh, options, kind="surface"):
@@ -70,8 +71,9 @@ class GeoPickResult:
     """Pick result for geometry renderers (OCC faces/edges).
 
     Select texture encoding from geo shaders:
-      channel 2 (uint32[0]) = geo_type: 0=vertex, 1=edge, 2=face
-      channel 3 (uint32[1]) = index (face/edge descriptor index)
+
+    * channel 2 (uint32[0]) = geo_type: 0=vertex, 1=edge, 2=face
+    * channel 3 (uint32[1]) = index (face/edge descriptor index)
     """
 
     def __init__(self, event, geo, options):

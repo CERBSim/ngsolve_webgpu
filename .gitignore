@@ -6,3 +6,5 @@ __pycache__
 ngsolve_webgpu/_version.py
 /tests/output/
 /tests/*.html
+/docs/html/
+/docs/_static/landing.html

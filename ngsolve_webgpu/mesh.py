@@ -1027,39 +1027,3 @@ class MeshElements3d(Renderer):
 
     def get_shader_code(self):
         return read_shader_file("ngsolve/elements3d.wgsl")
-
-
-class PointNumbers(Renderer):
-    """Render a point numbers of a mesh"""
-
-    _buffers: dict
-
-    def __init__(self, data, font_size=20, label=None, clipping=None):
-        super().__init__(label=label)
-        self.n_digits = 6
-        self.data = data
-        self.depthBias = -1
-        self.vertex_entry_point = "vertexPointNumber"
-        self.fragment_entry_point = "fragmentFont"
-        self.n_vertices = self.n_digits * 6
-        self.font_size = font_size
-        self.clipping = clipping or Clipping()
-
-    def update(self, options: RenderOptions):
-        self.clipping.update(options)
-        self.font = Font(options.canvas, self.font_size)
-        self._buffers = self.data.get_buffers()
-        self.n_instances = self.data.num_elements["vertices"]
-
-    def get_shader_code(self):
-        return read_shader_file("ngsolve/numbers.wgsl")
-
-    def get_bounding_box(self):
-        return self.data.get_bounding_box()
-
-    def get_bindings(self):
-        return [
-            *self.clipping.get_bindings(),
-            *self.font.get_bindings(),
-            BufferBinding(Binding.VERTICES, self._buffers["vertices"]),
-        ]

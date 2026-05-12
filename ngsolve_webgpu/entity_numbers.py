@@ -153,9 +153,3 @@ class EntityNumbers(Renderer):
         bindings.append(UniformBinding(14, self._offset_buffer))
         bindings.append(BufferBinding(15, seg_buf))
         return bindings
-
-
-# Backward compatibility
-class PointNumbers(EntityNumbers):
-    def __init__(self, data, font_size=20, label=None, clipping=None):
-        super().__init__(data, entity="vertices", font_size=font_size, clipping=clipping, zero_based=False)

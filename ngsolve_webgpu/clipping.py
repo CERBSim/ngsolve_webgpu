@@ -65,7 +65,7 @@ class ClippingCF(Renderer):
         self.cut_trigs_counter = None
         self.cut_trigs = None
         self.trig_counter = None
-        self.only_count = None
+
         self.n_tets = None
         if component is None:
             component = -1 if self.data.cf.dim > 1 else 0
@@ -209,7 +209,7 @@ class ClippingCF(Renderer):
         bindings = [
             *self.data.mesh_data.get_bindings(),
             UniformBinding(22, self.n_tets),
-            UniformBinding(23, self.only_count),
+
             # BufferBinding(MeshBinding.TET, self._buffers[ElType.TET]),
             BufferBinding(13, self._buffers["data_3d"]),
             *self.clipping.get_bindings(),
@@ -240,42 +240,119 @@ class ClippingCF(Renderer):
         return bindings
 
     def build_clip_plane(self):
-        for count in [True, False]:
-            ntets = self.data.mesh_data.num_elements[ElType.TET] * 4**self.subdivision
-            self.trig_counter = buffer_from_array(
-                np.array([0], dtype=np.uint32),
-                usage=BufferUsage.STORAGE | BufferUsage.COPY_DST | BufferUsage.COPY_SRC,
-                label="trig_counter",
-                reuse=self.trig_counter,
-            )
-            self.n_tets = uniform_from_array(
-                np.array([ntets], dtype=np.uint32), label="n_tets", reuse=self.n_tets
-            )
-            self.only_count = uniform_from_array(
-                np.array([count], dtype=np.uint32), label="only_count", reuse=self.only_count
-            )
-            if count:
-                self.cut_trigs_counter = buffer_from_array(
-                    np.array([0.0] * 64, dtype=np.float32),
-                    label="cut_trigs_counter",
-                    reuse=self.cut_trigs_counter,
-                )
-            else:
-                buffer_size = max(64, 64 * self.n_instances)
-                if self.cut_trigs is None or self.cut_trigs.size < buffer_size:
-                    if self.cut_trigs is not None:
-                        self.cut_trigs.destroy()
-                    self.cut_trigs = self.device.createBuffer(
-                        size=buffer_size, usage=BufferUsage.STORAGE, label="cut_trigs"
-                    )
+        ntets = self.data.mesh_data.num_elements[ElType.TET] * 4**self.subdivision
+        self.trig_counter = buffer_from_array(
+            np.array([0], dtype=np.uint32),
+            usage=BufferUsage.STORAGE | BufferUsage.COPY_DST | BufferUsage.COPY_SRC,
+            label="trig_counter",
+            reuse=self.trig_counter,
+        )
+        self.n_tets = uniform_from_array(
+            np.array([ntets], dtype=np.uint32), label="n_tets", reuse=self.n_tets
+        )
 
-            shader_code = read_shader_file(self.compute_shader)
-            run_compute_shader(
-                shader_code, self.get_bindings(compute=True, count=count), 1024, "build_clip_plane", defines=self.data.mesh_data.get_shader_defines()
+        # Count pass: use a tiny output buffer so arrayLength check prevents writes
+        self.cut_trigs_counter = buffer_from_array(
+            np.array([0.0] * 16, dtype=np.float32),
+            label="cut_trigs_counter",
+            reuse=self.cut_trigs_counter,
+        )
+        shader_code = read_shader_file(self.compute_shader)
+        run_compute_shader(
+            shader_code, self.get_bindings(compute=True, count=True), 1024, "build_clip_plane", defines=self.data.mesh_data.get_shader_defines()
+        )
+        self.n_instances = int(read_buffer(self.trig_counter, np.uint32)[0])
+        self._original_n_instances = self.n_instances
+
+        # Fill pass: allocate exact-size buffer, reset counter
+        buffer_size = max(64, 64 * self.n_instances)
+        if self.cut_trigs is None or self.cut_trigs.size < buffer_size:
+            if self.cut_trigs is not None:
+                self.cut_trigs.destroy()
+            self.cut_trigs = self.device.createBuffer(
+                size=buffer_size, usage=BufferUsage.STORAGE, label="cut_trigs"
             )
-            if count:
-                self.n_instances = int(read_buffer(self.trig_counter, np.uint32)[0])
-                self._original_n_instances = self.n_instances
+        write_array_to_buffer(self.trig_counter, np.array([0], dtype=np.uint32))
+        run_compute_shader(
+            shader_code, self.get_bindings(compute=True, count=False), 1024, "build_clip_plane", defines=self.data.mesh_data.get_shader_defines()
+        )
+        if self.symmetry:
+            self.n_instances = self._original_n_instances * self.symmetry.n_copies
+            self.shader_defines["SYMMETRY"] = "1"
+
+    def get_export_descriptor(self, options, buffer_registry):
+        # Use _clipping (user-facing) buffer so render shader sees GUI updates
+        saved_clipping = self.clipping
+        self.clipping = self._clipping
+        result = super().get_export_descriptor(options, buffer_registry)
+        self.clipping = saved_clipping
+        # Use drawIndirect if compute passes set up the indirect buffer
+        if hasattr(self, '_export_indirect_buf_id'):
+            result.draw_indirect = self._export_indirect_buf_id
+        return result
+
+    def get_export_compute_passes(self, options, buffer_registry):
+        from webgpu.export.format import ExportComputePass
+        from webgpu.utils import preprocess_shader_code
+
+        shader = preprocess_shader_code(
+            read_shader_file(self.compute_shader),
+            defines=self.shader_defines,
+        )
+
+        # For export, use _clipping (user-facing) buffer in compute bindings
+        saved_clipping = self.clipping
+        self.clipping = self._clipping
+
+        # Start with a minimal output buffer — the JS engine will resize
+        # after the first count pass via the count_then_fill mechanism.
+        min_size = 64  # minimum 1 SubTrig element
+        if self.cut_trigs.size > min_size:
+            self.cut_trigs.destroy()
+            self.cut_trigs = self.device.createBuffer(
+                size=min_size, usage=BufferUsage.STORAGE, label="cut_trigs_export"
+            )
+
+        fill_bindings = self.get_bindings(compute=True, count=False)
+        fill_binding_map = buffer_registry.register_bindings(fill_bindings)
+
+        self.clipping = saved_clipping
+
+        clipping_buf_id = buffer_registry.get_id(self._clipping.uniforms._buffer)
+        trig_counter_id = buffer_registry.get_id(self.trig_counter)
+        cut_trigs_id = buffer_registry.get_id(self.cut_trigs)
+
+        # Create indirect args buffer
+        indirect_data = np.array([self.n_vertices, 0, 0, 0], dtype=np.uint32)
+        self._indirect_buffer = buffer_from_array(
+            indirect_data,
+            usage=BufferUsage.INDIRECT | BufferUsage.STORAGE | BufferUsage.COPY_DST,
+            label="clip_indirect",
+        )
+        indirect_buf_id = buffer_registry._next_id("indirect")
+        buffer_registry._buffers[id(self._indirect_buffer)] = (indirect_buf_id, self._indirect_buffer, "indirect")
+
+        self._export_indirect_buf_id = indirect_buf_id
+
+        fill_pass_id = f"clip_fill_{self._id}"
+
+        return [
+            ExportComputePass(
+                id=fill_pass_id,
+                shader=shader,
+                bindings=fill_binding_map,
+                workgroups=[1024, 1, 1],
+                triggers=[clipping_buf_id],
+                reset_buffers=[trig_counter_id],
+                count_then_fill={
+                    "counter_id": trig_counter_id,
+                    "output_id": cut_trigs_id,
+                    "element_size": 64,  # sizeof(SubTrig)
+                    "indirect_id": indirect_buf_id,
+                    "vertex_count": self.n_vertices,
+                },
+            ),
+        ]
 
     def render(self, options: RenderOptions):
         if bytes(self._clipping.uniforms) != bytes(self.clipping.uniforms):

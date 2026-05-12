@@ -4,7 +4,7 @@
 
 @group(0) @binding(21) var<storage, read_write> count_trigs: atomic<u32>;
 @group(0) @binding(22) var<uniform> u_ntets: u32;
-@group(0) @binding(23) var<uniform> only_count: u32;
+
 @group(0) @binding(24) var<storage, read_write> subtrigs: array<SubTrig>;
 
 @compute @workgroup_size(256)
@@ -26,7 +26,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
       continue;
     }
     let index = atomicAdd(&count_trigs, cuts.n);
-    if(only_count == u32(1)) {
+    if(index + cuts.n > arrayLength(&subtrigs)) {
       continue;
     }
     for(var k = 0u; k < cuts.n; k++) {
