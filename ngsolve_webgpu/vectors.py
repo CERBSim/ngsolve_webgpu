@@ -19,7 +19,7 @@ from webgpu.utils import (
     write_array_to_buffer,
 )
 
-from .cf import FunctionData, MeshData, ComplexSettings, PhaseAnimation, Binding as FunctionBinding
+from .cf import FunctionData, MeshData, ComplexSettings, PhaseAnimation, Binding as FunctionBinding, _complex_phase_export_interactions
 from .mesh import Binding as MeshBinding
 from .mesh import ElType
 
@@ -151,6 +151,8 @@ class VectorRenderer(ShapeRenderer):
         return bindings
 
     def allocate_buffers(self):
+        import os
+        export_extra = BufferUsage.COPY_SRC if os.environ.get("WEBGPU_EXPORTING") else 0
         is_complex = self.function_data.cf.is_complex
         names = ["positions", "directions", "values"]
         if is_complex:
@@ -159,7 +161,7 @@ class VectorRenderer(ShapeRenderer):
             size = 4 * self.n_vectors if name == "values" else 3 * 4 * self.n_vectors
             self.__buffers[name] = create_buffer(
                 size=size,
-                usage=BufferUsage.VERTEX | BufferUsage.STORAGE,
+                usage=BufferUsage.VERTEX | BufferUsage.STORAGE | export_extra,
                 label=name,
                 reuse=self.__buffers.get(name, None),
             )
@@ -223,11 +225,13 @@ class VectorRenderer(ShapeRenderer):
         total = n * nc
 
         # Allocate expanded buffers
+        import os
+        export_extra = BufferUsage.COPY_SRC if os.environ.get("WEBGPU_EXPORTING") else 0
         for name in ["positions", "directions", "directions_imag", "values"]:
             size = 4 * total if name == "values" else 3 * 4 * total
             self._expanded_buffers[name] = create_buffer(
                 size=size,
-                usage=BufferUsage.VERTEX | BufferUsage.STORAGE,
+                usage=BufferUsage.VERTEX | BufferUsage.STORAGE | export_extra,
                 label=f"sym_{name}",
                 reuse=self._expanded_buffers.get(name, None),
             )
@@ -382,6 +386,18 @@ class VectorRenderer(ShapeRenderer):
             self.set_complex_mode("real")
             if self._scene:
                 self._scene.render()
+
+    def get_export_interactions(self, options, buffer_registry):
+        out = list(super().get_export_interactions(options, buffer_registry))
+        if self.function_data.cf.is_complex:
+            out += _complex_phase_export_interactions(
+                [
+                    (self._complex_settings.uniform, True),
+                    (self._complex_uniforms, False),
+                ],
+                buffer_registry,
+            )
+        return out
 
 class SurfaceVectors(VectorRenderer):
     def __init__(self, function_data: FunctionData, grid_size: float = 20, clipping: Clipping = None, colormap: Colormap = None, symmetry=None, vector_symmetry="polar", scale_by_value: bool = False):

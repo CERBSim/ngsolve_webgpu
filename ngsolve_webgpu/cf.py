@@ -622,6 +622,57 @@ class FunctionSettings(BaseRenderer):
             self.uniform.update_buffer()
 
 
+def _complex_phase_export_interactions(uniforms_with_mode, registry, label="Complex Animation"):
+    """Build a generic gui ExportInteraction for complex phase animation.
+
+    uniforms_with_mode: iterable of (uniform_obj, has_mode_field).
+    has_mode_field=True for ComplexUniform (mode at offset 0, phase at offset 4),
+    False for ShapeComplexUniform (phase at offset 0, no mode).
+    """
+    from webgpu.export.gui import (
+        gui_interaction, Checkbox, Slider, Write, Target,
+    )
+
+    phase_targets = []
+    mode_targets = []
+    for u, has_mode in uniforms_with_mode:
+        if u is None:
+            continue
+        buf = getattr(u, "_buffer", None)
+        if buf is None:
+            continue
+        key = id(buf)
+        if key not in registry._buffers:
+            continue
+        buf_id = registry._buffers[key][0]
+        phase_targets.append(Target(buf_id, offset=4 if has_mode else 0, dtype="f32"))
+        if has_mode:
+            mode_targets.append(Target(buf_id, offset=0, dtype="u32"))
+    if not phase_targets:
+        return []
+
+    controls = [
+        Checkbox(var="animate", name="Animate", default=False),
+        Slider(var="speed", name="Speed", default=1.0, min=0.1, max=5.0, step=0.1),
+    ]
+    writes = [
+        Write(
+            targets=phase_targets,
+            expr="(t*speed*2*Math.PI) % (2*Math.PI)",
+            when="animate",
+        ),
+    ]
+    if mode_targets:
+        # Force PHASE_ROTATE mode whenever animation is toggled on.
+        writes.append(Write(
+            targets=mode_targets,
+            value=0,
+            when="animate",
+            trigger="animate",
+            ))
+    return [gui_interaction(label, controls, writes)]
+
+
 class ComplexUniform(UniformBase):
     _binding = Binding.COMPLEX_SETTINGS
     _fields_ = [
@@ -860,6 +911,15 @@ class CFRenderer(BaseMeshElements2d):
             *self.gpu_objects.settings.get_bindings(),
             BufferBinding(Binding.FUNCTION_VALUES_2D, self._buffers["data_2d"]),
         ]
+
+    def get_export_interactions(self, options, buffer_registry):
+        out = list(super().get_export_interactions(options, buffer_registry))
+        if self.data.cf.is_complex:
+            out += _complex_phase_export_interactions(
+                [(self.gpu_objects.complex_settings.uniform, True)],
+                buffer_registry,
+            )
+        return out
 
     def set_needs_update(self):
         self.data._timestamp = -1
