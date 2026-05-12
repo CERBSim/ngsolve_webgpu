@@ -43,6 +43,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
           pip install ngsolve sphinx nbsphinx pydata-sphinx-theme ipykernel jupyter websockets playwright
+          pip install git+https://github.com/CERBSim/webgpu.git@main
           playwright install --with-deps chrome
 
       - name: Build Sphinx documentation
