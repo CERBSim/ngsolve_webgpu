@@ -72,6 +72,35 @@ class Symmetry:
         """Number of symmetry copies (including original)."""
         return len(self._get_transforms())
 
+    def expand_bbox(self, bbox):
+        """Return a bbox enclosing all symmetry copies of the input bbox.
+
+        Applies every transform matrix to the 8 corners of ``bbox`` and takes
+        the union. Returns ``None`` if ``bbox`` is ``None``.
+        """
+        if bbox is None:
+            return None
+        pmin = np.array(bbox[0], dtype=float)
+        pmax = np.array(bbox[1], dtype=float)
+        corners = np.array([
+            [pmin[0], pmin[1], pmin[2], 1.0],
+            [pmax[0], pmin[1], pmin[2], 1.0],
+            [pmin[0], pmax[1], pmin[2], 1.0],
+            [pmax[0], pmax[1], pmin[2], 1.0],
+            [pmin[0], pmin[1], pmax[2], 1.0],
+            [pmax[0], pmin[1], pmax[2], 1.0],
+            [pmin[0], pmax[1], pmax[2], 1.0],
+            [pmax[0], pmax[1], pmax[2], 1.0],
+        ])
+        new_min = pmin.copy()
+        new_max = pmax.copy()
+        for mat, _, _ in self._get_transforms():
+            transformed = corners @ mat.T
+            pts = transformed[:, :3]
+            new_min = np.minimum(new_min, pts.min(axis=0))
+            new_max = np.maximum(new_max, pts.max(axis=0))
+        return ([float(x) for x in new_min], [float(x) for x in new_max])
+
     def _add_generator(self, matrix):
         self._generators.append(matrix)
         self._transforms = None  # invalidate cache

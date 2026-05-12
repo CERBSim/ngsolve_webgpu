@@ -713,7 +713,10 @@ class BaseMeshElements2d(Renderer):
             self.shader_defines["SYMMETRY"] = "1"
 
     def get_bounding_box(self):
-        return self.data.get_bounding_box()
+        bbox = self.data.get_bounding_box()
+        if self.symmetry:
+            bbox = self.symmetry.expand_bbox(bbox)
+        return bbox
 
     def get_bindings(self):
         from .cf import FunctionData
@@ -956,7 +959,10 @@ class MeshElements3d(Renderer):
             self.uniforms.update_buffer()
 
     def get_bounding_box(self) -> tuple[list[float], list[float]] | None:
-        return self.data.get_bounding_box()
+        bbox = self.data.get_bounding_box()
+        if self.symmetry:
+            bbox = self.symmetry.expand_bbox(bbox)
+        return bbox
 
     def update(self, options: RenderOptions):
         if self.uniforms is None:
@@ -1012,6 +1018,12 @@ class MeshElements3d(Renderer):
         gui.slider(
             label="Shrink", value=self.uniforms.shrink, min=0.0, max=1.0, step=0.01, func=set_shrink
         )
+
+    def get_export_interactions(self, options, buffer_registry):
+        from .cf import _shrink_export_interactions
+        out = list(super().get_export_interactions(options, buffer_registry))
+        out += _shrink_export_interactions(self.uniforms, buffer_registry)
+        return out
 
     def get_bindings(self):
         bindings = [

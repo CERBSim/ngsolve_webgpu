@@ -10,7 +10,7 @@ from webgpu.webgpu_api import *
 
 import numpy as np
 
-from .cf import FunctionData, FunctionSettings, ComplexSettings, PhaseAnimation, _complex_phase_export_interactions
+from .cf import FunctionData, FunctionSettings, ComplexSettings, PhaseAnimation, _complex_phase_export_interactions, _component_export_interactions
 from .cf import Binding as CFBinding
 
 from .mesh import MeshElements3d, ElType
@@ -123,7 +123,10 @@ class ClippingCF(Renderer):
             self.shader_defines["SYMMETRY"] = "1"
 
     def get_bounding_box(self):
-        return self.data.get_bounding_box()
+        bbox = self.data.get_bounding_box()
+        if self.symmetry:
+            bbox = self.symmetry.expand_bbox(bbox)
+        return bbox
 
     def get_shader_code(self):
         return read_shader_file("ngsolve/clipping/render.wgsl")
@@ -190,12 +193,25 @@ class ClippingCF(Renderer):
             self._phase_animation.speed = value
 
     def get_export_interactions(self, options, buffer_registry):
+        from webgpu.export.gui import gui_interaction, Checkbox, Write, Target
         out = list(super().get_export_interactions(options, buffer_registry))
+        out += _component_export_interactions(
+            self.gpu_objects.settings.uniform, self.data.cf.dim, buffer_registry,
+        )
         if self.data.cf.is_complex:
             out += _complex_phase_export_interactions(
                 [(self.gpu_objects.complex_settings.uniform, True)],
                 buffer_registry,
             )
+        # Toggle the clipping function render pass on/off.
+        out.append(gui_interaction(
+            "Clipping Function",
+            [Checkbox(var="enabled", name="Enabled", default=True)],
+            [Write(
+                targets=[Target(f"render_{self._id}", dtype="pass_enable")],
+                expr="enabled ? 1 : 0", trigger="enabled",
+            )],
+        ))
         return out
 
     def add_options_to_gui(self, gui):

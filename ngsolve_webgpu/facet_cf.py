@@ -341,3 +341,16 @@ class FacetCFRenderer3D(MeshElements3d):
             *self.gpu_objects.settings.get_bindings(),
             *self.gpu_objects.complex_settings.get_bindings(),
         ]
+
+    def get_export_interactions(self, options, buffer_registry):
+        from .cf import _complex_phase_export_interactions, _component_export_interactions
+        out = list(super().get_export_interactions(options, buffer_registry))
+        out += _component_export_interactions(
+            self.gpu_objects.settings.uniform, self.cf.dim, buffer_registry,
+        )
+        if self.cf.is_complex:
+            out += _complex_phase_export_interactions(
+                [(self.gpu_objects.complex_settings.uniform, True)],
+                buffer_registry,
+            )
+        return out

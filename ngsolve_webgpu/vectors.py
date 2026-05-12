@@ -97,7 +97,10 @@ class VectorRenderer(ShapeRenderer):
             )
         
     def get_bounding_box(self):
-        return self.function_data.mesh_data.get_bounding_box()
+        bbox = self.function_data.mesh_data.get_bounding_box()
+        if self.symmetry:
+            bbox = self.symmetry.expand_bbox(bbox)
+        return bbox
         
     def generate_shape(self):
         cyl = generate_cylinder(8, 0.05, 0.5, bottom_face=True)

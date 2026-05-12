@@ -622,15 +622,18 @@ class FunctionSettings(BaseRenderer):
             self.uniform.update_buffer()
 
 
-def _complex_phase_export_interactions(uniforms_with_mode, registry, label="Complex Animation"):
-    """Build a generic gui ExportInteraction for complex phase animation.
+def _complex_phase_export_interactions(uniforms_with_mode, registry, label="Complex"):
+    """Build a generic gui ExportInteraction for complex visualization.
 
     uniforms_with_mode: iterable of (uniform_obj, has_mode_field).
-    has_mode_field=True for ComplexUniform (mode at offset 0, phase at offset 4),
-    False for ShapeComplexUniform (phase at offset 0, no mode).
+    has_mode_field=True for ComplexUniform (mode @ offset 0, phase @ 4),
+    False for ShapeComplexUniform (phase @ 0, no mode).
+
+    Emits: Mode dropdown (if any mode-carrying uniform), Phase slider,
+    Animate checkbox, Speed slider.
     """
     from webgpu.export.gui import (
-        gui_interaction, Checkbox, Slider, Write, Target,
+        gui_interaction, Checkbox, Slider, Dropdown, Write, Target,
     )
 
     phase_targets = []
@@ -651,26 +654,97 @@ def _complex_phase_export_interactions(uniforms_with_mode, registry, label="Comp
     if not phase_targets:
         return []
 
-    controls = [
-        Checkbox(var="animate", name="Animate", default=False),
-        Slider(var="speed", name="Speed", default=1.0, min=0.1, max=5.0, step=0.1),
-    ]
-    writes = [
-        Write(
-            targets=phase_targets,
-            expr="(t*speed*2*Math.PI) % (2*Math.PI)",
-            when="animate",
-        ),
-    ]
+    controls = []
+    writes = []
     if mode_targets:
-        # Force PHASE_ROTATE mode whenever animation is toggled on.
+        # 0=Real (PHASE_ROTATE,phase=0), 1=Imag (PHASE_ROTATE,phase=-pi/2),
+        # 2=Abs (mode=ABS), 3=Arg (mode=ARG).
+        controls.append(Dropdown(
+            var="cmode", name="Mode",
+            options={"Real": 0, "Imag": 1, "Abs": 2, "Arg": 3},
+            default=0,
+        ))
+        # Map cmode -> shader mode: 0,1 -> 0; 2 -> 1; 3 -> 2.
         writes.append(Write(
             targets=mode_targets,
-            value=0,
-            when="animate",
-            trigger="animate",
-            ))
+            expr="cmode <= 1 ? 0 : (cmode - 1)",
+            trigger="cmode",
+        ))
+        # Real/Imag set fixed phase (only when not animating).
+        writes.append(Write(
+            targets=phase_targets,
+            expr="cmode == 1 ? -Math.PI/2 : 0",
+            when="cmode <= 1 && !animate",
+            trigger="cmode",
+        ))
+
+    controls.append(Slider(var="phase", name="Phase",
+                          default=0.0, min=0.0, max=6.283, step=0.01))
+    writes.append(Write(
+        targets=phase_targets, expr="phase",
+        when="!animate", trigger="phase",
+    ))
+
+    controls.append(Checkbox(var="animate", name="Animate", default=False))
+    controls.append(Slider(var="speed", name="Speed",
+                          default=1.0, min=0.1, max=5.0, step=0.1))
+    writes.append(Write(
+        targets=phase_targets,
+        expr="(t*speed*2*Math.PI) % (2*Math.PI)",
+        when="animate",
+    ))
+    if mode_targets:
+        # Force PHASE_ROTATE mode while animating.
+        writes.append(Write(
+            targets=mode_targets, value=0,
+            when="animate", trigger="animate",
+        ))
     return [gui_interaction(label, controls, writes)]
+
+
+def _component_export_interactions(uniform, dim, registry, label="Function"):
+    """Dropdown to select the active component (i32 at offset 0)."""
+    from webgpu.export.gui import gui_interaction, Dropdown, Write, Target
+
+    if uniform is None or dim <= 1:
+        return []
+    buf = getattr(uniform, "_buffer", None)
+    if buf is None:
+        return []
+    key = id(buf)
+    if key not in registry._buffers:
+        return []
+    buf_id = registry._buffers[key][0]
+    options = {"Norm": -1}
+    for d in range(dim):
+        options[str(d)] = d
+    return [gui_interaction(
+        label,
+        [Dropdown(var="component", name="Component", options=options, default=-1)],
+        [Write(targets=[Target(buf_id, offset=0, dtype="i32")],
+               expr="component", trigger="component")],
+    )]
+
+
+def _shrink_export_interactions(uniform, registry, label="3D Elements", offset=4):
+    """Slider for the shrink field (f32) of a uniform buffer."""
+    from webgpu.export.gui import gui_interaction, Slider, Write, Target
+
+    if uniform is None:
+        return []
+    buf = getattr(uniform, "_buffer", None)
+    if buf is None:
+        return []
+    key = id(buf)
+    if key not in registry._buffers:
+        return []
+    buf_id = registry._buffers[key][0]
+    return [gui_interaction(
+        label,
+        [Slider(var="shrink", name="Shrink", default=1.0, min=0.0, max=1.0, step=0.01)],
+        [Write(targets=[Target(buf_id, offset=offset, dtype="f32")],
+               expr="shrink", trigger="shrink")],
+    )]
 
 
 class ComplexUniform(UniformBase):
@@ -818,7 +892,10 @@ class CFRenderer(BaseMeshElements2d):
         self._on_component_change.append(callback)
 
     def get_bounding_box(self):
-        return self.data.get_bounding_box()
+        bbox = self.data.get_bounding_box()
+        if self.symmetry:
+            bbox = self.symmetry.expand_bbox(bbox)
+        return bbox
 
     def add_options_to_gui(self, gui):
         if gui is None:
@@ -914,6 +991,9 @@ class CFRenderer(BaseMeshElements2d):
 
     def get_export_interactions(self, options, buffer_registry):
         out = list(super().get_export_interactions(options, buffer_registry))
+        out += _component_export_interactions(
+            self.gpu_objects.settings.uniform, self.data.cf.dim, buffer_registry,
+        )
         if self.data.cf.is_complex:
             out += _complex_phase_export_interactions(
                 [(self.gpu_objects.complex_settings.uniform, True)],

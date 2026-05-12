@@ -62,7 +62,10 @@ class GeometryFaceRenderer(BaseGeometryRenderer):
         self._buffers = {}
 
     def get_bounding_box(self):
-        return self.bounding_box
+        bbox = self.bounding_box
+        if self.symmetry:
+            bbox = self.symmetry.expand_bbox(bbox)
+        return bbox
 
     def set_colors(self, colors):
         """colors is numpy float32 array with 4 times number indices entries"""
