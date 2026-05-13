@@ -1076,6 +1076,7 @@ class FieldLines(ShapeRenderer):
         direction: int = 0,
         colormap=None,
         clipping=None,
+        seed: int | None = None,
     ):
         import ngsolve as ngs
         self.fieldline_options = {
@@ -1086,6 +1087,7 @@ class FieldLines(ShapeRenderer):
             "tolerance": tolerance,
             "direction": direction,
         }
+        self.seed = seed
         self.cf = cf
         if isinstance(start_region, ngs.Mesh):
             self.mesh = start_region
@@ -1107,8 +1109,11 @@ class FieldLines(ShapeRenderer):
         return ([pmin[0], pmin[1], pmin[2]], [pmax[0], pmax[1], pmax[2]])
 
     def update(self, options):
+        import numpy as np
         from ngsolve.webgui import FieldLines
 
+        if self.seed is not None:
+            np.random.seed(self.seed)
         data = FieldLines(self.cf, self.start_region, **self.fieldline_options)
         bbox = self.mesh.ngmesh.bounding_box
         thickness = (bbox[1] - bbox[0]).Norm() * self.fieldline_options["thickness"]

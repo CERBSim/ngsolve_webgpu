@@ -101,7 +101,7 @@ class TestVectors:
         webgpu_env.ensure_canvas(600, 600)
         mesh = ngs.Mesh(ngs.unit_cube.GenerateMesh(maxh=0.5))
         cf = ngs.CF((ngs.x, ngs.y, ngs.z))
-        renderer = FieldLines(cf, mesh, num_lines=20)
+        renderer = FieldLines(cf, mesh, num_lines=20, seed=42)
         scene = wj.Draw([renderer], 600, 600)
 
-        webgpu_env.assert_matches_baseline(scene, "fieldlines.png", threshold=0.05)
+        webgpu_env.assert_matches_baseline(scene, "fieldlines.png")
