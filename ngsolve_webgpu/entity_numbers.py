@@ -49,13 +49,17 @@ class EntityNumbers(Renderer):
         self._dummy_uniform = None
         self._dummy_buffer = None
         self._offset_buffer = None
+        self.font = None
         if entity in ("volume_elements", "volume_indices"):
             data.need_3d = True
 
     def update(self, options: RenderOptions):
         self.clipping.update(options)
         self.data.update(options)
-        self.font = Font(options.canvas, self.font_size)
+        if self.font is None:
+            self.font = Font(options.canvas, self.font_size)
+        else:
+            self.font.set_font_size(self.font_size)
         self._mesh_buffers = self.data.get_buffers()
 
         offset = 0 if self.zero_based else 1

@@ -226,6 +226,30 @@ class FunctionData:
         self.order = order
         self.order_3d = order if order3d == -1 else order3d
         self._need_3d = mesh_data.need_3d
+        self._component_param = None
+
+    @property
+    def component_param(self):
+        """Shared GuiParam for component selection. Created on first access."""
+        if self._component_param is None and self.cf.dim > 1:
+            from webgpu.gui_param import GuiParam
+            options = {"Norm": -1}
+            for d in range(self.cf.dim):
+                options[str(d)] = d
+            self._component_param = GuiParam(
+                "dropdown", "Component", options=options, default=-1
+            )
+        return self._component_param
+
+    @property
+    def min_values(self):
+        """Dict mapping component option value -> min. {-1: norm, 0: comp0, ...}"""
+        return {i - 1: self.minval[i] for i in range(len(self.minval))}
+
+    @property
+    def max_values(self):
+        """Dict mapping component option value -> max. {-1: norm, 0: comp0, ...}"""
+        return {i - 1: self.maxval[i] for i in range(len(self.maxval))}
 
     @check_timestamp
     def update(self, options: RenderOptions):
@@ -623,7 +647,7 @@ class FunctionSettings(BaseRenderer):
 
 
 def _complex_phase_export_interactions(uniforms_with_mode, registry, label="Complex"):
-    """Build a generic gui ExportInteraction for complex visualization.
+    """Build a generic gui Interaction for complex visualization.
 
     uniforms_with_mode: iterable of (uniform_obj, has_mode_field).
     has_mode_field=True for ComplexUniform (mode @ offset 0, phase @ 4),
@@ -702,7 +726,8 @@ def _complex_phase_export_interactions(uniforms_with_mode, registry, label="Comp
     return [gui_interaction(label, controls, writes)]
 
 
-def _component_export_interactions(uniform, dim, registry, label="Function"):
+def _component_export_interactions(uniform, dim, registry, label="Function",
+                                   colormap_uniform=None, minval=None, maxval=None):
     """Dropdown to select the active component (i32 at offset 0)."""
     from webgpu.export.gui import gui_interaction, Dropdown, Write, Target
 
@@ -718,11 +743,30 @@ def _component_export_interactions(uniform, dim, registry, label="Function"):
     options = {"Norm": -1}
     for d in range(dim):
         options[str(d)] = d
+    writes = [Write(targets=[Target(buf_id, offset=0, dtype="i32")],
+                    expr="component", trigger="component")]
+    if colormap_uniform is not None and minval is not None and maxval is not None:
+        cmap_buf = getattr(colormap_uniform, "_buffer", None)
+        if cmap_buf is not None:
+            cmap_key = id(cmap_buf)
+            if cmap_key in registry._buffers:
+                cmap_buf_id = registry._buffers[cmap_key][0]
+                min_arr = "[" + ", ".join(str(float(v)) for v in minval) + "]"
+                max_arr = "[" + ", ".join(str(float(v)) for v in maxval) + "]"
+                writes.append(Write(
+                    targets=[Target(cmap_buf_id, offset=0, dtype="f32")],
+                    expr=f"{min_arr}[component + 1]",
+                    trigger="component",
+                ))
+                writes.append(Write(
+                    targets=[Target(cmap_buf_id, offset=4, dtype="f32")],
+                    expr=f"{max_arr}[component + 1]",
+                    trigger="component",
+                ))
     return [gui_interaction(
         label,
         [Dropdown(var="component", name="Component", options=options, default=-1)],
-        [Write(targets=[Target(buf_id, offset=0, dtype="i32")],
-               expr="component", trigger="component")],
+        writes,
     )]
 
 
@@ -835,6 +879,24 @@ class PhaseAnimation:
             time.sleep(1 / self._fps)
 
 
+def _bind_component_param(renderer):
+    """Auto-bind to FunctionData's shared component_param.
+
+    Works with any renderer that exposes ``data``, ``gpu_objects.settings``,
+    ``gpu_objects.colormap``, and ``_gui_params``.
+    """
+    param = renderer.data.component_param
+    if param is None:
+        return
+    param.bind(renderer.gpu_objects.settings, "component")
+    if renderer.gpu_objects.colormap.autoscale:
+        param.affects(renderer.gpu_objects.colormap, "min",
+                     values=lambda: renderer.data.min_values)
+        param.affects(renderer.gpu_objects.colormap, "max",
+                     values=lambda: renderer.data.max_values)
+    renderer._gui_params.append(param)
+
+
 class CFRenderer(BaseMeshElements2d):
     """Use "vertices", "index" and "trig_function_values" buffers to render a mesh"""
 
@@ -861,6 +923,12 @@ class CFRenderer(BaseMeshElements2d):
         self._phase_animation = None
         self._scene = None
         self._anim_speed = 1.0
+        self._gui_params = []
+        self._bind_component_param()
+
+    def _bind_component_param(self):
+        """Auto-bind to FunctionData's shared component_param."""
+        _bind_component_param(self)
         
     @property
     def colormap(self):
@@ -991,9 +1059,6 @@ class CFRenderer(BaseMeshElements2d):
 
     def get_export_interactions(self, options, buffer_registry):
         out = list(super().get_export_interactions(options, buffer_registry))
-        out += _component_export_interactions(
-            self.gpu_objects.settings.uniform, self.data.cf.dim, buffer_registry,
-        )
         if self.data.cf.is_complex:
             out += _complex_phase_export_interactions(
                 [(self.gpu_objects.complex_settings.uniform, True)],

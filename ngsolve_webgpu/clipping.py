@@ -10,8 +10,9 @@ from webgpu.webgpu_api import *
 
 import numpy as np
 
-from .cf import FunctionData, FunctionSettings, ComplexSettings, PhaseAnimation, _complex_phase_export_interactions, _component_export_interactions
+from .cf import FunctionData, FunctionSettings, ComplexSettings, PhaseAnimation, _complex_phase_export_interactions
 from .cf import Binding as CFBinding
+from .cf import _bind_component_param
 
 from .mesh import MeshElements3d, ElType
 from .mesh import Binding as MeshBinding
@@ -65,6 +66,7 @@ class ClippingCF(Renderer):
         self.cut_trigs_counter = None
         self.cut_trigs = None
         self.trig_counter = None
+        self._js_compute = False
 
         self.n_tets = None
         if component is None:
@@ -76,6 +78,12 @@ class ClippingCF(Renderer):
         self._scene = None
         self._anim_speed = 1.0
         self.symmetry = symmetry
+        self._gui_params = []
+        self._bind_component_param()
+
+    def _bind_component_param(self):
+        """Auto-bind to FunctionData's shared component_param."""
+        _bind_component_param(self)
 
     @property
     def colormap(self):
@@ -117,7 +125,8 @@ class ClippingCF(Renderer):
                 timestamp=options.timestamp,
             )
         self.gpu_objects.complex_settings.update(options)
-        self.build_clip_plane()
+        if not self._js_compute:
+            self.build_clip_plane()
         if self.symmetry:
             self.n_instances = self._original_n_instances * self.symmetry.n_copies
             self.shader_defines["SYMMETRY"] = "1"
@@ -195,9 +204,6 @@ class ClippingCF(Renderer):
     def get_export_interactions(self, options, buffer_registry):
         from webgpu.export.gui import gui_interaction, Checkbox, Write, Target
         out = list(super().get_export_interactions(options, buffer_registry))
-        out += _component_export_interactions(
-            self.gpu_objects.settings.uniform, self.data.cf.dim, buffer_registry,
-        )
         if self.data.cf.is_complex:
             out += _complex_phase_export_interactions(
                 [(self.gpu_objects.complex_settings.uniform, True)],
@@ -331,8 +337,10 @@ class ClippingCF(Renderer):
 
         # Start with a minimal output buffer — the JS engine will resize
         # after the first count pass via the count_then_fill mechanism.
+        # Live mode keeps Python's existing (correctly-sized) buffer because
+        # the JS engine binds to the live proxy directly.
         min_size = 64  # minimum 1 SubTrig element
-        if self.cut_trigs.size > min_size:
+        if not buffer_registry.live and self.cut_trigs.size > min_size:
             self.cut_trigs.destroy()
             self.cut_trigs = self.device.createBuffer(
                 size=min_size, usage=BufferUsage.STORAGE, label="cut_trigs_export"

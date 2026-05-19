@@ -54,10 +54,12 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
       continue;
     }
     let index = atomicAdd(&count_trigs, cuts.n);
-    if(index + cuts.n > arrayLength(&subtrigs)) {
+    let max_trigs = arrayLength(&subtrigs);
+    if(index >= max_trigs) {
       continue;
     }
-    for(var k = 0u; k < cuts.n; k++) {
+    let write_count = min(cuts.n, max_trigs - index);
+    for(var k = 0u; k < write_count; k++) {
       subtrigs[index+k] = cuts.trigs[k];
     }
   }
