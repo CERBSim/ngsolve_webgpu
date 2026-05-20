@@ -94,6 +94,11 @@ class ClippingCF(Renderer):
     def colormap(self, value: Colormap):
         self.gpu_objects.colormap = value
 
+    def set_needs_update(self):
+        """Invalidate cached state so build_clip_plane runs on next update."""
+        self._last_clipping_bytes = None
+        super().set_needs_update()
+
     def update(self, options: RenderOptions):
         self.data.update(options)
         if self.data.data_3d is None:
@@ -127,7 +132,10 @@ class ClippingCF(Renderer):
             )
         self.gpu_objects.complex_settings.update(options)
         if not self._js_compute:
-            # Only recompute clipping triangles when the plane actually changed
+            # Only recompute clipping triangles when inputs actually changed.
+            # Clipping plane changes are detected by comparing uniform bytes.
+            # Mesh/deformation changes go through set_needs_update() which
+            # invalidates _last_clipping_bytes, forcing a rebuild.
             clipping_bytes = bytes(self._clipping.uniforms)
             if clipping_bytes != self._last_clipping_bytes:
                 self._last_clipping_bytes = clipping_bytes
