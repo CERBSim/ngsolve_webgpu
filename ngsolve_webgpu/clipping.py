@@ -67,6 +67,7 @@ class ClippingCF(Renderer):
         self.cut_trigs = None
         self.trig_counter = None
         self._js_compute = False
+        self._last_clipping_bytes = None
 
         self.n_tets = None
         if component is None:
@@ -126,7 +127,11 @@ class ClippingCF(Renderer):
             )
         self.gpu_objects.complex_settings.update(options)
         if not self._js_compute:
-            self.build_clip_plane()
+            # Only recompute clipping triangles when the plane actually changed
+            clipping_bytes = bytes(self._clipping.uniforms)
+            if clipping_bytes != self._last_clipping_bytes:
+                self._last_clipping_bytes = clipping_bytes
+                self.build_clip_plane()
         if self.symmetry:
             self.n_instances = self._original_n_instances * self.symmetry.n_copies
             self.shader_defines["SYMMETRY"] = "1"
@@ -288,6 +293,10 @@ class ClippingCF(Renderer):
             label="cut_trigs_counter",
             reuse=self.cut_trigs_counter,
         )
+        # Explicitly reset counter to 0 — buffer_from_array's reuse optimization
+        # skips the write when _data matches, but the GPU buffer was modified by
+        # the previous fill pass's atomicAdd.
+        write_array_to_buffer(self.trig_counter, np.array([0], dtype=np.uint32))
         shader_code = read_shader_file(self.compute_shader)
         run_compute_shader(
             shader_code, self.get_bindings(compute=True, count=True), 1024, "build_clip_plane", defines=self.data.mesh_data.get_shader_defines()
@@ -335,15 +344,13 @@ class ClippingCF(Renderer):
         saved_clipping = self.clipping
         self.clipping = self._clipping
 
-        # Start with a minimal output buffer — the JS engine will resize
-        # after the first count pass via the count_then_fill mechanism.
-        # Live mode keeps Python's existing (correctly-sized) buffer because
-        # the JS engine binds to the live proxy directly.
-        min_size = 64  # minimum 1 SubTrig element
-        if not buffer_registry.live and self.cut_trigs.size > min_size:
-            self.cut_trigs.destroy()
+        # The JS engine owns the output buffer (cut_trigs) and indirect buffer
+        # entirely via the countThenFill protocol.  Python only needs minimal
+        # placeholders so the buffer registry can assign stable IDs.
+        min_size = 64
+        if self.cut_trigs is None or self.cut_trigs.size < min_size:
             self.cut_trigs = self.device.createBuffer(
-                size=min_size, usage=BufferUsage.STORAGE, label="cut_trigs_export"
+                size=min_size, usage=BufferUsage.STORAGE, label="cut_trigs"
             )
 
         fill_bindings = self.get_bindings(compute=True, count=False)
@@ -355,16 +362,18 @@ class ClippingCF(Renderer):
         trig_counter_id = buffer_registry.get_id(self.trig_counter)
         cut_trigs_id = buffer_registry.get_id(self.cut_trigs)
 
-        # Create indirect args buffer
-        indirect_data = np.array([self.n_vertices, 0, 0, 0], dtype=np.uint32)
-        self._indirect_buffer = buffer_from_array(
-            indirect_data,
-            usage=BufferUsage.INDIRECT | BufferUsage.STORAGE | BufferUsage.COPY_DST,
-            label="clip_indirect",
-        )
+        # Indirect buffer: also JS-owned.  Create a minimal placeholder for
+        # the registry ID; the JS engine creates the real one in initPipelines.
+        if not hasattr(self, '_indirect_buffer') or self._indirect_buffer is None:
+            self._indirect_buffer = self.device.createBuffer(
+                size=16,
+                usage=BufferUsage.INDIRECT | BufferUsage.STORAGE | BufferUsage.COPY_DST,
+                label="clip_indirect",
+            )
         indirect_buf_id = buffer_registry._next_id("indirect")
-        buffer_registry._buffers[id(self._indirect_buffer)] = (indirect_buf_id, self._indirect_buffer, "indirect")
-
+        buffer_registry._buffers[id(self._indirect_buffer)] = (
+            indirect_buf_id, self._indirect_buffer, "indirect"
+        )
         self._export_indirect_buf_id = indirect_buf_id
 
         fill_pass_id = f"clip_fill_{self._id}"
