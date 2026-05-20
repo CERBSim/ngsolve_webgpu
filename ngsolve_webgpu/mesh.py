@@ -987,6 +987,8 @@ class MeshElements3d(Renderer):
             self.shader_defines["SYMMETRY"] = "1"
 
     def render(self, options):
+        if not hasattr(self, 'pipeline'):
+            return
         render_pass = options.begin_render_pass()
         render_pass.setPipeline(self.pipeline)
         render_pass.setBindGroup(0, self.group)

@@ -318,7 +318,11 @@ class FacetCFRenderer3D(MeshElements3d):
         super().update(options)
 
         if self._facet_data is None:
-            self._extract_facet_data()
+            try:
+                self._extract_facet_data()
+            except Exception:
+                self.active = False
+                return
 
         self._facet_gpu = buffer_from_array(
             self._facet_data, label="facet_values_3d", reuse=self._facet_gpu
