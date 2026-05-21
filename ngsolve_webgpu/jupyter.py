@@ -5,10 +5,10 @@ from webgpu.clipping import Clipping
 from webgpu.colormap import Colorbar, Colormap
 import netgen.occ as ngocc
 
-from .cf import CFRenderer, FunctionData
+from .cf import FunctionData
 from .mesh import MeshData, MeshElements2d, MeshWireframe2d
 from .geometry import GeometryRenderer
-from .clipping import ClippingCF
+from .isolines import IsolineRenderer, ClippingIsolineRenderer
 
 _local_path = None  # change this to local path of pyodide compiled zip files
 
@@ -114,6 +114,7 @@ def Draw(
     subdivision: int | None = None,
     contact: ngs.ContactBoundary | None = None,
     clipping: bool | dict | None = None,
+    isolines: bool | int | None = None,
     **kwargs,
 ):
     """
@@ -177,7 +178,12 @@ def Draw(
 
     if isinstance(obj, ngs.CoefficientFunction):
         function_data = FunctionData(mesh_data, obj, order)
-        r_cf = CFRenderer(function_data, clipping=clipping, colormap=colormap, **kwargs)
+        if isolines is not None:
+            n_lines = isolines if isinstance(isolines, int) else 10
+        else:
+            n_lines = 0
+        r_cf = IsolineRenderer(function_data, n_lines=n_lines, show_field=True,
+                              clipping=clipping, colormap=colormap, **kwargs)
         render_objects.append(r_cf)
         render_objects.append(Colorbar(colormap=colormap))
         if vectors:
@@ -190,7 +196,8 @@ def Draw(
             vcf.colormap = r_cf.colormap
             render_objects.append(vcf)
         if mesh.dim == 3:
-            clipping_cf = ClippingCF(function_data, clipping=clipping, colormap=colormap)
+            clipping_cf = ClippingIsolineRenderer(function_data, clipping=clipping,
+                                                     n_lines=n_lines, show_field=True, colormap=colormap)
             render_objects.append(clipping_cf)
 
     if deformation:

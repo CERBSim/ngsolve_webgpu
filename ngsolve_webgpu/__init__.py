@@ -4,6 +4,7 @@ from .cf import FunctionData, CFRenderer
 from .facet_cf import FacetFunctionData, FacetCFRenderer, FacetCFRenderer3D
 from .pick import MeshPickResult, HighlightUniforms, GeoPickResult
 from .clipping import ClippingCF
+from .isolines import IsolineSettings, IsolineRenderer, ClippingIsolineRenderer
 from webgpu.colormap import Colorbar, Colormap
 from webgpu.clipping import Clipping
 from .geometry import GeometryRenderer

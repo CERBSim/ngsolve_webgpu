@@ -9,7 +9,7 @@ from webgpu.clipping import Clipping
 from webgpu.colormap import Colormap
 from webgpu.renderer import Renderer, RenderOptions, check_timestamp
 from webgpu.shapes import ShapeRenderer, generate_cylinder
-from webgpu.utils import BufferBinding, UniformBinding, buffer_from_array, write_array_to_buffer
+from webgpu.utils import BufferBinding, UniformBinding, buffer_from_array, write_array_to_buffer, read_shader_file
 from webgpu.renderer import BaseRenderer, RenderOptions, check_timestamp
 from webgpu.uniforms import UniformBase, ct
 from webgpu.utils import (
