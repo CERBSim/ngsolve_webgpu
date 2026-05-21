@@ -18,6 +18,11 @@ classifiers = [
 ]
 readme = "README.md"
 requires-python = ">=3.8"
+dependencies = ["numpy", "webgpu", "ngsolve", "typing_extensions"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+docs = ["sphinx", "nbsphinx", "pydata-sphinx-theme"]
 
 [tool.setuptools_scm]
 version_file = "ngsolve_webgpu/_version.py"
