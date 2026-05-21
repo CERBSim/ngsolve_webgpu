@@ -358,18 +358,6 @@ class VectorRenderer(ShapeRenderer):
             self._phase_animation.stop()
             self._phase_animation = None
 
-    def add_options_to_gui(self, gui):
-        if gui is None:
-            return
-        super().add_options_to_gui(gui)
-        if self.function_data.cf.is_complex:
-            f = gui.folder("Complex")
-            complex_options = {"Real": "real", "Imag": "imag", "Abs": "abs"}
-            f.dropdown(func=self.set_complex_mode, label="Mode", values=complex_options)
-            f.slider(0.0, func=self._set_phase_from_gui, min=0.0, max=6.283, label="Phase")
-            f.checkbox(func=self._toggle_animation, label="Animate", value=False)
-            f.slider(1.0, func=self._set_speed_from_gui, min=0.1, max=5.0, label="Speed")
-
     def _set_phase_from_gui(self, value):
         self._complex_settings.mode = ComplexSettings.PHASE_ROTATE
         self.set_phase(value)

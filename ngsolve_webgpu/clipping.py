@@ -233,22 +233,6 @@ class ClippingCF(Renderer):
         ))
         return out
 
-    def add_options_to_gui(self, gui):
-        if gui is None:
-            return
-        def set_enabled(value):
-            self.active = value
-            self.set_needs_update()
-        folder = gui.folder("Clipping", closed=True)
-        folder.checkbox("function", self.active, set_enabled)
-        if self.data.cf.is_complex:
-            f = folder.folder("Complex")
-            complex_options = {"Real": "real", "Imag": "imag", "Abs": "abs", "Arg": "arg"}
-            f.dropdown(func=self.set_complex_mode, label="Mode", values=complex_options)
-            f.slider(0.0, func=self._set_phase_from_gui, min=0.0, max=6.283, label="Phase")
-            f.checkbox(func=self._toggle_animation, label="Animate", value=False)
-            f.slider(1.0, func=self._set_speed_from_gui, min=0.1, max=5.0, label="Speed")
-
     def get_bindings(self, compute=False, count: bool = False):
         bindings = [
             *self.data.mesh_data.get_bindings(),

@@ -245,34 +245,6 @@ class IsolineRenderer(CFRenderer):
         )
         return out
 
-    def add_options_to_gui(self, gui):
-        super().add_options_to_gui(gui)
-        if gui is None:
-            return
-        iso = self._isolines
-        f = gui.folder("Isolines", closed=True)
-
-        def set_enabled(val):
-            if val:
-                iso.n_lines = max(getattr(iso, '_last_n_lines', 10), 1)
-            else:
-                iso._last_n_lines = iso.n_lines
-                iso.n_lines = 0
-            self.set_needs_update()
-
-        def set_n(val):
-            iso.n_lines = int(val)
-            self.set_needs_update()
-
-        def set_thick(val):
-            iso.thickness = val
-            self.set_needs_update()
-
-        f.checkbox("enabled", iso.n_lines > 0, set_enabled)
-        f.slider(iso.n_lines, func=set_n, min=0, max=50, label="Count", step=1)
-        f.slider(iso.thickness, func=set_thick, min=0.5, max=5.0, label="Thickness")
-
-
 from .clipping import ClippingCF
 
 

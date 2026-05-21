@@ -965,22 +965,6 @@ class CFRenderer(BaseMeshElements2d):
             bbox = self.symmetry.expand_bbox(bbox)
         return bbox
 
-    def add_options_to_gui(self, gui):
-        if gui is None:
-            return
-        if self.data.cf.dim > 1:
-            options = {"Norm": -1}
-            for d in range(self.data.cf.dim):
-                options[str(d)] = d
-            gui.dropdown(func=self.set_component, label="Component", values=options)
-        if self.data.cf.is_complex:
-            f = gui.folder("Complex")
-            complex_options = {"Real": "real", "Imag": "imag", "Abs": "abs", "Arg": "arg"}
-            f.dropdown(func=self.set_complex_mode, label="Mode", values=complex_options)
-            f.slider(0.0, func=self._set_phase_from_gui, min=0.0, max=6.283, label="Phase")
-            f.checkbox(func=self._toggle_animation, label="Animate", value=False)
-            f.slider(1.0, func=self._set_speed_from_gui, min=0.1, max=5.0, label="Speed")
-
     @deprecated("Use set_component instead")
     def change_cf_dim(self, value):
         self.set_component(value)

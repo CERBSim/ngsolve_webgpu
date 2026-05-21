@@ -1009,18 +1009,6 @@ class MeshElements3d(Renderer):
                 )
         render_pass.end()
 
-    def add_options_to_gui(self, gui):
-        if gui is None:
-            return
-
-        def set_shrink(value):
-            self.uniforms.shrink = value
-            self.uniforms.update_buffer()
-
-        gui.slider(
-            label="Shrink", value=self.uniforms.shrink, min=0.0, max=1.0, step=0.01, func=set_shrink
-        )
-
     def get_export_interactions(self, options, buffer_registry):
         from .cf import _shrink_export_interactions
         out = list(super().get_export_interactions(options, buffer_registry))

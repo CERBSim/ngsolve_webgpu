@@ -233,10 +233,6 @@ def Draw(
         if hasattr(ro, '_scene'):
             ro._scene = scene
 
-    if dim == 3:
-        clipping.add_options_to_gui(scene.gui)
-    for r in render_objects:
-        r.add_options_to_gui(scene.gui)
     return scene
 
 
