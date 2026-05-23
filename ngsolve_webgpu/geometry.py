@@ -74,6 +74,8 @@ class GeometryFaceRenderer(BaseGeometryRenderer):
             self.device.queue.writeBuffer(self._buffers["colors"], 0, self.colors.tobytes())
 
     def update(self, options):
+        if self._buffers:
+            return
         vis_data = self.vis_data
         self.bounding_box = (vis_data["min"], vis_data["max"])
         verts = vis_data["vertices"]
@@ -160,6 +162,8 @@ class GeometryEdgeRenderer(BaseGeometryRenderer):
             self.device.queue.writeBuffer(self._buffers["colors"], 0, self.colors.tobytes())
 
     def update(self, options):
+        if self._buffers:
+            return
         vis_data = self.vis_data
         verts = vis_data["edges"]
         self.colors = vis_data["edge_colors"]
@@ -219,6 +223,8 @@ class GeometryVertexRenderer(BaseGeometryRenderer):
         return read_shader_file("ngsolve/geo_vertex.wgsl")
 
     def update(self, options):
+        if self._buffers:
+            return
         verts = set(self.geo.shape.vertices)
         self.colors = np.array(
             [v.col if v.col is not None else [0.3, 0.3, 0.3, 1.0] for v in verts],
@@ -257,13 +263,15 @@ class GeometryRenderer(MultipleRenderer):
         self.edges.clipping = self.clipping
         self.vertices.clipping = self.clipping
         self.vertices.active = False
+        self._vis_data = None
         super().__init__([self.vertices, self.edges, self.faces])
 
     def update(self, options: RenderOptions):
-        vis_data = self.geo._visualizationData()
+        if self._vis_data is None:
+            self._vis_data = self.geo._visualizationData()
         self.clipping.update(options)
         for ro in self.render_objects:
-            ro.vis_data = vis_data
+            ro.vis_data = self._vis_data
             ro.update(options)
 
         self.canvas = options.canvas
