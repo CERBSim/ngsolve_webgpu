@@ -238,7 +238,7 @@ class GeometryVertexRenderer(BaseGeometryRenderer):
         self.thickness_uniform = uniform_from_array(np.array([self.thickness], dtype=np.float32))
         n_regions = max(self.n_instances, 1)
         self._selection = np.zeros(n_regions, dtype=np.uint32)
-        self._buffers["selection"] = buffer_from_array(self._selection)
+        self._buffers["selection"] = buffer_from_array(self._selection, reuse=self._buffers.get("selection"))
         self.shader_defines["HAS_SELECTION"] = "1"
 
     def get_bindings(self):
