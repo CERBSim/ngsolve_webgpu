@@ -50,7 +50,7 @@ class ClippingCF(Renderer):
     subdivision = 0
 
     def __init__(
-        self, data: FunctionData, clipping: Clipping = None, colormap: Colormap = None, component=-1, symmetry=None
+        self, data: FunctionData, clipping: Clipping = None, colormap: Colormap = None, component=None, symmetry=None
     ):
         super().__init__()
         from .pick import HighlightUniforms
