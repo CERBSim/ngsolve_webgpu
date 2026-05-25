@@ -8,3 +8,4 @@ ngsolve_webgpu/_version.py
 /tests/*.html
 /docs/html/
 /docs/_static/landing.html
+/docs/_static/webgpu_scenes/
