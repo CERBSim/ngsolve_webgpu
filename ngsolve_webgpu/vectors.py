@@ -76,7 +76,11 @@ class VectorRenderer(ShapeRenderer):
         self.scale_by_value = scale_by_value
         mesh = function_data.mesh_data
         bbox = mesh.get_bounding_box()
-        self.box_size = np.linalg.norm(np.array(bbox[1]) - np.array(bbox[0]))
+        # Use the longest side of the bounding box (not its diagonal) so that
+        # thin slabs and cubes of similar lateral extent get a similar sampling
+        # density. The diagonal would couple the spacing to the aspect ratio.
+        sides = np.array(bbox[1]) - np.array(bbox[0])
+        self.box_size = float(np.max(sides))
         self.set_grid_size(grid_size)
         self.__buffers = {}
         self.symmetry = symmetry
@@ -177,6 +181,7 @@ class VectorRenderer(ShapeRenderer):
             label="n_vectors",
             usage=BufferUsage.STORAGE | BufferUsage.COPY_DST | BufferUsage.COPY_SRC,
             reuse=self.u_nvectors,
+            use_cache=False,
         )
         self.n_vectors = 1
         self.allocate_buffers()
@@ -396,6 +401,7 @@ class SurfaceVectors(VectorRenderer):
         self.compute_entry_point = "compute_surface_vectors"
         self.u_ntrigs = None
         super().__init__(function_data=function_data, grid_size=grid_size, clipping=clipping, colormap=colormap, symmetry=symmetry, vector_symmetry=vector_symmetry, scale_by_value=scale_by_value)
+        self.gpu_objects.clipping = self.clipping
         
     def update(self, options):
         self.n_search_els = self.function_data.mesh_data.ngs_mesh.GetNE(ngs.BND)
@@ -463,6 +469,7 @@ class ClippingVectors(VectorRenderer):
             label="n_vectors",
             usage=BufferUsage.STORAGE | BufferUsage.COPY_DST | BufferUsage.COPY_SRC,
             reuse=self.u_nvectors,
+            use_cache=False,
         )
         self.n_vectors = 1
         self.allocate_buffers()

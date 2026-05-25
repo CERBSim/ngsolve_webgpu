@@ -10,8 +10,6 @@ fn compute_surface_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
     let p = loadTriangle(trigId).p;
     
     let gridsize = u_gridsize;
-    let pmin = vec3f(-1, -1, -1);
-    let rad = 1.0;
 
     var dir: u32 =0;
     var dir1: u32 =0;
@@ -36,8 +34,7 @@ fn compute_surface_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
 
     for (var k: u32 = 0; k < 3; k++)
       {
-        p2d[k] = vec2f((p[k][dir1] - pmin[dir1]) / (2*rad),
-                       (p[k][dir2] - pmin[dir2]) / (2*rad));
+        p2d[k] = vec2f(p[k][dir1], p[k][dir2]);
       }
 
     var min2d = min(min(p2d[0], p2d[1]), p2d[2]);
@@ -50,22 +47,19 @@ fn compute_surface_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
     let mdet = determinant(m);
 
     let minv = 1.0/mdet * mat2x2f( m[1][1], -m[0][1], -m[1][0], m[0][0] );
-    
-    for (var s = 0.0; s <= 1.; s += 1.0 * gridsize) {
-      if (s >= min2d.x && s <= max2d.x) 
-      {
-        for (var t = 0.; t <= 1.; t += 1.0 * gridsize) {
-          if (t >= min2d.y && t <= max2d.y)
-            {
+
+    let s_start = ceil(min2d.x / gridsize) * gridsize;
+    let t_start = ceil(min2d.y / gridsize) * gridsize;
+
+    for (var s = s_start; s <= max2d.x; s += gridsize) {
+        for (var t = t_start; t <= max2d.y; t += gridsize) {
               let lam = minv * (vec2f(s, t) - p2d[0]);
               
               if (lam.x >= 0 && lam.y >= 0 && lam.x+lam.y <= 1)
                 {
                   atomicAdd(&count_vectors, 1);
                 }
-  }
-    }
-      }
+        }
     }
   }
 }
