@@ -29,15 +29,43 @@ class IsoSurfaceRenderer(ClippingCF):
         self.levelset = levelset_data
         self.levelset.need_3d = True
         self.subdivision = 0
+        self._iso_subdivision = None  # None = auto-computed from levelset order
 
     def get_shader_code(self):
         return read_shader_file("ngsolve/isosurface/render.wgsl")
 
+    def _get_iso_subdivision(self):
+        """Compute subdivision level for the isosurface compute shader.
+
+        Uses all-edge-midpoint subdivision (8 sub-tets per level).
+        Each level halves all edges, so after k levels each edge
+        has 2^k segments.
+        """
+        if self._iso_subdivision is not None:
+            return self._iso_subdivision
+        order = self.levelset.order_3d
+        if order > 3:
+            k = 0
+            while (1 << k) < order:
+                k += 1
+            return k
+        elif order > 1:
+            return order - 1
+        else:
+            return 0
+
     def update(self, options: RenderOptions):
-        self.uniform_subdiv = uniform_from_array(np.array([self.subdivision], dtype=np.uint32))
+        iso_subdiv = self._get_iso_subdivision()
+        self.uniform_subdiv = uniform_from_array(np.array([iso_subdiv], dtype=np.uint32))
         self.levelset.update(options)
         self.levelset_buffer = self.levelset.get_buffers()["data_3d"]
         super().update(options)
+
+        # No render-side subdivision for isosurfaces: the compute shader finds
+        # correct zero-crossing positions on sub-tet edges. Render-side subdivision
+        # would interpolate between those vertices, going off the surface.
+        self.shader_defines["CLIPPING_SUBDIVISION"] = 1
+        self.n_vertices = 3
 
     def get_bindings(self, compute=False, count=False):
         bindings = super().get_bindings(compute, count)
@@ -85,6 +113,20 @@ class NegativeClippingRenderer(ClippingCF):
         buffers = self.levelset.get_buffers()
         self.levelset_buffer = buffers["data_3d"]
         super().update(options)
+
+        # Override subdivision based on function order for smooth rendering
+        # on the clipping plane (positions stay correct since the plane is flat).
+        order = max(self.data.order_3d, self.levelset.order_3d)
+        if order > 3:
+            func_subdiv = (order + 2) // 3 + 1
+        elif order > 1:
+            func_subdiv = 3
+        else:
+            func_subdiv = 1
+        clip_subdiv = self.shader_defines.get("CLIPPING_SUBDIVISION", 1)
+        subdiv = max(func_subdiv, clip_subdiv)
+        self.shader_defines["CLIPPING_SUBDIVISION"] = subdiv
+        self.n_vertices = 3 * subdiv * subdiv
 
     def get_bindings(self, compute=False, count=False):
         bindings = super().get_bindings(compute, count)

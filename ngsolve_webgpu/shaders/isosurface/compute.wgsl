@@ -17,26 +17,41 @@ fn my_pow(x: u32, y: u32) -> u32 {
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   let n_tets = u_ntets;
-  for (var i = id.x; i<n_tets*my_pow(4u,u_iso_subdivision); i+=256u*1024u) {
+  for (var i = id.x; i<n_tets*my_pow(8u,u_iso_subdivision); i+=256u*1024u) {
     var b0 = vec4<f32> (1.0, 0.0, 0.0, 0.0);
     var b1 = vec4<f32> (0.0, 1.0, 0.0, 0.0);
     var b2 = vec4<f32> (0.0, 0.0, 1.0, 0.0);
     var b3 = vec4<f32> (0.0, 0.0, 0.0, 1.0);
-    var elnr = i / my_pow(4u,u_iso_subdivision);
-    var scale: f32 = 1.;
+    var elnr = i / my_pow(8u,u_iso_subdivision);
     var ind = i;
     for(var level = 0u; level < u_iso_subdivision; level++)
       {
-        var b = ind % 4u;
-        ind /= 4u;
-        if(b == 0u) {
-          b0 = (b0 + b1) * 0.5;
-        } else if(b == 1u) {
-          b1 = (b0 + b1) * 0.5;
-        } else if(b == 2u) {
-          b2 = (b2 + b3) * 0.5;
-        } else if(b == 3u) {
-          b3 = (b2 + b3) * 0.5;
+        var sub = ind % 8u;
+        ind /= 8u;
+
+        // Compute midpoints of all 6 edges
+        let m01 = (b0 + b1) * 0.5;
+        let m02 = (b0 + b2) * 0.5;
+        let m03 = (b0 + b3) * 0.5;
+        let m12 = (b1 + b2) * 0.5;
+        let m13 = (b1 + b3) * 0.5;
+        let m23 = (b2 + b3) * 0.5;
+
+        // Save original vertices for corner tets
+        let v0 = b0; let v1 = b1; let v2 = b2; let v3 = b3;
+
+        switch (sub) {
+          // Corner tets: one at each original vertex
+          case 0u { b0 = v0;  b1 = m01; b2 = m02; b3 = m03; }
+          case 1u { b0 = v1;  b1 = m01; b2 = m12; b3 = m13; }
+          case 2u { b0 = v2;  b1 = m02; b2 = m12; b3 = m23; }
+          case 3u { b0 = v3;  b1 = m03; b2 = m13; b3 = m23; }
+          // Octahedron tets: fan around diagonal m01-m23
+          case 4u { b0 = m01; b1 = m23; b2 = m02; b3 = m03; }
+          case 5u { b0 = m01; b1 = m23; b2 = m03; b3 = m13; }
+          case 6u { b0 = m01; b1 = m23; b2 = m13; b3 = m12; }
+          case 7u { b0 = m01; b1 = m23; b2 = m12; b3 = m02; }
+          default {}
         }
       }
     let element = getElem(elnr);
