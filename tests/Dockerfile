@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir --break-system-packages ipython
 RUN pip install --no-cache-dir --break-system-packages --pre ngsolve
 
 WORKDIR /app
+COPY .git .git
 COPY pyproject.toml .
 COPY ngsolve_webgpu/ ngsolve_webgpu/
 RUN pip install --no-cache-dir --break-system-packages --no-deps .
