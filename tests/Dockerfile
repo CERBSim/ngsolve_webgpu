@@ -12,8 +12,7 @@ RUN pip install --no-cache-dir --break-system-packages --pre ngsolve
 WORKDIR /app
 COPY pyproject.toml .
 COPY ngsolve_webgpu/ ngsolve_webgpu/
-ENV SETUPTOOLS_SCM_PRETEND_VERSION=0.0.0
-RUN pip install --no-cache-dir --break-system-packages .
+RUN pip install --no-cache-dir --break-system-packages --no-deps .
 
 COPY tests/ tests/
 
