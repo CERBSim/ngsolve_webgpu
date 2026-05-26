@@ -251,8 +251,10 @@ class FunctionData:
         """Dict mapping component option value -> max. {-1: norm, 0: comp0, ...}"""
         return {i - 1: self.maxval[i] for i in range(len(self.maxval))}
 
-    @check_timestamp
     def update(self, options: RenderOptions):
+        if not self.needs_update:
+            return
+        self._timestamp = options.timestamp
         self.mesh_data.update(options)
         self._create_data()
 
