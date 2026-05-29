@@ -320,8 +320,12 @@ class FunctionData:
                 self.data_3d, minval, maxval = self.evaluate_3d(
                 self.cf, self.mesh_data.ngs_mesh, self.order_3d
                 )
-                self.minval = [min(v1, v2) for v1, v2 in zip(self.minval, minval)]
-                self.maxval = [max(v1, v2) for v1, v2 in zip(self.maxval, maxval)]
+                # evaluate_3d returns empty array for non-3D regions; treat as None
+                if self.data_3d is not None and len(self.data_3d) == 0:
+                    self.data_3d = None
+                else:
+                    self.minval = [min(v1, v2) for v1, v2 in zip(self.minval, minval)]
+                    self.maxval = [max(v1, v2) for v1, v2 in zip(self.maxval, maxval)]
             except Exception:
                 self.data_3d = None
 
@@ -1057,7 +1061,7 @@ class CFRenderer(BaseMeshElements2d):
         return out
 
     def set_needs_update(self):
-        self.data._timestamp = -1
+        self.data.set_needs_update()
         super().set_needs_update()
 
 

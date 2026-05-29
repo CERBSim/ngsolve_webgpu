@@ -100,6 +100,10 @@ class VectorRenderer(ShapeRenderer):
                 self.u_grid_spacing, np.array([self.grid_spacing], dtype=np.float32)
             )
         
+    def set_needs_update(self):
+        self.function_data.set_needs_update()
+        super().set_needs_update()
+
     def get_bounding_box(self):
         bbox = self.function_data.mesh_data.get_bounding_box()
         if self.symmetry:

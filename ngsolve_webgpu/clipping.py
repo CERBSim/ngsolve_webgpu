@@ -97,6 +97,7 @@ class ClippingCF(Renderer):
     def set_needs_update(self):
         """Invalidate cached state so build_clip_plane runs on next update."""
         self._last_clipping_bytes = None
+        self.data.set_needs_update()
         super().set_needs_update()
 
     def update(self, options: RenderOptions):
