@@ -265,6 +265,10 @@ class FunctionData:
     def set_needs_update(self):
         """Set this data to be updated on the next render call"""
         self._timestamp = -1
+        deform = self.mesh_data.deformation_data
+        if deform is not None and deform is not self:
+            deform.set_needs_update()
+
 
     @property
     def need_3d(self):
