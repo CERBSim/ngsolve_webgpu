@@ -14,8 +14,14 @@
 fn compute_surface_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
   let n_trigs = mesh.num_trigs;
   for (var trigId = id.x; trigId<n_trigs; trigId+=256*1024) {
-    let p = loadTriangle(trigId).p;
+    var p = loadTriangle(trigId).p;
     
+    if (mesh.is_curved == 1u) {
+      p[0] = evalTrigVec3(&mesh.data, trigId, vec2f(1.0, 0.0), mesh.offset_curvature_2d);
+      p[1] = evalTrigVec3(&mesh.data, trigId, vec2f(0.0, 1.0), mesh.offset_curvature_2d);
+      p[2] = evalTrigVec3(&mesh.data, trigId, vec2f(0.0, 0.0), mesh.offset_curvature_2d);
+    }
+
     let gridsize = u_gridsize;
 
     var dir: u32 =0;
@@ -78,9 +84,6 @@ fn compute_surface_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
                   let dir_im = v_ri.im / max(val, 1e-10);
 #endif SCALE_BY_VALUE
                   let index = atomicAdd(&count_vectors, 1);
-                  if (mesh.is_curved == 1u) {
-                    cp = evalTrigVec3(&mesh.data, trigId, eval_lam, mesh.offset_curvature_2d);
-                  }
                   cp += 0.5 * gridsize * normalize(n);
 
                   positions[index*3+0] = cp[0];
