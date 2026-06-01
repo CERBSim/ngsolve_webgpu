@@ -48,6 +48,7 @@ class TestCurved3dMesh:
         renderer = MeshElements3d(mesh_data)
         scene = wj.Draw([renderer], 600, 600)
 
+        webgpu_env.assert_min_fps(scene, min_fps=20, label="curved 3D sphere")
         webgpu_env.assert_matches_baseline(scene, "curved_3d_sphere_full.png")
 
     def test_curved_3d_sphere_with_hole(self, webgpu_env):

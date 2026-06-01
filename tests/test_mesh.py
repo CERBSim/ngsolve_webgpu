@@ -13,6 +13,7 @@ class TestMesh:
         scene = Draw(mesh, width=600, height=600)
 
         assert scene.bounding_box is not None
+        webgpu_env.assert_min_fps(scene, min_fps=60, label="2D mesh")
         webgpu_env.assert_matches_baseline(scene, "mesh_2d.png")
 
     def test_draw_mesh_2d_region(self, webgpu_env):
@@ -33,6 +34,7 @@ class TestMesh:
         mesh = ngs.Mesh(ngs.unit_cube.GenerateMesh(maxh=0.5))
         scene = Draw(mesh, width=600, height=600)
 
+        webgpu_env.assert_min_fps(scene, min_fps=20, label="3D mesh")
         webgpu_env.assert_matches_baseline(scene, "mesh_3d.png")
 
     def test_draw_mesh_3d_shrink(self, webgpu_env):
@@ -57,6 +59,7 @@ class TestMesh:
         mesh = ngs.Mesh(ngs.unit_cube.GenerateMesh(maxh=0.5))
         scene = Draw(mesh, width=600, height=600, clipping=True)
 
+        webgpu_env.assert_min_fps(scene, min_fps=20, label="3D mesh + clipping")
         webgpu_env.assert_matches_baseline(scene, "mesh_3d_clipping.png")
 
     def test_draw_mesh_segments_colors(self, webgpu_env):

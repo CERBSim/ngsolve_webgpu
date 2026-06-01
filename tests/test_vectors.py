@@ -13,6 +13,7 @@ class TestVectors:
         cf = ngs.CF((ngs.x, ngs.y))
         scene = Draw(cf, mesh, width=600, height=600, vectors=True)
 
+        webgpu_env.assert_min_fps(scene, min_fps=60, label="vectors 2D")
         webgpu_env.assert_matches_baseline(scene, "vectors_2d.png")
 
     def test_draw_vectors_grid_size(self, webgpu_env):

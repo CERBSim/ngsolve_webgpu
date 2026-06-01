@@ -12,6 +12,7 @@ class TestCoefficientFunction:
         mesh = ngs.Mesh(ngs.unit_square.GenerateMesh(maxh=0.3))
         scene = Draw(ngs.x * ngs.y, mesh, width=600, height=600)
 
+        webgpu_env.assert_min_fps(scene, min_fps=60, label="scalar CF x*y")
         webgpu_env.assert_matches_baseline(scene, "cf_xy.png")
 
     def test_draw_cf_3d(self, webgpu_env):
@@ -22,6 +23,7 @@ class TestCoefficientFunction:
         mesh = ngs.Mesh(ngs.unit_cube.GenerateMesh(maxh=0.5))
         scene = Draw(ngs.x * ngs.y * ngs.z, mesh, width=600, height=600, clipping=True)
 
+        webgpu_env.assert_min_fps(scene, min_fps=20, label="3D CF + clipping")
         webgpu_env.assert_matches_baseline(scene, "cf_3d.png")
 
     def test_draw_cf_order1(self, webgpu_env):
@@ -42,6 +44,7 @@ class TestCoefficientFunction:
         mesh = ngs.Mesh(ngs.unit_square.GenerateMesh(maxh=0.3))
         scene = Draw(ngs.sin(10*ngs.x), mesh, width=600, height=600, order=4)
 
+        webgpu_env.assert_min_fps(scene, min_fps=60, label="order=4 sin(10x)")
         webgpu_env.assert_matches_baseline(scene, "cf_order4.png")
 
     def test_draw_cf_vector(self, webgpu_env):
@@ -53,6 +56,7 @@ class TestCoefficientFunction:
         cf = ngs.CF((ngs.x, ngs.y))
         scene = Draw(cf, mesh, width=600, height=600)
 
+        webgpu_env.assert_min_fps(scene, min_fps=60, label="vector CF")
         webgpu_env.assert_matches_baseline(scene, "cf_vector.png")
 
     def test_draw_cf_vector_component(self, webgpu_env):
@@ -85,6 +89,7 @@ class TestCoefficientFunction:
         deformation = ngs.CF((0, ngs.sin(5 * ngs.x), 0))
         scene = Draw(cf, mesh, width=600, height=600, deformation=deformation)
 
+        webgpu_env.assert_min_fps(scene, min_fps=60, label="deformation 2D")
         webgpu_env.assert_matches_baseline(scene, "deformation_2d.png")
 
     def test_draw_colormap_range(self, webgpu_env):
@@ -134,6 +139,7 @@ class TestComplexFields:
         gf.Set(ngs.sin(3 * ngs.x) + 1j * ngs.cos(3 * ngs.y))
         scene = Draw(gf, mesh, width=600, height=600, order=3)
 
+        webgpu_env.assert_min_fps(scene, min_fps=60, label="complex H1 order=3")
         webgpu_env.assert_matches_baseline(scene, "complex_scalar_real.png")
 
     def test_complex_scalar_abs(self, webgpu_env):
