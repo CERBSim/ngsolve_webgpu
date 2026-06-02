@@ -211,6 +211,7 @@ class FunctionData:
     order: int
     order_3d: int
     _timestamp: float = -1
+    _gpu_dirty: bool = True
     minval: list[float]
     maxval: list[float]
 
@@ -257,6 +258,7 @@ class FunctionData:
         self._timestamp = options.timestamp
         self.mesh_data.update(options)
         self._create_data()
+        self._gpu_dirty = True
 
     @property
     def needs_update(self) -> bool:
@@ -334,19 +336,21 @@ class FunctionData:
             buffers = self.mesh_data.get_buffers().copy()
         else:
             buffers = {}
-
         if self.data_2d is not None:
-            self.gpu_2d = buffer_from_array(
-                self.data_2d, label="function_data_2d", reuse=self.gpu_2d
-            )
+            if self._gpu_dirty or self.gpu_2d is None:
+                self.gpu_2d = buffer_from_array(
+                    self.data_2d, label="function_data_2d", reuse=self.gpu_2d
+                )
             buffers["data_2d"] = self.gpu_2d
 
         if self.data_3d is not None:
-            self.gpu_3d = buffer_from_array(
-                self.data_3d, label="function_data_3d", reuse=self.gpu_3d
-            )
+            if self._gpu_dirty or self.gpu_3d is None:
+                self.gpu_3d = buffer_from_array(
+                    self.data_3d, label="function_data_3d", reuse=self.gpu_3d
+                )
             buffers["data_3d"] = self.gpu_3d
-            self._need_gpu_update = False
+
+        self._gpu_dirty = False
 
         return buffers
 
@@ -1093,6 +1097,8 @@ class VectorCFRenderer(VectorRenderer):
 
     def update(self, options: RenderOptions):
         self.options = options
+        if not self.needs_update:
+            return
         bb = self.mesh.ngmesh.bounding_box
         self.bounding_box = np.array(
             [[bb[0][0], bb[0][1], bb[0][2]], [bb[1][0], bb[1][1], bb[1][2]]]
@@ -1170,6 +1176,9 @@ class FieldLines(ShapeRenderer):
     def update(self, options):
         import numpy as np
         from ngsolve.webgui import FieldLines
+
+        if not self.needs_update:
+            return
 
         if self.seed is not None:
             np.random.seed(self.seed)

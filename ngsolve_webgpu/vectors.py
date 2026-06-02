@@ -71,6 +71,7 @@ class VectorRenderer(ShapeRenderer):
         scale_by_value: bool = False,
     ):
         self.u_nvectors = None
+        self._last_data_ts = None
         self.clipping = clipping or Clipping()
         self.function_data = function_data
         self.scale_by_value = scale_by_value
@@ -298,6 +299,10 @@ class VectorRenderer(ShapeRenderer):
     def update(self, options):
         self.function_data.update(options)
         self._complex_settings.update(options)
+        dirty = self.needs_update or self._last_data_ts != self.function_data._timestamp
+        if not dirty:
+            return
+        self._last_data_ts = self.function_data._timestamp
         self.compute_vectors()
         is_complex = self.function_data.cf.is_complex
         max_val = self.function_data.maxval[0]

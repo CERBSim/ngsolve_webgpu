@@ -194,14 +194,15 @@ class FacetCFRenderer(Renderer):
         self.n_instances = data.n_edges
         self.n_vertices = 2 * (self.subdivision + 1)
 
-        self._buffers["geometry"] = buffer_from_array(
-            data.geometry_buffer, label="facet_geometry",
-            reuse=self._buffers.get("geometry"),
-        )
-        self._buffers["values"] = buffer_from_array(
-            data.function_buffer, label="facet_values",
-            reuse=self._buffers.get("values"),
-        )
+        if self.needs_update or "geometry" not in self._buffers:
+            self._buffers["geometry"] = buffer_from_array(
+                data.geometry_buffer, label="facet_geometry",
+                reuse=self._buffers.get("geometry"),
+            )
+            self._buffers["values"] = buffer_from_array(
+                data.function_buffer, label="facet_values",
+                reuse=self._buffers.get("values"),
+            )
         self._buffers["subdivision"] = uniform_from_array(
             np.array([self.subdivision], dtype=np.uint32),
             label="facet_subdivision",
@@ -324,9 +325,10 @@ class FacetCFRenderer3D(MeshElements3d):
                 self.active = False
                 return
 
-        self._facet_gpu = buffer_from_array(
-            self._facet_data, label="facet_values_3d", reuse=self._facet_gpu
-        )
+        if self.needs_update or self._facet_gpu is None:
+            self._facet_gpu = buffer_from_array(
+                self._facet_data, label="facet_values_3d", reuse=self._facet_gpu
+            )
 
         self.shader_defines["FACET_CF"] = "1"
         self.shader_defines["MAX_EVAL_ORDER"] = max(
