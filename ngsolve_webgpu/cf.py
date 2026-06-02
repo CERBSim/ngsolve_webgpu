@@ -1095,10 +1095,7 @@ class VectorCFRenderer(VectorRenderer):
     def redraw(self, timestamp=None):
         super().redraw(timestamp=timestamp, cf=self.cf, mesh=self.mesh, grid_size=self.grid_size)
 
-    def update(self, options: RenderOptions):
-        self.options = options
-        if not self.needs_update:
-            return
+    def create_vector_data(self):
         bb = self.mesh.ngmesh.bounding_box
         self.bounding_box = np.array(
             [[bb[0][0], bb[0][1], bb[0][2]], [bb[1][0], bb[1][1], bb[1][2]]]
@@ -1125,7 +1122,6 @@ class VectorCFRenderer(VectorRenderer):
         self.vectors = np.array(
             [values[:, 0], values[:, 1], np.zeros_like(values[:, 0])], dtype=np.float32
         ).T.reshape(-1)
-        super().update(options)
 
 
 class FieldLines(ShapeRenderer):
