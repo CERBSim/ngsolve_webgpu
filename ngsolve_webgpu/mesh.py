@@ -988,25 +988,24 @@ class MeshElements3d(Renderer):
     def render(self, options):
         if not hasattr(self, 'pipeline'):
             return
-        render_pass = options.begin_render_pass()
-        render_pass.setPipeline(self.pipeline)
-        render_pass.setBindGroup(0, self.group)
-        if self._n_instances_subdiv <= 0 or not self.symmetry:
-            # Draw 1: flat first-4 faces (n_vertices=3)
-            render_pass.draw(3, self._n_instances_flat)
-        if self._n_instances_subdiv > 0:
-            if self.symmetry:
-                # Symmetry: single draw, shader skips excess sub-triangles
-                render_pass.draw(3 * self._subdivision ** 2, self.n_instances)
-            else:
-                # Draw 2: curved tet faces + non-tet extras (subdivided)
-                render_pass.draw(
-                    3 * self._subdivision ** 2,
-                    self._n_instances_subdiv,
-                    firstVertex=0,
-                    firstInstance=self._n_instances_flat,
-                )
-        render_pass.end()
+        with options.render_pass_scope() as render_pass:
+            render_pass.setPipeline(self.pipeline)
+            render_pass.setBindGroup(0, self.group)
+            if self._n_instances_subdiv <= 0 or not self.symmetry:
+                # Draw 1: flat first-4 faces (n_vertices=3)
+                render_pass.draw(3, self._n_instances_flat)
+            if self._n_instances_subdiv > 0:
+                if self.symmetry:
+                    # Symmetry: single draw, shader skips excess sub-triangles
+                    render_pass.draw(3 * self._subdivision ** 2, self.n_instances)
+                else:
+                    # Draw 2: curved tet faces + non-tet extras (subdivided)
+                    render_pass.draw(
+                        3 * self._subdivision ** 2,
+                        self._n_instances_subdiv,
+                        firstVertex=0,
+                        firstInstance=self._n_instances_flat,
+                    )
 
     def get_export_interactions(self, options, buffer_registry):
         from .cf import _shrink_export_interactions
