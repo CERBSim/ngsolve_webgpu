@@ -9,7 +9,7 @@ from webgpu.clipping import Clipping
 from webgpu.colormap import Colormap
 from webgpu.renderer import Renderer, RenderOptions, check_timestamp
 from webgpu.shapes import ShapeRenderer, generate_cylinder
-from webgpu.utils import BufferBinding, UniformBinding, buffer_from_array, write_array_to_buffer, read_shader_file, device_generation
+from webgpu.utils import BufferBinding, UniformBinding, buffer_from_array, write_array_to_buffer, read_shader_file
 from webgpu.renderer import BaseRenderer, RenderOptions, check_timestamp
 from webgpu.uniforms import UniformBase, ct
 from webgpu.utils import (
@@ -212,7 +212,6 @@ class FunctionData:
     order_3d: int
     _timestamp: float = -1
     _gpu_dirty: bool = True
-    _gpu_generation: int = -1
     minval: list[float]
     maxval: list[float]
 
@@ -337,24 +336,21 @@ class FunctionData:
             buffers = self.mesh_data.get_buffers().copy()
         else:
             buffers = {}
-        gen = device_generation()
-        stale = self._gpu_generation != gen
         if self.data_2d is not None:
-            if self._gpu_dirty or stale or self.gpu_2d is None:
+            if self._gpu_dirty or self.gpu_2d is None:
                 self.gpu_2d = buffer_from_array(
                     self.data_2d, label="function_data_2d", reuse=self.gpu_2d
                 )
             buffers["data_2d"] = self.gpu_2d
 
         if self.data_3d is not None:
-            if self._gpu_dirty or stale or self.gpu_3d is None:
+            if self._gpu_dirty or self.gpu_3d is None:
                 self.gpu_3d = buffer_from_array(
                     self.data_3d, label="function_data_3d", reuse=self.gpu_3d
                 )
             buffers["data_3d"] = self.gpu_3d
 
         self._gpu_dirty = False
-        self._gpu_generation = gen
 
         return buffers
 

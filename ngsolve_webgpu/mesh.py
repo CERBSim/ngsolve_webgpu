@@ -21,7 +21,6 @@ from webgpu.utils import (
     BufferBinding,
     UniformBinding,
     buffer_from_array,
-    device_generation,
     get_device,
     read_shader_file,
     uniform_from_array,
@@ -131,7 +130,6 @@ class MeshData:
     _need_3d: bool = False
     _update_lock: Lock
     _gpu_dirty: bool = True
-    _gpu_generation: int = -1
 
     def __init__(self, mesh, el2d_bitarray=None, el3d_bitarray=None):
         import netgen.meshing
@@ -594,13 +592,6 @@ class MeshData:
         return ([pmin[0], pmin[1], pmin[2]], [pmax[0], pmax[1], pmax[2]])
 
     def get_buffers(self):
-        gen = device_generation()
-        if self._gpu_generation != gen:
-            self._gpu_dirty = True
-            self.gpu_elements = {}
-            self._dummy_buffer = None
-            self._gpu_generation = gen
-
         if self._gpu_dirty:
             self.gpu_data = buffer_from_array(
                 self.cpu_data,
