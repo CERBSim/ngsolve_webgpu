@@ -104,17 +104,18 @@ class GeometryFaceRenderer(BaseGeometryRenderer):
         self.shader_defines["HAS_SELECTION"] = "1"
 
     def _build_solid_ids(self):
-        n_faces = len(self.geo.faces)
+        faces = list(self.geo.faces)
+        n_faces = len(faces)
         solid_ids = np.full(max(n_faces, 1), 0xFFFFFFFF, dtype=np.uint32)
         try:
             solids = list(self.geo.shape.solids)
             if not solids:
                 return solid_ids
+            face_index = {hash(f): i for i, f in enumerate(faces)}
             for solid_idx, solid in enumerate(solids):
-                centers = {tuple(round(c, 8) for c in f.center) for f in solid.faces}
-                for fi in range(n_faces):
-                    gc = tuple(round(c, 8) for c in self.geo.faces[fi].center)
-                    if gc in centers and solid_ids[fi] == 0xFFFFFFFF:
+                for f in solid.faces:
+                    fi = face_index.get(hash(f))
+                    if fi is not None and solid_ids[fi] == 0xFFFFFFFF:
                         solid_ids[fi] = solid_idx
         except Exception:
             pass
