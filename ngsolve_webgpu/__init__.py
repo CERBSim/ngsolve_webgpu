@@ -1,4 +1,11 @@
-from .mesh import MeshData, MeshWireframe2d, MeshElements2d, MeshElements3d, MeshSegments
+from .mesh import (
+    MeshData,
+    MeshWireframe2d,
+    MeshElements2d,
+    MeshElements3d,
+    MeshSegments,
+    MeshIdentifications,
+)
 from .entity_numbers import EntityNumbers
 from .cf import FunctionData, CFRenderer
 from .facet_cf import FacetFunctionData, FacetCFRenderer, FacetCFRenderer3D

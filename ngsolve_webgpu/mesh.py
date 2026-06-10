@@ -1027,3 +1027,100 @@ class MeshElements3d(Renderer):
 
     def get_shader_code(self):
         return read_shader_file("ngsolve/elements3d.wgsl")
+
+class MeshIdentifications(Renderer):
+    """Render mesh identifications (e.g. periodic boundaries) as thick lines
+    connecting each pair of identified points."""
+
+    n_vertices: int = 4
+    topology: PrimitiveTopology = PrimitiveTopology.triangle_strip
+
+    # render on top of faces similar to MeshSegments / GeometryEdgeRenderer
+    depthBias: int = -5
+    depthBiasSlopeScale: int = -5
+
+    def __init__(
+        self,
+        data: MeshData,
+        clipping=None,
+        color: list | None = None,
+        label: str = "MeshIdentifications",
+    ):
+        super().__init__(label=label)
+        from .pick import HighlightUniforms
+
+        self.data = data
+        self.clipping = clipping or Clipping()
+        self.thickness = 0.005
+        # default color: red
+        self._color = color if color is not None else [1.0, 0.0, 0.0, 1.0]
+        self._buffers: dict[str, Buffer] = {}
+        self._thickness_uniform: Buffer | None = None
+        self._highlight_uniforms = HighlightUniforms()
+
+    def get_bounding_box(self):
+        return self.data.get_bounding_box()
+
+    def update(self, options: RenderOptions):
+        self.clipping.update(options)
+        self.data.update(options)
+
+        mesh = self.data.mesh
+        vertices = self.data.elements["vertices"]
+
+        try:
+            idents = mesh.GetIdentifications()
+        except Exception as e:
+            print("Error getting identifications:", e)
+            idents = []
+
+        if len(idents) == 0:
+            self.n_instances = 0
+            self._buffers = {}
+            return
+
+        # netgen point ids are 1-based PointId objects; map each (pid1, pid2)
+        # pair to vertex coordinates
+        node_ids = np.array(
+            [(p1.nr, p2.nr) for p1, p2 in idents], dtype=np.int64
+        ) - 1  # (n_idents, 2)
+        seg_coords = vertices[node_ids].reshape(-1, 6).astype(np.float32)
+
+        self.n_instances = seg_coords.shape[0]
+
+        # single color for all identification lines
+        edge_indices = np.zeros(self.n_instances, dtype=np.uint32)
+        colors = np.array(
+            [ci / 255 if ci > 1 else ci for ci in self._color[:4]], dtype=np.float32
+        ).reshape(1, 4)
+
+        self._buffers = {}
+        self._buffers["vertices"] = buffer_from_array(
+            seg_coords.flatten(), label="mesh_identifications_vertices"
+        )
+        self._buffers["colors"] = buffer_from_array(
+            colors.flatten(), label="mesh_identifications_colors"
+        )
+        self._buffers["index"] = buffer_from_array(
+            edge_indices, label="mesh_identifications_indices"
+        )
+
+        self._thickness_uniform = uniform_from_array(
+            np.array([self.thickness], dtype=np.float32),
+            label="mesh_identifications_thickness",
+            reuse=self._thickness_uniform,
+        )
+
+    def get_shader_code(self):
+        # reuse the thick-line implementation from geometry edges
+        return read_shader_file("ngsolve/geo_edge.wgsl")
+
+    def get_bindings(self):
+        return [
+            *self.clipping.get_bindings(),
+            BufferBinding(90, self._buffers["vertices"]),
+            BufferBinding(91, self._buffers["colors"]),
+            UniformBinding(92, self._thickness_uniform),
+            BufferBinding(93, self._buffers["index"]),
+            *self._highlight_uniforms.get_bindings(),
+        ]
