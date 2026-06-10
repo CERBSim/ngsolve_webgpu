@@ -449,8 +449,25 @@ class ClippingVectors(VectorRenderer):
             colormap=colormap, symmetry=symmetry, vector_symmetry=vector_symmetry,
             scale_by_value=scale_by_value)
         self.__clipping = Clipping()
-        self.clipping.callbacks.append(self.set_needs_update)
-        
+        # JS engine owns the clip-vector compute (countThenFill) once captured;
+        # set in get_export_compute_passes. While owned, a clip-plane move needs
+        # no Python recompute or pipeline rebuild (see _on_clipping_changed).
+        self._vec_js = False
+        self._vec_indirect = None
+        self._vec_indirect_id = None
+        self.clipping.callbacks.append(self._on_clipping_changed)
+
+    def _on_clipping_changed(self):
+        """Clip plane moved/rotated. In JS-compute mode the engine re-runs the
+        vector compute from the shared clipping buffer's trigger on the next
+        notifyDirty()+render() (issued by the host's scene.render()), so no
+        pipeline invalidation is needed — that would force a full engine
+        reinstall + shader recompile every drag tick. When Python still owns the
+        compute (e.g. symmetry expansion), fall back to recomputing."""
+        if self._vec_js:
+            return
+        self.set_needs_update()
+
     def get_compute_bindings(self):
         bindings = super().get_compute_bindings()
         buffers = self.function_data.get_buffers()
@@ -470,6 +487,11 @@ class ClippingVectors(VectorRenderer):
         ]
 
     def compute_vectors(self):
+        if self._vec_js and self.positions_buffer is not None:
+            # JS engine owns the clip-vector compute (countThenFill). The output
+            # buffers were allocated on the bootstrap frame and are now JS-owned
+            # and resized GPU-side; Python must not run the count+eval+readback.
+            return
         if "data_3d" not in self.function_data.get_buffers():
             self.active = False
             return
@@ -563,3 +585,102 @@ class ClippingVectors(VectorRenderer):
         )
         self.__clipping.uniforms.update_buffer()
         super().update(options)
+
+    def get_export_compute_passes(self, options, buffer_registry):
+        """Emit a JS-engine countThenFill pass that recomputes the clip-plane
+        arrows GPU-side whenever the shared clipping uniform changes.
+
+        The single shader (compiled with NEED_EVAL) both counts vectors via an
+        atomic and writes them, gated by arrayLength(&positions); the engine
+        sizes positions and its sibling buffers (directions/values/imag) in
+        lockstep from the counter, and draws the arrow glyphs with
+        drawIndexedIndirect using the GPU-computed instance count.
+        """
+        from webgpu.export.format import ExportComputePass
+        from webgpu.utils import preprocess_shader_code
+
+        # Symmetry expansion is a second Python compute pass over the result;
+        # keep that case on the Python path until it too is ported.
+        if (self.symmetry and self.symmetry.n_copies > 1) or self.positions_buffer is None:
+            self._vec_js = False
+            return []
+
+        mesh_data = self.function_data.mesh_data
+        defines = {
+            "MODE": 1,
+            "NEED_EVAL": 1,
+            "MAX_EVAL_ORDER": self.function_data.order,
+            "MAX_EVAL_ORDER_VEC3": mesh_data.get_shader_defines()["MAX_EVAL_ORDER_VEC3"],
+        }
+        if self.function_data.cf.is_complex:
+            defines["IS_COMPLEX"] = 1
+        if self.scale_by_value:
+            defines["SCALE_BY_VALUE"] = 1
+        shader = preprocess_shader_code(
+            read_shader_file(self.compute_shader_file), defines=defines
+        )
+
+        # Bind the *shared* clipping uniform (the buffer the GUI writes) so the
+        # JS pass re-runs from its trigger on a plane move. get_compute_bindings
+        # otherwise binds the per-renderer copy (__clipping), which the GUI never
+        # touches directly.
+        saved = self._ClippingVectors__clipping
+        self._ClippingVectors__clipping = self.clipping
+        try:
+            bindings = self.get_compute_bindings()
+            binding_map = buffer_registry.register_bindings(bindings)
+        finally:
+            self._ClippingVectors__clipping = saved
+
+        counter_id = buffer_registry.get_id(self.u_nvectors)
+        clip_id = buffer_registry.get_id(self.clipping.uniforms._buffer)
+        pos_id = buffer_registry.get_id(self.positions_buffer)
+        siblings = [
+            {"id": buffer_registry.get_id(self.directions_buffer), "element_size": 12},
+            {"id": buffer_registry.get_id(self.values_buffer), "element_size": 4},
+        ]
+        if self.function_data.cf.is_complex and self.directions_imag_buffer is not None:
+            siblings.append(
+                {"id": buffer_registry.get_id(self.directions_imag_buffer), "element_size": 12}
+            )
+
+        # Indirect draw buffer is JS-owned at runtime; create a Python
+        # placeholder so the registry can assign a stable id.
+        if self._vec_indirect is None:
+            self._vec_indirect = self.device.createBuffer(
+                size=20,
+                usage=BufferUsage.INDIRECT | BufferUsage.STORAGE | BufferUsage.COPY_DST,
+                label="vec_indirect",
+            )
+        indirect_id = buffer_registry.register_buffer(self._vec_indirect, "indirect")
+        self._vec_indirect_id = indirect_id
+
+        n_work_groups = min(self.n_search_els // 256 + 1, 1024)
+        self._vec_js = True
+        return [
+            ExportComputePass(
+                id=f"clip_vectors_{self._id}",
+                shader=shader,
+                bindings=binding_map,
+                workgroups=[n_work_groups, 1, 1],
+                triggers=[clip_id],
+                reset_buffers=[counter_id],
+                entry_point=self.compute_entry_point,
+                count_then_fill={
+                    "counter_id": counter_id,
+                    "output_id": pos_id,
+                    "element_size": 12,            # vec3<f32> position
+                    "indirect_id": indirect_id,
+                    "vertex_count": self.n_vertices,  # arrow index count per instance
+                    "indexed": True,
+                    "siblings": siblings,
+                },
+            ),
+        ]
+
+    def get_export_descriptor(self, options, buffer_registry):
+        result = super().get_export_descriptor(options, buffer_registry)
+        if self._vec_js and self._vec_indirect_id is not None:
+            # Arrow instance count comes from the JS-computed indirect buffer.
+            result.draw_indirect = self._vec_indirect_id
+        return result

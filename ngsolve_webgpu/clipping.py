@@ -57,17 +57,13 @@ class ClippingCF(Renderer):
         self._clipping = clipping or Clipping()
         self.clipping = Clipping()
         self.gpu_objects.colormap = colormap or Colormap()
-        self._clipping.callbacks.append(self.set_needs_update)
         self.data = data
         self.data.need_3d = True
         if self.data.mesh_data.deformation_data is not None:
             self.data.mesh_data.deformation_data.need_3d = True
         self.options = None
-        self.cut_trigs_counter = None
         self.cut_trigs = None
         self.trig_counter = None
-        self._js_compute = False
-        self._last_clipping_bytes = None
 
         self.n_tets = None
         if component is None:
@@ -95,8 +91,7 @@ class ClippingCF(Renderer):
         self.gpu_objects.colormap = value
 
     def set_needs_update(self):
-        """Invalidate cached state so build_clip_plane runs on next update."""
-        self._last_clipping_bytes = None
+        """Invalidate field data so the next update re-evaluates it."""
         self.data.set_needs_update()
         super().set_needs_update()
 
@@ -132,15 +127,7 @@ class ClippingCF(Renderer):
                 timestamp=options.timestamp,
             )
         self.gpu_objects.complex_settings.update(options)
-        if not self._js_compute:
-            # Only recompute clipping triangles when inputs actually changed.
-            # Clipping plane changes are detected by comparing uniform bytes.
-            # Mesh/deformation changes go through set_needs_update() which
-            # invalidates _last_clipping_bytes, forcing a rebuild.
-            clipping_bytes = bytes(self._clipping.uniforms)
-            if clipping_bytes != self._last_clipping_bytes:
-                self._last_clipping_bytes = clipping_bytes
-                self.build_clip_plane()
+        self._ensure_compute_buffers()
         if self.symmetry:
             self.n_instances = self._original_n_instances * self.symmetry.n_copies
             self.shader_defines["SYMMETRY"] = "1"
@@ -234,7 +221,7 @@ class ClippingCF(Renderer):
         ))
         return out
 
-    def get_bindings(self, compute=False, count: bool = False):
+    def get_bindings(self, compute=False):
         bindings = [
             *self.data.mesh_data.get_bindings(),
             UniformBinding(22, self.n_tets),
@@ -251,9 +238,7 @@ class ClippingCF(Renderer):
                     read_only=False,
                     visibility=ShaderStage.COMPUTE,
                 ),
-                BufferBinding(
-                    24, self.cut_trigs_counter if count else self.cut_trigs, read_only=False
-                ),
+                BufferBinding(24, self.cut_trigs, read_only=False),
                 *self.gpu_objects.complex_settings.get_bindings(),
             ]
         else:
@@ -268,47 +253,40 @@ class ClippingCF(Renderer):
                 bindings += self.symmetry.get_bindings(self._original_n_instances)
         return bindings
 
-    def build_clip_plane(self):
+    def _ensure_compute_buffers(self):
+        """Allocate the GPU buffers the clip-plane compute pass binds.
+
+        The actual count+fill compute is owned by the JS engine via the
+        countThenFill protocol (see get_export_compute_passes): it sizes the
+        output buffer (cut_trigs) and the indirect draw count itself, reading
+        the atomic counter GPU-side. Python therefore never dispatches the
+        compute or reads the count back — it only needs:
+
+          * trig_counter / n_tets / cut_trigs to exist so get_bindings() and the
+            Python render-pipeline bind-group layout are valid, and
+          * n_instances > 0 so capture_scene_live() captures this renderer
+            (the real per-frame instance count comes from the GPU indirect
+            buffer at draw time, not from this value).
+
+        cut_trigs is a minimal placeholder; the JS engine creates and resizes
+        its own owned buffer in initPipelines()/processReadbacks().
+        """
         ntets = self.data.mesh_data.num_elements[ElType.TET] * 4**self.subdivision
-        self.trig_counter = buffer_from_array(
-            np.array([0], dtype=np.uint32),
-            usage=BufferUsage.STORAGE | BufferUsage.COPY_DST | BufferUsage.COPY_SRC,
-            label="trig_counter",
-            reuse=self.trig_counter,
-        )
         self.n_tets = uniform_from_array(
             np.array([ntets], dtype=np.uint32), label="n_tets", reuse=self.n_tets
         )
-
-        # Count pass: use a tiny output buffer so arrayLength check prevents writes
-        self.cut_trigs_counter = buffer_from_array(
-            np.array([0.0] * 16, dtype=np.float32),
-            label="cut_trigs_counter",
-            reuse=self.cut_trigs_counter,
-        )
-        # Explicitly reset counter to 0 — buffer_from_array's reuse optimization
-        # skips the write when _data matches, but the GPU buffer was modified by
-        # the previous fill pass's atomicAdd.
-        write_array_to_buffer(self.trig_counter, np.array([0], dtype=np.uint32))
-        shader_code = read_shader_file(self.compute_shader)
-        run_compute_shader(
-            shader_code, self.get_bindings(compute=True, count=True), 1024, "build_clip_plane", defines=self.data.mesh_data.get_shader_defines()
-        )
-        self.n_instances = int(read_buffer(self.trig_counter, np.uint32)[0])
-        self._original_n_instances = self.n_instances
-
-        # Fill pass: allocate exact-size buffer, reset counter
-        buffer_size = max(64, 64 * self.n_instances)
-        if self.cut_trigs is None or self.cut_trigs.size < buffer_size:
-            if self.cut_trigs is not None:
-                self.cut_trigs.destroy()
-            self.cut_trigs = self.device.createBuffer(
-                size=buffer_size, usage=BufferUsage.STORAGE, label="cut_trigs"
+        if self.trig_counter is None:
+            self.trig_counter = buffer_from_array(
+                np.array([0], dtype=np.uint32),
+                usage=BufferUsage.STORAGE | BufferUsage.COPY_DST | BufferUsage.COPY_SRC,
+                label="trig_counter",
             )
-        write_array_to_buffer(self.trig_counter, np.array([0], dtype=np.uint32))
-        run_compute_shader(
-            shader_code, self.get_bindings(compute=True, count=False), 1024, "build_clip_plane", defines=self.data.mesh_data.get_shader_defines()
-        )
+        if self.cut_trigs is None:
+            self.cut_trigs = self.device.createBuffer(
+                size=64, usage=BufferUsage.STORAGE, label="cut_trigs"
+            )
+        self.n_instances = 1
+        self._original_n_instances = 1
         if self.symmetry:
             self.n_instances = self._original_n_instances * self.symmetry.n_copies
             self.shader_defines["SYMMETRY"] = "1"
@@ -346,7 +324,7 @@ class ClippingCF(Renderer):
                 size=min_size, usage=BufferUsage.STORAGE, label="cut_trigs"
             )
 
-        fill_bindings = self.get_bindings(compute=True, count=False)
+        fill_bindings = self.get_bindings(compute=True)
         fill_binding_map = buffer_registry.register_bindings(fill_bindings)
 
         self.clipping = saved_clipping
@@ -363,10 +341,7 @@ class ClippingCF(Renderer):
                 usage=BufferUsage.INDIRECT | BufferUsage.STORAGE | BufferUsage.COPY_DST,
                 label="clip_indirect",
             )
-        indirect_buf_id = buffer_registry._next_id("indirect")
-        buffer_registry._buffers[id(self._indirect_buffer)] = (
-            indirect_buf_id, self._indirect_buffer, "indirect"
-        )
+        indirect_buf_id = buffer_registry.register_buffer(self._indirect_buffer, "indirect")
         self._export_indirect_buf_id = indirect_buf_id
 
         fill_pass_id = f"clip_fill_{self._id}"
@@ -388,8 +363,3 @@ class ClippingCF(Renderer):
                 },
             ),
         ]
-
-    def render(self, options: RenderOptions):
-        if bytes(self._clipping.uniforms) != bytes(self.clipping.uniforms):
-            self.set_needs_update()
-        super().render(options)

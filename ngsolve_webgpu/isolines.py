@@ -302,8 +302,8 @@ class ClippingIsolineRenderer(ClippingCF):
     def get_shader_code(self):
         return read_shader_file("ngsolve/isolines_clipping.wgsl")
 
-    def get_bindings(self, compute=False, count=False):
-        bindings = super().get_bindings(compute, count)
+    def get_bindings(self, compute=False):
+        bindings = super().get_bindings(compute)
         if not compute:
             bindings += self.gpu_objects.isolines.get_bindings()
         return bindings

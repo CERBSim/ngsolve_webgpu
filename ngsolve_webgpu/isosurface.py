@@ -67,8 +67,8 @@ class IsoSurfaceRenderer(ClippingCF):
         self.shader_defines["CLIPPING_SUBDIVISION"] = 1
         self.n_vertices = 3
 
-    def get_bindings(self, compute=False, count=False):
-        bindings = super().get_bindings(compute, count)
+    def get_bindings(self, compute=False):
+        bindings = super().get_bindings(compute)
         if compute:
             bindings.append(UniformBinding(27, self.uniform_subdiv))
         bindings += [
@@ -128,8 +128,8 @@ class NegativeClippingRenderer(ClippingCF):
         self.shader_defines["CLIPPING_SUBDIVISION"] = subdiv
         self.n_vertices = 3 * subdiv * subdiv
 
-    def get_bindings(self, compute=False, count=False):
-        bindings = super().get_bindings(compute, count)
+    def get_bindings(self, compute=False):
+        bindings = super().get_bindings(compute)
         if not compute:
             bindings += [BufferBinding(80, self.levelset_buffer)]
         return bindings
