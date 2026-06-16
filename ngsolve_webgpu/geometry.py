@@ -78,7 +78,13 @@ class GeometryFaceRenderer(BaseGeometryRenderer):
             return
         vis_data = self.vis_data
         self.bounding_box = (vis_data["min"], vis_data["max"])
-        verts = vis_data["vertices"]
+        empty = np.zeros(0, dtype=np.float32)
+        verts = vis_data.get("vertices", empty)
+        if verts is None or len(verts) == 0:
+            if self.colors is None:
+                self.colors = vis_data.get("face_colors", empty)
+            self.active = False
+            return
         self.n_instances = len(verts) // 9
         self._original_n_instances = self.n_instances
         if self.symmetry:
@@ -166,8 +172,12 @@ class GeometryEdgeRenderer(BaseGeometryRenderer):
         if self._buffers:
             return
         vis_data = self.vis_data
-        verts = vis_data["edges"]
-        self.colors = vis_data["edge_colors"]
+        empty = np.zeros(0, dtype=np.float32)
+        verts = vis_data.get("edges", empty)
+        self.colors = vis_data.get("edge_colors", empty)
+        if verts is None or len(verts) == 0:
+            self.active = False
+            return
         self.n_instances = len(verts) // 6
         self._original_n_instances = self.n_instances
         if self.symmetry:
@@ -227,6 +237,10 @@ class GeometryVertexRenderer(BaseGeometryRenderer):
         if self._buffers:
             return
         verts = set(self.geo.shape.vertices)
+        if len(verts) == 0:
+            self.colors = np.zeros(0, dtype=np.float32)
+            self.active = False
+            return
         self.colors = np.array(
             [v.col if v.col is not None else [0.3, 0.3, 0.3, 1.0] for v in verts],
             dtype=np.float32,
