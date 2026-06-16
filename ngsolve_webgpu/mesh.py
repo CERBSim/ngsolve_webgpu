@@ -1089,6 +1089,14 @@ class MeshIdentifications(Renderer):
         ) - 1  # (n_idents, 2)
         seg_coords = vertices[node_ids].reshape(-1, 6).astype(np.float32)
 
+        bbox = self.get_bounding_box()
+
+        # Move seg_coords a bit apart in case they overlap
+        seg_dists = np.linalg.norm(seg_coords[:, :3] - seg_coords[:, 3:], axis=1)
+        small_mask = seg_dists < 1e-6
+        if np.any(small_mask):
+            seg_coords[small_mask, 3:] += 1e-3 * (seg_coords[small_mask, 3:] - bbox[0])  # nudge second point away from first
+
         self.n_instances = seg_coords.shape[0]
 
         # single color for all identification lines
