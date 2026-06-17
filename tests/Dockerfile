@@ -7,6 +7,7 @@ RUN git clone https://github.com/CERBSim/webgpu.git /tmp/webgpu \
     && rm -rf /tmp/webgpu
 
 RUN pip install --no-cache-dir --break-system-packages ipython
+RUN pip install --no-cache-dir --break-system-packages anywidget
 RUN pip install --no-cache-dir --break-system-packages --pre ngsolve
 
 WORKDIR /app

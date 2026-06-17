@@ -932,7 +932,10 @@ class MeshElements3d(Renderer):
         self.uniforms = None
         self._highlight_uniforms = HighlightUniforms()
         if colors is None:
-            colors = [[255, 0, 0, 255] for _ in range(len(data.ngs_mesh.GetMaterials()))]
+            ngs_mesh = data.ngs_mesh
+            if not hasattr(ngs_mesh, "GetMaterials"):
+                ngs_mesh = ngs_mesh.mesh
+            colors = [[255, 0, 0, 255] for _ in range(len(ngs_mesh.GetMaterials()))]
         self.gpu_objects.colormap = Colormap(colormap=colors, minval=-0.5, maxval=len(colors) - 0.5)
         self.gpu_objects.colormap.discrete = 1
         self.gpu_objects.colormap.n_colors = len(colors)
