@@ -346,10 +346,12 @@ class VectorRenderer(ShapeRenderer):
         if self.scale_by_value:
             # max arrow fills grid cell
             self._scale = 1.6 * self.grid_spacing / max(max_val, 1e-10) * self.user_scale
+            self._scale_mode = 0
         else:
             # fixed size (directions are unit vectors)
             self._scale = 1.6 * self.grid_spacing * self.user_scale
-        self._scale_mode = 0
+            self._scale_mode = 2
+        print("scale by value", self.scale_by_value, self._scale)
         if self.gpu_objects.colormap.autoscale:
             self.gpu_objects.colormap.widen_range(
                 self.function_data.minval[0],

@@ -9,6 +9,10 @@
 #ifdef SYMMETRY
 #import ngsolve/symmetry
 #endif SYMMETRY
+#ifdef LIC
+#import ngsolve/lic/common
+@group(0) @binding(42) var u_lic_output: texture_2d<f32>;
+#endif LIC
 
 @group(0) @binding(24) var<storage> subtrigs: array<SubTrig>;
 @group(0) @binding(55) var<uniform> u_component: i32;
@@ -122,7 +126,19 @@ fn vertex_clipping(@builtin(vertex_index) vertId: u32,
 fn fragment_clipping(input: VertexOutputClip) -> @location(0) vec4<f32>
 {
   let value = evalTet(&u_function_values_3d, input.elnr, u_component, input.lam) * input.value_sign;
-  return lightCalcColor(input.p, input.n, applyHighlight(getColor(value), input.elnr, input.index));
+  var color = applyHighlight(getColor(value), input.elnr, input.index);
+#ifdef LIC
+  // Modulate the colormapped value with the precomputed LIC grayscale, sampled
+  // in plane-parameter space. lic.y is the coverage mask (0 at rasterisation
+  // gaps), so gaps fall back to the flat colour.
+  let texel = vec2<i32>(clamp(licWorldToTexel(input.p),
+                              vec2f(0.0),
+                              vec2f(f32(u_lic.width) - 1.0, f32(u_lic.height) - 1.0)));
+  let lic = textureLoad(u_lic_output, texel, 0);
+  let shade = mix(1.0, lic.x, u_lic.contrast * lic.y);
+  color = vec4f(color.rgb * shade, color.a);
+#endif LIC
+  return lightCalcColor(input.p, input.n, color);
 }
 
 #ifdef SELECT_PIPELINE
