@@ -115,7 +115,7 @@ class VectorRenderer(ShapeRenderer):
         cyl = generate_cylinder(8, 0.05, 0.5, bottom_face=True)
         cone = generate_cone(8, 0.2, 0.5, bottom_face=True)
         arrow = cyl + cone.move((0, 0, 0.5))
-        return arrow
+        return arrow.move((0, 0, -0.5))
 
     def get_compute_bindings(self):
         self.u_grid_spacing = uniform_from_array(
@@ -411,12 +411,19 @@ class SurfaceVectors(VectorRenderer):
         self.u_ntrigs = None
         super().__init__(function_data=function_data, grid_size=grid_size, clipping=clipping, colormap=colormap, symmetry=symmetry, vector_symmetry=vector_symmetry, scale_by_value=scale_by_value)
         self.gpu_objects.clipping = self.clipping
-        
+        self._vec_js = False
+        self._vec_indirect = None
+        self._vec_indirect_id = None
+
     def update(self, options):
         self.n_search_els = self.function_data.mesh_data.ngs_mesh.GetNE(ngs.BND)
         super().update(options)
-        
+
     def compute_vectors(self):
+        if self._vec_js and self.positions_buffer is not None:
+            # JS engine owns the compute; its count-then-fill keeps the GPU
+            # buffers current, so Python must not recompute/readback.
+            return
         if "data_2d" not in self.function_data.get_buffers():
             self.active = False
             return
@@ -428,6 +435,103 @@ class SurfaceVectors(VectorRenderer):
         return bindings + [
             BufferBinding(FunctionBinding.FUNCTION_VALUES_2D, buffers["data_2d"]),
         ]
+
+    def get_export_compute_passes(self, options, buffer_registry):
+        """Emit a JS-engine count-then-fill pass that recomputes the surface
+        arrows GPU-side.
+        """
+        from webgpu.export.format import ExportComputePass
+        from webgpu.utils import preprocess_shader_code
+
+        if (self.symmetry and self.symmetry.n_copies > 1) or self.positions_buffer is None:
+            self._vec_js = False
+            return []
+
+        defines = {
+            "MAX_EVAL_ORDER": self.function_data.order,
+            "MAX_EVAL_ORDER_VEC3": self.function_data.order,
+        }
+        if self.function_data.cf.is_complex:
+            defines["IS_COMPLEX"] = 1
+        if self.scale_by_value:
+            defines["SCALE_BY_VALUE"] = 1
+        shader = preprocess_shader_code(
+            read_shader_file(self.compute_shader_file), defines=defines
+        )
+
+        bindings = self.get_compute_bindings()
+        binding_map = buffer_registry.register_bindings(bindings)
+
+        counter_id = buffer_registry.get_id(self.u_nvectors)
+        pos_id = buffer_registry.get_id(self.positions_buffer)
+        siblings = [
+            {"id": buffer_registry.get_id(self.directions_buffer), "element_size": 12},
+            {"id": buffer_registry.get_id(self.values_buffer), "element_size": 4},
+        ]
+        if self.function_data.cf.is_complex and self.directions_imag_buffer is not None:
+            siblings.append(
+                {"id": buffer_registry.get_id(self.directions_imag_buffer), "element_size": 12}
+            )
+
+        if self._vec_indirect is None:
+            self._vec_indirect = self.device.createBuffer(
+                size=20,
+                usage=BufferUsage.INDIRECT | BufferUsage.STORAGE | BufferUsage.COPY_DST,
+                label="surf_vec_indirect",
+            )
+        indirect_id = buffer_registry.register_buffer(self._vec_indirect, "indirect")
+        self._vec_indirect_id = indirect_id
+
+        # Trigger this pass on the renderer's own grid-spacing uniform — the
+        # buffer that actually changes when the arrow density changes (already
+        # registered via the compute bindings, binding 31). It must NOT be the
+        # clipping buffer: surface-vector positions are computed over the whole
+        # surface and are independent of the clip plane (the plane only clips the
+        # rendered arrows), so dragging the clip plane must not recompute them.
+        # Mesh/field/deformation changes recompute through the host dirty path
+        # (set_needs_update → notifyDirty), and the engine re-marks this trigger
+        # itself after a count-then-fill resize.
+        trigger_id = buffer_registry.get_id(self.u_grid_spacing)
+
+        n_work_groups = min(self.n_search_els // 256 + 1, 1024)
+        self._vec_js = True
+        return [
+            ExportComputePass(
+                id=f"surf_vectors_{self._id}",
+                shader=shader,
+                bindings=binding_map,
+                workgroups=[n_work_groups, 1, 1],
+                triggers=[trigger_id],
+                reset_buffers=[counter_id],
+                entry_point=self.compute_entry_point,
+                count_then_fill={
+                    "counter_id": counter_id,
+                    "output_id": pos_id,
+                    "element_size": 12,            # vec3<f32> position
+                    "indirect_id": indirect_id,
+                    "vertex_count": self.n_vertices,  # arrow index count per instance
+                    "indexed": True,
+                    "siblings": siblings,
+                    # Pre-size the engine-owned arrow buffers to the count the
+                    # Python pass already computed, so the engine's count-then-
+                    # fill fills every arrow on the first frame instead of
+                    # depending on an async-readback resize to converge. The
+                    # surface arrows are static (toggled once, not dragged like
+                    # the clipping plane), so they may only get one render frame
+                    # — without this they can stick at the 1-element bootstrap
+                    # size and draw a single arrow. The resize logic still runs
+                    # as a safety net if the GPU count exceeds this hint.
+                    "initial_count": int(getattr(self, "n_vectors", 0) or 0),
+                },
+            ),
+        ]
+
+    def get_export_descriptor(self, options, buffer_registry):
+        result = super().get_export_descriptor(options, buffer_registry)
+        if self._vec_js and self._vec_indirect_id is not None:
+            # Arrow instance count comes from the JS-computed indirect buffer.
+            result.draw_indirect = self._vec_indirect_id
+        return result
 
 class ClippingVectors(VectorRenderer):
     def __init__(

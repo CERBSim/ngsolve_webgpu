@@ -22,7 +22,7 @@ fn compute_surface_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
       p[2] = evalTrigVec3(&mesh.data, trigId, vec2f(0.0, 0.0), mesh.offset_curvature_2d);
     }
 
-    let gridsize = u_gridsize;
+    let gridsize = 2.0 * u_gridsize;
 
     var dir: u32 =0;
     var dir1: u32 =0;
@@ -84,7 +84,7 @@ fn compute_surface_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
                   let dir_im = v_ri.im / max(val, 1e-10);
 #endif SCALE_BY_VALUE
                   let index = atomicAdd(&count_vectors, 1);
-                  cp += 0.5 * gridsize * normalize(n);
+                  if (index * 3u + 2u >= arrayLength(&positions)) { continue; }
 
                   positions[index*3+0] = cp[0];
                   positions[index*3+1] = cp[1];

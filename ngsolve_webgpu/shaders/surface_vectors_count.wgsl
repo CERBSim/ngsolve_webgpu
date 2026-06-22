@@ -46,7 +46,7 @@ fn compute_surface_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
       p[2] = evalCurvedPos(trigId, vec2f(0.0, 0.0));
     }
     
-    let gridsize = u_gridsize;
+    let gridsize = 2.0 * u_gridsize;
 
     var dir: u32 =0;
     var dir1: u32 =0;
