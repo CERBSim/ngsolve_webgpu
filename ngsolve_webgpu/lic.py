@@ -7,7 +7,8 @@ selection) and adds three compute passes that produce a streamline ("LIC")
 texture which the clipping fragment shader modulates the colour with. Unlike the
 original plane-parameter (orthographic) version, the LIC is built in the rendered
 image itself under the live perspective camera, so the textures are the size of
-the canvas and are recomputed whenever the camera (or clip plane) moves:
+the canvas (times an optional ``supersample`` SSAA factor) and are recomputed
+whenever the camera (or clip plane) moves:
 
   1. ``clear_field``        (lic/evaluate.wgsl) - reset the field texture.
   2. ``evaluate_lic_field`` (lic/evaluate.wgsl) - iterate the volume elements,
@@ -65,10 +66,11 @@ class LicUniforms(UniformBase):
     ``LineIntegralConvolutionUniforms`` (also binding 40) lacks the plane-basis
     fields, so it is deliberately *not* reused.
 
-    ``width``/``height`` are the canvas (framebuffer) size in device pixels, since
-    the LIC is now computed in screen space; ``tangent1``/``tangent2`` give the
-    in-plane flow basis and ``inv_extent`` sets the world step for the camera
-    Jacobian. ``origin`` is retained for the basis but no longer indexes a texture.
+    ``width``/``height`` are the LIC texture size, i.e. ``supersample`` times the
+    canvas (framebuffer) device-pixel size, since the LIC is computed in screen
+    space and supersampled; ``tangent1``/``tangent2`` give the in-plane flow basis
+    and ``inv_extent`` sets the world step for the camera Jacobian. ``origin`` is
+    retained for the basis but no longer indexes a texture.
     """
 
     _binding = 40
@@ -76,14 +78,14 @@ class LicUniforms(UniformBase):
         ("origin", ct.c_float * 4),     # xyz: plane origin (bbox centre)
         ("tangent1", ct.c_float * 4),   # xyz: first  in-plane unit vector (u)
         ("tangent2", ct.c_float * 4),   # xyz: second in-plane unit vector (v)
-        ("width", ct.c_uint32),         # canvas width  in device pixels
-        ("height", ct.c_uint32),        # canvas height in device pixels
+        ("width", ct.c_uint32),         # LIC texture width  = supersample * canvas px
+        ("height", ct.c_uint32),        # LIC texture height = supersample * canvas px
         ("kernel_length", ct.c_uint32),
         ("oriented", ct.c_uint32),
         ("thickness", ct.c_uint32),
         ("inv_extent", ct.c_float),     # world -> [0,1] scale (= 1 / (2 R))
         ("contrast", ct.c_float),       # LIC modulation strength in [0, 1]
-        ("pad", ct.c_uint32),
+        ("supersample", ct.c_uint32),   # LIC texels per canvas pixel (SSAA factor)
     ]
 
     def __init__(
@@ -95,6 +97,7 @@ class LicUniforms(UniformBase):
         oriented=0,
         thickness=10,
         contrast=1.0,
+        supersample=1,
         **kwargs,
     ):
         super().__init__(
@@ -104,6 +107,7 @@ class LicUniforms(UniformBase):
             oriented=oriented,
             thickness=thickness,
             contrast=contrast,
+            supersample=supersample,
             **kwargs,
         )
 
@@ -125,6 +129,7 @@ class ClippingLIC(ClippingCF):
         thickness: int = 10,
         contrast: float = 1.0,
         resolution: int = 256,
+        supersample: int = 2,
     ):
         super().__init__(
             data, clipping=clipping, colormap=colormap, component=component, symmetry=symmetry
@@ -133,6 +138,13 @@ class ClippingLIC(ClippingCF):
         self.oriented = bool(oriented)
         self.thickness = int(thickness)
         self.contrast = float(contrast)
+        # Supersampling factor (SSAA): the LIC is computed at supersample x the
+        # canvas resolution and box-downsampled in the render pass, which
+        # antialiases thin streaks and gives smooth, effectively fractional line
+        # widths (notably for the oriented/droplet mode). kernel_length and
+        # thickness keep their canvas-pixel meaning (scaled internally). Cost
+        # scales ~supersample**2; 1 disables it.
+        self.supersample = max(1, int(supersample))
         # ``resolution`` is kept for backwards compatibility but no longer sets the
         # LIC texture size: in the screen-space path the textures follow the canvas
         # (see _ensure_lic_textures). It only seeds the uniform before the first
@@ -146,6 +158,7 @@ class ClippingLIC(ClippingCF):
             oriented=int(self.oriented),
             thickness=self.thickness,
             contrast=self.contrast,
+            supersample=self.supersample,
         )
         self._field_tex = None   # rgba32float: (screen_dir_x, screen_dir_y, value, mask)
         self._lic_tex = None     # rgba8unorm: (lic_value, mask, 0, 0)
@@ -232,17 +245,22 @@ class ClippingLIC(ClippingCF):
         if radius <= 1e-12:
             radius = 1.0
 
+        f = max(1, int(self.supersample))
         u = self._lic_uniforms
         u.origin[:] = [float(centre[0]), float(centre[1]), float(centre[2]), 0.0]
         u.tangent1[:] = [float(t1[0]), float(t1[1]), float(t1[2]), 0.0]
         u.tangent2[:] = [float(t2[0]), float(t2[1]), float(t2[2]), 0.0]
-        u.width = int(options.canvas.width)
-        u.height = int(options.canvas.height)
-        u.kernel_length = int(self.kernel_length)
+        # The LIC is computed at f texels per canvas pixel; kernel_length and
+        # thickness are given in canvas pixels, so scale them into LIC texels so
+        # the apparent streak length/width is independent of the SSAA factor.
+        u.width = int(options.canvas.width) * f
+        u.height = int(options.canvas.height) * f
+        u.kernel_length = max(1, int(self.kernel_length) * f)
         u.oriented = 1 if self.oriented else 0
-        u.thickness = int(self.thickness)
+        u.thickness = max(1, int(self.thickness) * f)
         u.inv_extent = float(1.0 / (2.0 * radius))
         u.contrast = float(self.contrast)
+        u.supersample = f
         u.update_buffer()
 
     def _ensure_lic_textures(self, options: RenderOptions):
@@ -253,8 +271,9 @@ class ClippingLIC(ClippingCF):
         (storage) and sampled afterwards (texture), so both usages are required.
         COPY_SRC is added when exporting to mirror colormap.py, even though the
         export path is degraded for v1."""
-        w = int(options.canvas.width)
-        h = int(options.canvas.height)
+        f = max(1, int(self.supersample))
+        w = int(options.canvas.width) * f
+        h = int(options.canvas.height) * f
         extra = TextureUsage.COPY_SRC if os.environ.get("WEBGPU_EXPORTING") else 0
         usage = TextureUsage.STORAGE_BINDING | TextureUsage.TEXTURE_BINDING | extra
         if self._field_tex is None or self._field_tex.width != w or self._field_tex.height != h:
@@ -301,8 +320,9 @@ class ClippingLIC(ClippingCF):
         # for the camera buffer (the engine owns it).
         options.update_buffers()
 
-        w = int(options.canvas.width)
-        h = int(options.canvas.height)
+        f = max(1, int(self.supersample))
+        w = int(options.canvas.width) * f
+        h = int(options.canvas.height) * f
         gx = (w + 15) // 16
         gy = (h + 15) // 16
         defines = self._lic_compute_defines()
@@ -417,6 +437,11 @@ class ClippingLIC(ClippingCF):
 
     def set_contrast(self, value: float):
         self.contrast = float(value)
+        self._refresh()
+
+    def set_supersample(self, value: int):
+        # SSAA factor: higher = smoother/finer streaks, ~value**2 more compute.
+        self.supersample = max(1, int(value))
         self._refresh()
 
     def set_resolution(self, value: int):

@@ -53,10 +53,15 @@ fn dropletNoise(x: u32, y: u32) -> f32 {
     if (rand < 0.85) {
         return 0.0;
     }
-    let dx = f32(x % n) - f32(n) / 2.0;
-    let dy = f32(y % n) - f32(n) / 2.0;
-    let d = 4.0 * (dx * dx + dy * dy) / f32(n * n);
-    return clamp(1.0 - d, 0.0, 1.0);
+    let dx = f32(x % n) - f32(n) * 0.5;
+    let dy = f32(y % n) - f32(n) * 0.5;
+    // Smooth (C1) radial falloff instead of a hard quadratic clip, so a droplet
+    // reads as a soft blob. Combined with the LIC being supersampled and box-
+    // downsampled in the render pass, this antialiases thin oriented streaks
+    // (the cause of the jaggies at small thickness). r is the distance from the
+    // cell centre normalised so r = 1 at the cell edge (radius n/2).
+    let r = clamp(sqrt(dx * dx + dy * dy) / (f32(n) * 0.5), 0.0, 1.0);
+    return 1.0 - smoothstep(0.0, 1.0, r);
 }
 
 fn flowAt(p: vec2f) -> vec4f {
