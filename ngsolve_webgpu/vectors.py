@@ -92,6 +92,7 @@ class VectorRenderer(ShapeRenderer):
         self._scene = None
         self._anim_speed = 1.0
         self.user_scale = 1.0
+        self._directions_per_instance = True
         super().__init__(self.generate_shape(), None, None, colormap=colormap)
 
     def set_grid_size(self, grid_size: float):
@@ -180,7 +181,26 @@ class VectorRenderer(ShapeRenderer):
         if not is_complex:
             self.__buffers.pop("directions_imag", None)
             
+    def _allocate_js_export_buffers(self):
+        self.u_nvectors = buffer_from_array(
+            np.array([0], dtype=np.uint32),
+            label="n_vectors",
+            usage=BufferUsage.STORAGE | BufferUsage.COPY_DST | BufferUsage.COPY_SRC,
+            reuse=self.u_nvectors,
+            use_cache=False,
+        )
+        self.n_vectors = 1
+        self.allocate_buffers()
+        self.positions_buffer = self.__buffers["positions"]
+        self.directions_buffer = self.__buffers["directions"]
+        self.directions_imag_buffer = self.__buffers.get("directions_imag", None)
+        self.values_buffer = self.__buffers["values"]
+
     def compute_vectors(self):
+        if not (self.symmetry and self.symmetry.n_copies > 1):
+            if self.positions_buffer is None:
+                self._allocate_js_export_buffers()
+            return
         self.u_nvectors = buffer_from_array(
             np.array([0], dtype=np.uint32),
             label="n_vectors",
@@ -420,10 +440,6 @@ class SurfaceVectors(VectorRenderer):
         super().update(options)
 
     def compute_vectors(self):
-        if self._vec_js and self.positions_buffer is not None:
-            # JS engine owns the compute; its count-then-fill keeps the GPU
-            # buffers current, so Python must not recompute/readback.
-            return
         if "data_2d" not in self.function_data.get_buffers():
             self.active = False
             return
@@ -591,13 +607,12 @@ class ClippingVectors(VectorRenderer):
         ]
 
     def compute_vectors(self):
-        if self._vec_js and self.positions_buffer is not None:
-            # JS engine owns the clip-vector compute (countThenFill). The output
-            # buffers were allocated on the bootstrap frame and are now JS-owned
-            # and resized GPU-side; Python must not run the count+eval+readback.
-            return
         if "data_3d" not in self.function_data.get_buffers():
             self.active = False
+            return
+        if not (self.symmetry and self.symmetry.n_copies > 1):
+            if self.positions_buffer is None:
+                self._allocate_js_export_buffers()
             return
         self.u_nvectors = buffer_from_array(
             np.array([0], dtype=np.uint32),
