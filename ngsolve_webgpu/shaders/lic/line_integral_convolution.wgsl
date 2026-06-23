@@ -1,10 +1,13 @@
 // LIC stage 2: line integral convolution of the field texture.
 //
-// Reads the in-plane flow field produced by evaluate.wgsl (binding 41) and
-// writes a grayscale LIC image (binding 42). The flow direction at each texel
-// streams white noise along itself, so isocontours of the resulting image trace
-// the field lines. Texels outside the cut plane (coverage mask 0) are left
-// blank so the final render can fall back to the flat colour there.
+// Reads the SCREEN-SPACE flow field produced by evaluate.wgsl (binding 41) and
+// writes a grayscale LIC image (binding 42), both at canvas resolution. The flow
+// direction at each pixel streams white noise along itself, so isocontours of the
+// resulting image trace the (perspective-projected) field lines. The noise is
+// hashed by framebuffer pixel, so it is crisp at any zoom but "swims" over the
+// surface while the camera rotates (acceptable: static quality is the priority).
+// Pixels outside the cut plane (coverage mask 0) are left blank so the final
+// render can fall back to the flat colour there.
 
 #import ngsolve/lic/common
 
@@ -73,8 +76,10 @@ fn lineIntegralConvolution(x: u32, y: u32) -> f32 {
 
         for (var k: u32 = 0u; k < kernel_length; k++) {
             let sample = flowAt(p);
-            if (sample.w < 0.5) {
-                break;  // left the cut plane
+            // Stop at the plane boundary or at a no-value (NaN) point so the
+            // streamline does not bleed past the data. NaN != NaN.
+            if (sample.w < 0.5 || sample.x != sample.x || sample.y != sample.y) {
+                break;
             }
             var v = sample.xy;
             let len = length(v);

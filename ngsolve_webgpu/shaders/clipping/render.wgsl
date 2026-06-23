@@ -128,10 +128,12 @@ fn fragment_clipping(input: VertexOutputClip) -> @location(0) vec4<f32>
   let value = evalTet(&u_function_values_3d, input.elnr, u_component, input.lam) * input.value_sign;
   var color = applyHighlight(getColor(value), input.elnr, input.index);
 #ifdef LIC
-  // Modulate the colormapped value with the precomputed LIC grayscale, sampled
-  // in plane-parameter space. lic.y is the coverage mask (0 at rasterisation
-  // gaps), so gaps fall back to the flat colour.
-  let texel = vec2<i32>(clamp(licWorldToTexel(input.p),
+  // Modulate the colormapped value with the precomputed LIC grayscale. The LIC
+  // texture is computed in SCREEN space at canvas resolution, so this fragment
+  // samples it directly at its own framebuffer pixel (@builtin(position)). lic.y
+  // is the coverage mask (0 at rasterisation gaps), so gaps fall back to the
+  // flat colour.
+  let texel = vec2<i32>(clamp(input.fragPosition.xy,
                               vec2f(0.0),
                               vec2f(f32(u_lic.width) - 1.0, f32(u_lic.height) - 1.0)));
   let lic = textureLoad(u_lic_output, texel, 0);
