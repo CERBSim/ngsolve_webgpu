@@ -118,6 +118,30 @@ class VectorRenderer(ShapeRenderer):
         arrow = cyl + cone.move((0, 0, 0.5))
         return arrow.move((0, 0, -0.5))
 
+    def _eval_order_defines(self):
+        """Shader eval-order defines for the surface/clipping vector compute.
+
+        The shader evaluates BOTH the function values (function order) and the
+        CURVED geometry positions (mesh curve order) through the same
+        N_DOFS_TRIG_VEC3-sized array. On a curved mesh the curve order can
+        exceed the function order (e.g. mesh.Curve(5) with an order-2 field), so
+        the array must be sized for the larger of the two — otherwise the curved
+        de Casteljau overflows the array, the triangle corners come out
+        degenerate, and the grid sampler counts zero arrows (nothing draws).
+        """
+        order = self.function_data.order
+        md = getattr(self.function_data, "mesh_data", None)
+        if md is not None:
+            md_defines = md.get_shader_defines()
+            order = max(order, md_defines.get("MAX_EVAL_ORDER_VEC3", 1),
+                        md_defines.get("MAX_EVAL_ORDER", 1))
+        defines = {"MAX_EVAL_ORDER": order, "MAX_EVAL_ORDER_VEC3": order}
+        if self.function_data.cf.is_complex:
+            defines["IS_COMPLEX"] = 1
+        if self.scale_by_value:
+            defines["SCALE_BY_VALUE"] = 1
+        return defines
+
     def get_compute_bindings(self):
         self.u_grid_spacing = uniform_from_array(
             np.array([self.grid_spacing], dtype=np.float32), label="grid_spacing",
@@ -229,14 +253,7 @@ class VectorRenderer(ShapeRenderer):
         self.n_vectors = int(read_buffer(self.u_nvectors, np.uint32)[0])
         write_array_to_buffer(self.u_nvectors, np.array([0], dtype=np.uint32))
         self.allocate_buffers()
-        defines = {
-                "MAX_EVAL_ORDER": self.function_data.order,
-                "MAX_EVAL_ORDER_VEC3": self.function_data.order,
-            }
-        if self.function_data.cf.is_complex:
-            defines["IS_COMPLEX"] = 1
-        if self.scale_by_value:
-            defines["SCALE_BY_VALUE"] = 1
+        defines = self._eval_order_defines()
         run_compute_shader(
             read_shader_file(self.compute_shader_file),
             self.get_compute_bindings(),
@@ -347,7 +364,16 @@ class VectorRenderer(ShapeRenderer):
             if self._complex_uniforms is not None:
                 self._complex_uniforms.is_complex = 1 if is_complex else 0
                 self._complex_uniforms.color_override = 1 if (is_complex and self.scale_by_value) else 0
-                self._complex_uniforms.update_buffer()
+                self._sync_complex_uniforms()
+
+    def _sync_complex_uniforms(self):
+        """Mirror the source-of-truth complex mode/phase (ComplexSettings,
+        binding 56) onto the arrow render uniform (ShapeComplexUniform, binding
+        11) the vertex shader reads to combine the real/imag directions."""
+        if self._complex_uniforms is not None:
+            self._complex_uniforms.mode = int(self._complex_settings.mode)
+            self._complex_uniforms.phase = float(self._complex_settings.phase)
+            self._complex_uniforms.update_buffer()
 
     def set_complex_mode(self, mode):
         """Set complex visualization mode: 'real', 'imag', 'abs', 'arg'"""
@@ -365,14 +391,12 @@ class VectorRenderer(ShapeRenderer):
         self._complex_settings.mode = shader_mode
         if phase is not None:
             self._complex_settings.phase = phase
+        self._sync_complex_uniforms()
 
     def set_phase(self, phase: float):
         """Set the phase angle for complex animate mode"""
         self._complex_settings.phase = phase
-        # Also update the ShapeRenderer's complex uniform (binding 11)
-        if self._complex_uniforms is not None:
-            self._complex_uniforms.phase = phase
-            self._complex_uniforms.update_buffer()
+        self._sync_complex_uniforms()
 
     def animate_phase(self, scene=None, speed=1.0, fps=60):
         """Start phase-sweep animation."""
@@ -463,14 +487,7 @@ class SurfaceVectors(VectorRenderer):
             self._vec_js = False
             return []
 
-        defines = {
-            "MAX_EVAL_ORDER": self.function_data.order,
-            "MAX_EVAL_ORDER_VEC3": self.function_data.order,
-        }
-        if self.function_data.cf.is_complex:
-            defines["IS_COMPLEX"] = 1
-        if self.scale_by_value:
-            defines["SCALE_BY_VALUE"] = 1
+        defines = self._eval_order_defines()
         shader = preprocess_shader_code(
             read_shader_file(self.compute_shader_file), defines=defines
         )

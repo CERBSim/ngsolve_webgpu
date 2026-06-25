@@ -44,6 +44,31 @@ class TestVectors:
 
         webgpu_env.assert_matches_baseline(scene, "surface_vectors_direct.png")
 
+    def test_surface_vectors_curved_order(self, webgpu_env):
+        import ngsolve as ngs
+        import webgpu.jupyter as wj
+        from ngsolve_webgpu.mesh import MeshData
+        from ngsolve_webgpu.cf import FunctionData
+        from ngsolve_webgpu.vectors import SurfaceVectors
+
+        webgpu_env.ensure_canvas(600, 600)
+        mesh = ngs.Mesh(ngs.unit_cube.GenerateMesh(maxh=0.5))
+        mesh.Curve(5)
+        cf = ngs.CF((ngs.x, ngs.y, ngs.z))
+        function_data = FunctionData(MeshData(mesh), cf, order=2)
+        renderer = SurfaceVectors(function_data, grid_size=20)
+        # drive the real path so the mesh data (hence curve order) is built
+        scene = wj.Draw([renderer], 600, 600)
+        scene._use_js_engine = True
+        webgpu_env.readback_texture(scene, webgpu_env.output_dir / "curved_order.png")
+
+        defines = renderer._eval_order_defines()
+        assert defines["MAX_EVAL_ORDER_VEC3"] >= 5, (
+            f"shader vec3 order {defines['MAX_EVAL_ORDER_VEC3']} must cover the "
+            f"mesh curve order (5); too small => curved corners degenerate => "
+            f"zero arrows counted"
+        )
+
     def test_clipping_vectors_direct(self, webgpu_env):
         import ngsolve as ngs
         import webgpu.jupyter as wj
