@@ -64,7 +64,9 @@ class LicUniforms(UniformBase):
     pass at ``@group(0) @binding(40)``.
 
     Byte layout MUST match ``shaders/lic/common.wgsl`` (struct ``LicUniforms``,
-    80 bytes = 5 * 16). The pre-existing ``webgpu.uniforms``
+    144 bytes = 5 * 16 scalars + a 64-byte ``lic_mvp`` mat4x4 at offset 80). The
+    ``mat4x4`` is 16-byte aligned and offset 80 is already a multiple of 16, so
+    no padding is needed before it. The pre-existing ``webgpu.uniforms``
     ``LineIntegralConvolutionUniforms`` (also binding 40) lacks the plane-basis
     fields, so it is deliberately *not* reused.
 
@@ -88,6 +90,8 @@ class LicUniforms(UniformBase):
         ("inv_extent", ct.c_float),     # world -> [0,1] scale (= 1 / (2 R))
         ("contrast", ct.c_float),       # LIC modulation strength in [0, 1]
         ("supersample", ct.c_uint32),   # LIC texels per canvas pixel (SSAA factor)
+        ("lic_mvp", ct.c_float * 16),   # camera MVP the LIC field was built with
+                                        # (staleness check in the render pass)
     ]
 
     def __init__(
@@ -112,6 +116,22 @@ class LicUniforms(UniformBase):
             supersample=supersample,
             **kwargs,
         )
+
+
+def _store_lic_mvp(lic_uniforms: "LicUniforms", options: RenderOptions):
+    """Record the camera MVP the LIC field is about to be built with into the LIC
+    uniform, so the render pass can detect a stale LIC (camera moved since this
+    dispatch) and skip modulation until Python re-dispatches.
+
+    ``model_view_projection`` holds the exact 16 floats bound at camera binding 0,
+    so the stored layout matches ``u_camera.model_view_projection`` in the shader
+    byte-for-byte. Must be called AFTER ``options.update_buffers()`` so the camera
+    uniform reflects the current view. No-op before the camera uniform exists."""
+    cam_u = getattr(options, "_camera_uniforms", None)
+    if cam_u is None:
+        return
+    lic_uniforms.lic_mvp[:] = cam_u.model_view_projection
+    lic_uniforms.update_buffer()
 
 
 class ClippingLIC(ClippingCF):
@@ -221,7 +241,7 @@ class ClippingLIC(ClippingCF):
         cam = getattr(options, "camera", None)
         register = getattr(cam, "register_observer", None)
         if register is not None:
-            register(self._refresh)
+            register(self._on_camera_moved)
             self._cam_observer_registered = True
 
     def _update_lic_uniforms(self, options: RenderOptions):
@@ -321,6 +341,7 @@ class ClippingLIC(ClippingCF):
         # In JS-engine mode skip_camera_buffer_write is set, so this is a no-op
         # for the camera buffer (the engine owns it).
         options.update_buffers()
+        _store_lic_mvp(self._lic_uniforms, options)
 
         f = max(1, int(self.supersample))
         w = int(options.canvas.width) * f
@@ -424,6 +445,10 @@ class ClippingLIC(ClippingCF):
         ClippingCF.set_needs_update's data.set_needs_update() to avoid a costly
         per-drag CF re-evaluation: neither a plane move nor a LIC-parameter change
         affects the field values, only how they are convolved/rendered."""
+        super(ClippingCF, self).set_needs_update()
+
+    def _on_camera_moved(self):
+        """Camera-move observer. Unlike the debounced _refresh, this marks dirty immediately"""
         super(ClippingCF, self).set_needs_update()
 
     def set_kernel_length(self, value: int):
@@ -541,7 +566,7 @@ class SurfaceLIC(CFRenderer):
         cam = getattr(options, "camera", None)
         register = getattr(cam, "register_observer", None)
         if register is not None:
-            register(self._refresh)
+            register(self._on_camera_moved)
             self._cam_observer_registered = True
 
     def _update_lic_uniforms(self, options: RenderOptions):
@@ -616,6 +641,7 @@ class SurfaceLIC(CFRenderer):
         # The surface field pass reads the camera uniform (binding 0) to project
         # the flow to screen; make sure it reflects the current camera first.
         options.update_buffers()
+        _store_lic_mvp(self._lic_uniforms, options)
 
         f = max(1, int(self.supersample))
         w = int(options.canvas.width) * f
@@ -708,6 +734,11 @@ class SurfaceLIC(CFRenderer):
         """Mark dirty so the next render re-dispatches the LIC passes WITHOUT
         re-evaluating the surface CF data (CFRenderer.set_needs_update would, which
         is wasteful per camera/clip tick — neither changes the field values)."""
+        super(CFRenderer, self).set_needs_update()
+
+    def _on_camera_moved(self):
+        """Immediate camera-move observer; see ClippingLIC._on_camera_moved for
+        why this is NOT debounced (the post-drag settle must re-dispatch)."""
         super(CFRenderer, self).set_needs_update()
 
     def set_kernel_length(self, value: int):
