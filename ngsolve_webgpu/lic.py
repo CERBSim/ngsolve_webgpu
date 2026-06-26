@@ -44,6 +44,7 @@ import numpy as np
 from webgpu.renderer import Renderer, RenderOptions
 from webgpu.uniforms import UniformBase
 from webgpu.utils import (
+    BufferBinding,
     StorageTextureBinding,
     TextureBinding,
     read_shader_file,
@@ -52,7 +53,7 @@ from webgpu.utils import (
 from webgpu.webgpu_api import ShaderStage, TextureFormat, TextureUsage
 
 from .clipping import ClippingCF
-from .cf import FunctionData
+from .cf import FunctionData, CFRenderer, Binding
 from webgpu.clipping import Clipping
 from webgpu.colormap import Colormap
 
@@ -448,6 +449,294 @@ class ClippingLIC(ClippingCF):
         # Deprecated for the screen-space path: the LIC textures follow the canvas
         # size, so this no longer changes the rendered resolution. Kept for API
         # compatibility.
+        self.resolution = int(value)
+        self._refresh()
+
+
+class SurfaceLIC(CFRenderer):
+    """2D surface renderer (``cf.dim == mesh.dim == 2``) that REPLACES the flat
+    field colouring with a Line Integral Convolution of the (vector) coefficient
+    function, computed in SCREEN space — the 2D analogue of :class:`ClippingLIC`.
+
+    There is no cutting plane here: instead of clipping volume elements, the
+    field-evaluation compute pass
+    (``lic/evaluate.wgsl :: evaluate_lic_field_surface``) software-rasterises the
+    mesh's surface triangles directly into a screen-space field texture under the
+    live camera. The convolution pass (``line_integral_convolution.wgsl``) and the
+    render-side modulation (``mesh/render.wgsl`` ``#ifdef LIC`` branch) are shared
+    verbatim with the clipping path, so the streamlines track the camera the same
+    way (recomputed per frame; degraded on static-HTML export).
+
+    Because this IS the surface renderer (a ``CFRenderer``), callers should hide
+    the plain surface field while it is active to avoid z-fighting — mirroring how
+    the 3D LIC replaces the clip-plane field.
+    """
+
+    def __init__(
+        self,
+        data: FunctionData,
+        clipping: Clipping = None,
+        colormap: Colormap = None,
+        component=None,
+        symmetry=None,
+        *,
+        kernel_length: int = 30,
+        oriented: bool = False,
+        thickness: int = 10,
+        contrast: float = 1.0,
+        resolution: int = 256,
+        supersample: int = 2,
+    ):
+        super().__init__(
+            data, clipping=clipping, colormap=colormap, component=component, symmetry=symmetry
+        )
+        self.kernel_length = int(kernel_length)
+        self.oriented = bool(oriented)
+        self.thickness = int(thickness)
+        self.contrast = float(contrast)
+        # SSAA factor: LIC computed at supersample x the canvas, box-downsampled in
+        # the render pass; see ClippingLIC for the rationale. Cost ~supersample**2.
+        self.supersample = max(1, int(supersample))
+        # Kept for API symmetry with ClippingLIC; the screen-space textures follow
+        # the canvas, so this does not set the rendered resolution.
+        self.resolution = int(resolution)
+
+        self._lic_uniforms = LicUniforms(
+            width=self.resolution,
+            height=self.resolution,
+            kernel_length=self.kernel_length,
+            oriented=int(self.oriented),
+            thickness=self.thickness,
+            contrast=self.contrast,
+            supersample=self.supersample,
+        )
+        self._field_tex = None   # rgba32float: (screen_dir_x, screen_dir_y, value, mask)
+        self._lic_tex = None     # rgba8unorm: (lic_value, mask, 0, 0)
+        self._lic_enabled = False
+        self._cam_observer_registered = False
+        # A clip plane can still cut a 2D surface; re-dispatch when it moves.
+        self.clipping.callbacks.append(self._refresh)
+
+    # ------------------------------------------------------------------ update
+    def update(self, options: RenderOptions):
+        super().update(options)
+        self._lic_enabled = False
+        if not self.active:
+            return
+        if os.environ.get("WEBGPU_EXPORTING"):
+            # Static-HTML export can't carry the GPU-computed texture; show the
+            # plain surface field there (graceful degrade), as ClippingLIC does.
+            return
+
+        self._lic_enabled = True
+        # Compile the LIC branch of mesh/render.wgsl. shader_defines is reset from
+        # the mesh defines inside super().update(), so set this afterwards.
+        self.shader_defines["LIC"] = 1
+
+        self._register_camera_observer(options)
+        self._update_lic_uniforms(options)
+        self._ensure_lic_textures(options)
+        self._dispatch_lic(options)
+
+    def _register_camera_observer(self, options: RenderOptions):
+        """Mark dirty whenever the camera moves so the screen-space LIC is
+        re-dispatched for the new view (see ClippingLIC._register_camera_observer)."""
+        if self._cam_observer_registered:
+            return
+        cam = getattr(options, "camera", None)
+        register = getattr(cam, "register_observer", None)
+        if register is not None:
+            register(self._refresh)
+            self._cam_observer_registered = True
+
+    def _update_lic_uniforms(self, options: RenderOptions):
+        """Fill the LIC uniform. ``width``/``height`` are the canvas size times the
+        SSAA factor; there is no in-plane basis (the flow is the surface field
+        itself, projected straight to screen), so tangent1/tangent2 are left as the
+        world axes and are unused by the surface field pass."""
+        (pmin, pmax) = self.data.get_bounding_box()
+        pmin = np.asarray(pmin, dtype=np.float64)
+        pmax = np.asarray(pmax, dtype=np.float64)
+        centre = 0.5 * (pmin + pmax)
+        radius = 0.5 * float(np.linalg.norm(pmax - pmin))
+        if radius <= 1e-12:
+            radius = 1.0
+
+        f = max(1, int(self.supersample))
+        u = self._lic_uniforms
+        u.origin[:] = [float(centre[0]), float(centre[1]), float(centre[2]), 0.0]
+        u.tangent1[:] = [1.0, 0.0, 0.0, 0.0]
+        u.tangent2[:] = [0.0, 1.0, 0.0, 0.0]
+        u.width = int(options.canvas.width) * f
+        u.height = int(options.canvas.height) * f
+        u.kernel_length = max(1, int(self.kernel_length) * f)
+        u.oriented = 1 if self.oriented else 0
+        u.thickness = max(1, int(self.thickness) * f)
+        u.inv_extent = float(1.0 / (2.0 * radius))
+        u.contrast = float(self.contrast)
+        u.supersample = f
+        u.update_buffer()
+
+    def _ensure_lic_textures(self, options: RenderOptions):
+        """(Re)allocate the field and LIC textures at the canvas resolution; see
+        ClippingLIC._ensure_lic_textures."""
+        f = max(1, int(self.supersample))
+        w = int(options.canvas.width) * f
+        h = int(options.canvas.height) * f
+        extra = TextureUsage.COPY_SRC if os.environ.get("WEBGPU_EXPORTING") else 0
+        usage = TextureUsage.STORAGE_BINDING | TextureUsage.TEXTURE_BINDING | extra
+        if self._field_tex is None or self._field_tex.width != w or self._field_tex.height != h:
+            self._field_tex = self.device.createTexture(
+                size=[w, h, 1],
+                usage=usage,
+                format=TextureFormat.rgba32float,
+                dimension="2d",
+                label="surface_lic_field",
+            )
+        if self._lic_tex is None or self._lic_tex.width != w or self._lic_tex.height != h:
+            self._lic_tex = self.device.createTexture(
+                size=[w, h, 1],
+                usage=usage,
+                format=TextureFormat.rgba8unorm,
+                dimension="2d",
+                label="surface_lic_output",
+            )
+
+    def _lic_compute_defines(self):
+        # The surface field pass evaluates the vector field with evalTrigVec3ReIm
+        # (and the curvature with evalTrigVec3), both sized by MAX_EVAL_ORDER_VEC3,
+        # so it must cover the field order AND the mesh curvature order. The
+        # imported scalar evalTrig also references MAX_EVAL_ORDER at compile time.
+        field_order = int(self.data.order)
+        curv = self.data.curvature_data.order if self.data.curvature_data else 0
+        d = {
+            "MAX_EVAL_ORDER": max(field_order, 1),
+            "MAX_EVAL_ORDER_VEC3": max(field_order, curv, 1),
+        }
+        return d
+
+    def _dispatch_lic(self, options: RenderOptions):
+        """Run the three LIC compute passes (clear, surface field, convolve). Each
+        run_compute_shader submits its own encoder, so they execute sequentially."""
+        # The surface field pass reads the camera uniform (binding 0) to project
+        # the flow to screen; make sure it reflects the current camera first.
+        options.update_buffers()
+
+        f = max(1, int(self.supersample))
+        w = int(options.canvas.width) * f
+        h = int(options.canvas.height) * f
+        gx = (w + 15) // 16
+        gy = (h + 15) // 16
+        defines = self._lic_compute_defines()
+        eval_code = read_shader_file("ngsolve/lic/evaluate.wgsl")
+        lic_code = read_shader_file("ngsolve/lic/line_integral_convolution.wgsl")
+
+        # Stage 1a: clear the field texture (only touches binding 40 + 41).
+        run_compute_shader(
+            eval_code,
+            self._lic_uniforms.get_bindings()
+            + [StorageTextureBinding(41, self._field_tex, access="write-only", dim=2)],
+            [gx, gy, 1],
+            entry_point="clear_field",
+            defines=defines,
+            label="surface_lic_clear_field",
+        )
+
+        # Stage 1b: rasterise the surface vector field into the field texture.
+        # evaluate_lic_field_surface statically references only mesh(110),
+        # function-values-2d(10), the LIC uniform(40), the camera(0) and the field
+        # output texture(41) — hand run_compute_shader exactly that minimal set
+        # (a superset can be rejected as "binding not used"). Build it explicitly
+        # rather than filtering self.get_bindings(): that would touch the lazily-
+        # created FunctionSettings/ComplexSettings uniforms, which the render loop
+        # only initialises AFTER this update() runs.
+        eval_bindings = [
+            b for b in self.data.mesh_data.get_bindings()
+            if getattr(b, "nr", None) == 110                            # 110 mesh
+        ]
+        eval_bindings += [BufferBinding(Binding.FUNCTION_VALUES_2D, self._buffers["data_2d"])]
+        eval_bindings += self._lic_uniforms.get_bindings()              # 40 u_lic
+        eval_bindings += options._camera_uniforms.get_bindings()        # 0  u_camera
+        eval_bindings += [StorageTextureBinding(41, self._field_tex, access="write-only", dim=2)]
+
+        n_trigs = int(self.n_instances)
+        n_wg = min(n_trigs // 256 + 1, 1024)
+        run_compute_shader(
+            eval_code,
+            eval_bindings,
+            [n_wg, 1, 1],
+            entry_point="evaluate_lic_field_surface",
+            defines=defines,
+            label="surface_lic_evaluate_field",
+        )
+
+        # Stage 2: line integral convolution (shared, geometry-agnostic shader).
+        run_compute_shader(
+            lic_code,
+            self._lic_uniforms.get_bindings()
+            + [
+                TextureBinding(
+                    41,
+                    self._field_tex,
+                    sample_type="unfilterable-float",
+                    dim=2,
+                    visibility=ShaderStage.COMPUTE,
+                ),
+                StorageTextureBinding(42, self._lic_tex, access="write-only", dim=2),
+            ],
+            [gx, gy, 1],
+            entry_point="compute_lic",
+            defines=defines,
+            label="surface_lic_convolve",
+        )
+
+    # ---------------------------------------------------------------- bindings
+    def get_bindings(self):
+        bindings = super().get_bindings()
+        if self._lic_enabled and self._lic_tex is not None:
+            # Render pass: add the LIC uniform (40) and the LIC output texture (42)
+            # the #ifdef LIC branch of mesh/render.wgsl samples.
+            bindings = bindings + self._lic_uniforms.get_bindings() + [
+                TextureBinding(
+                    42,
+                    self._lic_tex,
+                    sample_type="float",  # rgba8unorm is filterable
+                    dim=2,
+                    visibility=ShaderStage.FRAGMENT,
+                ),
+            ]
+        return bindings
+
+    # ----------------------------------------------------------------- helpers
+    def _refresh(self):
+        """Mark dirty so the next render re-dispatches the LIC passes WITHOUT
+        re-evaluating the surface CF data (CFRenderer.set_needs_update would, which
+        is wasteful per camera/clip tick — neither changes the field values)."""
+        super(CFRenderer, self).set_needs_update()
+
+    def set_kernel_length(self, value: int):
+        self.kernel_length = int(value)
+        self._refresh()
+
+    def set_oriented(self, value: bool):
+        self.oriented = bool(value)
+        self._refresh()
+
+    def set_thickness(self, value: int):
+        self.thickness = int(value)
+        self._refresh()
+
+    def set_contrast(self, value: float):
+        self.contrast = float(value)
+        self._refresh()
+
+    def set_supersample(self, value: int):
+        self.supersample = max(1, int(value))
+        self._refresh()
+
+    def set_resolution(self, value: int):
+        # Deprecated for the screen-space path (textures follow the canvas); kept
+        # for API compatibility with ClippingLIC.
         self.resolution = int(value)
         self._refresh()
 

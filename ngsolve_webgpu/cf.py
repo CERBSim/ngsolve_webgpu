@@ -212,8 +212,8 @@ class FunctionData:
     order_3d: int
     _timestamp: float = -1
     _gpu_dirty: bool = True
-    minval: list[float]
-    maxval: list[float]
+    minval: list[float] = [0, 0]
+    maxval: list[float] = [1, 1]
 
     def __init__(
         self,

@@ -9,6 +9,10 @@
 #ifdef SYMMETRY
 #import ngsolve/symmetry
 #endif SYMMETRY
+#ifdef LIC
+#import ngsolve/lic/common
+@group(0) @binding(42) var u_lic_output: texture_2d<f32>;
+#endif LIC
 
 struct VertexOutput1d {
   @builtin(position) fragPosition: vec4<f32>,
@@ -140,11 +144,35 @@ fn fragmentTrig(input: VertexOutput2d) -> @location(0) vec4<f32> {
     checkClipping(input.p);
     let p = &u_function_values_2d;
     let value = evalTrig(p, input.instanceId, u_function_component, input.lam) * input.value_sign;
-    let color = getColor(value);
+    var color = applyHighlight(getColor(value), input.instanceId, input.index);
     if(color.a < 0.01) {
         discard;
     }
-    return lightCalcColor(input.p, input.n, applyHighlight(color, input.instanceId, input.index));
+#ifdef LIC
+    // Modulate the colormapped value with the precomputed screen-space LIC
+    // grayscale, supersampled at u_lic.supersample texels per canvas pixel, so
+    // this fragment box-averages the supersample x supersample block under its own
+    // framebuffer pixel (the antialiasing / fractional-width resolve). The value
+    // is weighted by the coverage mask (channel .y), so gaps fall back to the flat
+    // colour. Mirrors the clipping render's #ifdef LIC branch.
+    let ss = max(i32(u_lic.supersample), 1);
+    let base = vec2<i32>(floor(input.fragPosition.xy)) * ss;
+    let maxxy = vec2<i32>(i32(u_lic.width) - 1, i32(u_lic.height) - 1);
+    var sum_v = 0.0;
+    var sum_m = 0.0;
+    for (var dy = 0; dy < ss; dy++) {
+      for (var dx = 0; dx < ss; dx++) {
+        let s = textureLoad(u_lic_output, clamp(base + vec2<i32>(dx, dy), vec2<i32>(0), maxxy), 0);
+        sum_v += s.x * s.y;
+        sum_m += s.y;
+      }
+    }
+    let cover = sum_m / f32(ss * ss);
+    let licv = clamp(1.5*sum_v / max(sum_m, 1e-6), 0.0, 1.0);
+    let shade = mix(1.0, licv, clamp(u_lic.contrast * cover, 0.0, 1.0));
+    color = vec4f(color.rgb * shade, color.a);
+#endif LIC
+    return lightCalcColor(input.p, input.n, color);
 }
 
 @fragment

@@ -11,7 +11,7 @@ from .cf import FunctionData, CFRenderer
 from .facet_cf import FacetFunctionData, FacetCFRenderer, FacetCFRenderer3D
 from .pick import MeshPickResult, HighlightUniforms, GeoPickResult
 from .clipping import ClippingCF
-from .lic import ClippingLIC, LineIntegralConvolution
+from .lic import ClippingLIC, SurfaceLIC, LineIntegralConvolution
 from .isolines import IsolineSettings, IsolineRenderer, ClippingIsolineRenderer
 from webgpu.colormap import Colorbar, Colormap
 from webgpu.clipping import Clipping
