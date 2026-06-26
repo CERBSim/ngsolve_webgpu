@@ -125,7 +125,13 @@ fn vertex_clipping(@builtin(vertex_index) vertId: u32,
 @fragment
 fn fragment_clipping(input: VertexOutputClip) -> @location(0) vec4<f32>
 {
-  let value = evalTet(&u_function_values_3d, input.elnr, u_component, input.lam) * input.value_sign;
+  let value_raw = evalTet(&u_function_values_3d, input.elnr, u_component, input.lam) * input.value_sign;
+  // Guard against NaN: the coefficient function can be singular (0/0) at e.g. flow
+  // sources/sinks, and a NaN value would be sampled into the colormap at a NaN
+  // texture coordinate -> transparent texel. With the premultiplied "over" blend
+  // (light.wgsl + canvas.py) the background then bleeds through as a bright spot.
+  // Map NaN to the colormap minimum so the fragment stays opaque. NaN != NaN.
+  let value = select(value_raw, u_cmap_uniforms.min, value_raw != value_raw);
   var color = applyHighlight(getColor(value), input.elnr, input.index);
 #ifdef LIC
   // Modulate the colormapped value with the precomputed LIC grayscale. The LIC
@@ -148,8 +154,8 @@ fn fragment_clipping(input: VertexOutputClip) -> @location(0) vec4<f32>
     }
   }
   let cover = sum_m / f32(ss * ss);
-  let licv = sum_v / max(sum_m, 1e-6);
-  let shade = mix(1.0, licv, u_lic.contrast * cover);
+  let licv = clamp(1.5*sum_v / max(sum_m, 1e-6), 0.0, 1.0);
+  let shade = mix(1.0, licv, clamp(u_lic.contrast * cover, 0.0, 1.0));
   color = vec4f(color.rgb * shade, color.a);
 #endif LIC
   return lightCalcColor(input.p, input.n, color);

@@ -68,14 +68,41 @@ fn flowAt(p: vec2f) -> vec4f {
     return textureLoad(u_lic_field, vec2<i32>(p), 0);
 }
 
+// Convolution kernel weight at step k of a march going in direction `dir`. The
+// oriented kernel is asymmetric (weights one march direction more heavily), which
+// is what gives oriented LIC its visible flow direction; the standard kernel is a
+// symmetric linear ramp.
+fn kernelWeight(dir: i32, k: u32, kernel_length: u32, oriented: u32) -> f32 {
+    if (oriented == 0u) {
+        return 1.0 - f32(k) / f32(kernel_length);
+    }
+    let t = 0.5 * (1.0 - f32(dir) * f32(k) / f32(kernel_length));
+    return 0.1 + 0.9 * t * t * t * t;
+}
+
 fn lineIntegralConvolution(x: u32, y: u32) -> f32 {
     let w = u_lic.width;
     let h = u_lic.height;
     let kernel_length = u_lic.kernel_length;
     let oriented = u_lic.oriented;
-    var sum: f32 = 0.0;
-    var weight: f32 = 0.0;
 
+    // Denominator = the weight a FULL (untruncated) streamline would accumulate,
+    // NOT the weight actually gathered. Normalising by the accumulated weight (as
+    // a textbook LIC does) amplifies truncated and convergent streamlines: at
+    // first-order critical points (sources, sinks, saddles) the integration stops
+    // early or many neighbours funnel through the same few texels, so their few
+    // samples no longer regress to the noise mean and flare into bright/dark
+    // blobs. Dividing by the full-kernel weight instead lets those streamlines
+    // fade to neutral, while a full streamline is unchanged (accumulated == full),
+    // so smooth regions look exactly as before.
+    var w_full: f32 = 0.0;
+    for (var dir: i32 = -1; dir <= 1; dir += 2) {
+        for (var k: u32 = 0u; k < kernel_length; k++) {
+            w_full += kernelWeight(dir, k, kernel_length, oriented);
+        }
+    }
+
+    var sum: f32 = 0.0;
     for (var dir: i32 = -1; dir <= 1; dir += 2) {
         var p = vec2f(f32(x) + 0.5, f32(y) + 0.5);
 
@@ -88,7 +115,7 @@ fn lineIntegralConvolution(x: u32, y: u32) -> f32 {
             }
             var v = sample.xy;
             let len = length(v);
-            if (len < 1e-8) {
+            if (sample.z < 1e-2) {
                 break;  // stagnation point
             }
             v = v / len;
@@ -101,36 +128,26 @@ fn lineIntegralConvolution(x: u32, y: u32) -> f32 {
 
             let ix = u32(p.x);
             let iy = u32(p.y);
-
+            let kw = kernelWeight(dir, k, kernel_length, oriented);
             if (oriented == 0u) {
-                let kernel_weight = 1.0 - f32(k) / f32(kernel_length);
-                sum += kernel_weight * noise(ix, iy);
-                weight += kernel_weight;
+                // Zero-mean noise so a full streamline averages to 0 (recentred to
+                // 0.5 below) and a truncated one stays near neutral instead of
+                // taking the value of its few bright/dark samples.
+                sum += kw * (noise(ix, iy) - 0.5);
             } else {
-                // The asymmetric kernel weights one march direction more
-                // heavily, which is what gives oriented LIC its visible flow
-                // direction. (1 - dir*...) points the bright "tail" the correct
-                // way along the flow; (1 + dir*...) reverses it.
-                let t = 0.5 * (1.0 - f32(dir) * f32(k) / f32(kernel_length));
-                let kernel_weight = 0.1 + 0.9 * t * t * t * t;
-                sum += kernel_weight * dropletNoise(ix, iy);
-                weight += kernel_weight;
+                sum += kw * dropletNoise(ix, iy);
             }
         }
     }
 
-    if (weight <= 0.0) {
-        return 0.5;
+    let denom = max(w_full, 1e-6);
+    if (oriented == 0u) {
+        return clamp(0.5 + sum / denom, 0.0, 1.0);
     }
-    var result = sum / weight;
-    if (oriented != 0u) {
-        // Oriented LIC convolves sparse droplet noise (zero in ~85% of cells),
-        // so its weighted average is far darker than the standard mode's uniform
-        // noise (~0.5 mean). Lift it with a gain so the streaks read at a similar
-        // brightness; clamp keeps the value in the texture's [0, 1] range.
-        result = clamp(result * 6.0, 0.0, 1.0);
-    }
-    return result;
+    // Oriented LIC convolves sparse droplet noise (zero in ~85% of cells), so its
+    // weighted sum is small; lift it with a gain so the streaks read at a similar
+    // brightness. clamp keeps the value in the texture's [0, 1] range.
+    return clamp(6.0 * sum / denom, 0.0, 1.0);
 }
 
 @compute @workgroup_size(16, 16, 1)
