@@ -351,7 +351,6 @@ class VectorRenderer(ShapeRenderer):
             # fixed size (directions are unit vectors)
             self._scale = 1.6 * self.grid_spacing * self.user_scale
             self._scale_mode = 2
-        print("scale by value", self.scale_by_value, self._scale)
         if self.gpu_objects.colormap.autoscale:
             self.gpu_objects.colormap.widen_range(
                 self.function_data.minval[0],
