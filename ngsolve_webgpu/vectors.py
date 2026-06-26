@@ -114,7 +114,7 @@ class VectorRenderer(ShapeRenderer):
         
     def generate_shape(self):
         cyl = generate_cylinder(8, 0.05, 0.5, bottom_face=True)
-        cone = generate_cone(8, 0.2, 0.5, bottom_face=True)
+        cone = generate_cone(8, 0.15, 0.5, bottom_face=True)
         arrow = cyl + cone.move((0, 0, 0.5))
         return arrow.move((0, 0, -0.5))
 
