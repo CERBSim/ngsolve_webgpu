@@ -10,8 +10,7 @@
 #import ngsolve/symmetry
 #endif SYMMETRY
 #ifdef LIC
-#import ngsolve/lic/common
-@group(0) @binding(42) var u_lic_output: texture_2d<f32>;
+#import ngsolve/lic/render
 #endif LIC
 
 @group(0) @binding(24) var<storage> subtrigs: array<SubTrig>;
@@ -134,29 +133,7 @@ fn fragment_clipping(input: VertexOutputClip) -> @location(0) vec4<f32>
   let value = select(value_raw, u_cmap_uniforms.min, value_raw != value_raw);
   var color = applyHighlight(getColor(value), input.elnr, input.index);
 #ifdef LIC
-  // Modulate the colormapped value with the precomputed LIC grayscale. The LIC
-  // texture is computed in SCREEN space, supersampled at u_lic.supersample texels
-  // per canvas pixel, so this fragment box-averages the supersample x supersample
-  // block under its own framebuffer pixel (@builtin(position)) — that downsample
-  // is the antialiasing / fractional-width resolve. The value is averaged
-  // weighted by the coverage mask (channel .y, 0 at gaps / no-value), so partial-
-  // coverage edges blend and gaps fall back to the flat colour.
-  let ss = max(i32(u_lic.supersample), 1);
-  let base = vec2<i32>(floor(input.fragPosition.xy)) * ss;
-  let maxxy = vec2<i32>(i32(u_lic.width) - 1, i32(u_lic.height) - 1);
-  var sum_v = 0.0;
-  var sum_m = 0.0;
-  for (var dy = 0; dy < ss; dy++) {
-    for (var dx = 0; dx < ss; dx++) {
-      let s = textureLoad(u_lic_output, clamp(base + vec2<i32>(dx, dy), vec2<i32>(0), maxxy), 0);
-      sum_v += s.x * s.y;
-      sum_m += s.y;
-    }
-  }
-  let cover = sum_m / f32(ss * ss);
-  let licv = clamp(1.5*sum_v / max(sum_m, 1e-6), 0.0, 1.0);
-  let shade = mix(1.0, licv, clamp(u_lic.contrast * cover, 0.0, 1.0));
-  color = vec4f(color.rgb * shade, color.a);
+  color = licModulate(color, input.fragPosition.xy);
 #endif LIC
   return lightCalcColor(input.p, input.n, color);
 }
