@@ -41,12 +41,13 @@ import os
 
 import numpy as np
 
-from webgpu.renderer import Renderer, RenderOptions
+from webgpu.renderer import RenderOptions
+from webgpu.scene import debounce
 from webgpu.uniforms import UniformBase
 from webgpu.utils import (
-    BufferBinding,
     StorageTextureBinding,
     TextureBinding,
+    BufferBinding,
     read_shader_file,
     run_compute_shader,
 )
@@ -416,6 +417,7 @@ class ClippingLIC(ClippingCF):
         return bindings
 
     # ----------------------------------------------------------------- helpers
+    @debounce(rate_hz=2)
     def _refresh(self):
         """Mark dirty so the next render re-runs update() (and re-dispatches the
         LIC passes) WITHOUT invalidating the volume CF data. Skips
@@ -443,13 +445,6 @@ class ClippingLIC(ClippingCF):
     def set_supersample(self, value: int):
         # SSAA factor: higher = smoother/finer streaks, ~value**2 more compute.
         self.supersample = max(1, int(value))
-        self._refresh()
-
-    def set_resolution(self, value: int):
-        # Deprecated for the screen-space path: the LIC textures follow the canvas
-        # size, so this no longer changes the rendered resolution. Kept for API
-        # compatibility.
-        self.resolution = int(value)
         self._refresh()
 
 
@@ -708,6 +703,7 @@ class SurfaceLIC(CFRenderer):
         return bindings
 
     # ----------------------------------------------------------------- helpers
+    @debounce(rate_hz=2)
     def _refresh(self):
         """Mark dirty so the next render re-dispatches the LIC passes WITHOUT
         re-evaluating the surface CF data (CFRenderer.set_needs_update would, which
