@@ -340,9 +340,9 @@ fn calcTrig(tri: Triangle, vertexId: u32, instanceId: u32, rawInstanceId: u32)
         position = p[vertexId];
         if (u_deformation_values_2d[0] != -1.) {
           let pos_and_gradients = u_deformation_scale * evalTrigVec3GradComplex(&u_deformation_values_2d, instanceId, lam, 0u);
-          position += u_deformation_scale * pos_and_gradients[0];
-          var v1 = p[0] - p[2] + u_deformation_scale * pos_and_gradients[1];
-          var v2 = p[1] - p[2] + u_deformation_scale * pos_and_gradients[2];
+          position += pos_and_gradients[0];
+          var v1 = p[0] - p[2] + pos_and_gradients[1];
+          var v2 = p[1] - p[2] + pos_and_gradients[2];
           normal = normalize(cross(v1, v2));
         }
         else {
