@@ -1,6 +1,7 @@
 import numpy as np
 import ngsolve as ngs
 import webgpu.jupyter as wj
+from webgpu import Renderer
 from webgpu.clipping import Clipping
 from webgpu.colormap import Colorbar, Colormap
 import netgen.occ as ngocc
@@ -103,7 +104,7 @@ waitTillPyodideReady();
 
 
 def Draw(
-    obj: ngs.CoefficientFunction | ngs.Mesh | ngocc.OCCGeometry | ngocc.TopoDS_Shape,
+    obj: ngs.CoefficientFunction | ngs.Mesh | ngocc.OCCGeometry | ngocc.TopoDS_Shape | list[Renderer] | Renderer,
     mesh: ngs.Mesh | None = None,
     name: str | None = None,
     width=600,
@@ -138,6 +139,12 @@ def Draw(
     order : int
         The order which is used to render the CoefficientFunction. Default is 2.
     """
+    if isinstance(obj, Renderer):
+        obj = [obj]
+        
+    if isinstance(obj, list):
+        return wj.Draw(obj, width, height)
+
     # create gui before calling render
     render_objects = []
     _clip = clipping
