@@ -18,7 +18,7 @@ classifiers = [
 ]
 readme = "README.md"
 requires-python = ">=3.8"
-dependencies = ["numpy", "webgpu>=1.2.6", "ngsolve", "typing_extensions"]
+dependencies = ["numpy", "webgpu>=1.5", "ngsolve", "typing_extensions"]
 
 [project.optional-dependencies]
 dev = ["pytest"]
