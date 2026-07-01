@@ -104,7 +104,7 @@ waitTillPyodideReady();
 
 
 def Draw(
-    obj: ngs.CoefficientFunction | ngs.Mesh | ngocc.OCCGeometry | ngocc.TopoDS_Shape | list[Renderer] | Renderer,
+    obj: ngs.GridFunction | ngs.CoefficientFunction | ngs.Mesh | ngocc.OCCGeometry | ngocc.TopoDS_Shape | list[Renderer] | Renderer,
     mesh: ngs.Mesh | None = None,
     name: str | None = None,
     width=600,
@@ -167,6 +167,9 @@ def Draw(
         dim = mesh.mesh.dim if isinstance(mesh, ngs.Region) else mesh.dim
     else:
         dim = 3
+
+    if isinstance(obj, ngs.GridFunction):
+        mesh = mesh or obj.space.mesh
 
     if isinstance(obj, ngs.CoefficientFunction):
         if mesh is None:
