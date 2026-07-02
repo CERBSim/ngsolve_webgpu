@@ -230,12 +230,22 @@ class FunctionData:
         self._component_param = None
 
     @property
+    def num_components(self):
+        """Number of components of the field (backend-neutral)."""
+        return self.cf.dim
+
+    @property
+    def is_complex(self):
+        """Whether the field is complex-valued (backend-neutral)."""
+        return self.cf.is_complex
+
+    @property
     def component_param(self):
         """Shared GuiParam for component selection. Created on first access."""
-        if self._component_param is None and self.cf.dim > 1:
+        if self._component_param is None and self.num_components > 1:
             from webgpu.gui_param import GuiParam
             options = {"Norm": -1}
-            for d in range(self.cf.dim):
+            for d in range(self.num_components):
                 options[str(d)] = d
             self._component_param = GuiParam(
                 "dropdown", "Component", options=options, default=-1
@@ -931,7 +941,7 @@ class CFRenderer(BaseMeshElements2d):
         self.gpu_objects.colormap = colormap or Colormap()
         self._on_component_change = []
         if component is None:
-            component = -1 if self.data.cf.dim > 1 else 0
+            component = -1 if self.data.num_components > 1 else 0
         self.gpu_objects.settings = FunctionSettings(component=component)
         self.gpu_objects.complex_settings = ComplexSettings()
         self._phase_animation = None
@@ -1057,7 +1067,7 @@ class CFRenderer(BaseMeshElements2d):
 
     def get_export_interactions(self, options, buffer_registry):
         out = list(super().get_export_interactions(options, buffer_registry))
-        if self.data.cf.is_complex:
+        if self.data.is_complex:
             out += _complex_phase_export_interactions(
                 [(self.gpu_objects.complex_settings.uniform, True)],
                 buffer_registry,
