@@ -929,6 +929,7 @@ class MeshElements3d(Renderer):
         self.data = data
         self.clipping = clipping or Clipping()
         self._shrink = 1.0
+        self._subdivision_override = None
         self.uniforms = None
         self._highlight_uniforms = HighlightUniforms()
         if colors is None:
@@ -960,6 +961,21 @@ class MeshElements3d(Renderer):
             self.uniforms.shrink = value
             self.uniforms.update_buffer()
 
+    @property
+    def subdivision(self):
+        """Tessellation density of the curved 3D-element faces.
+
+        ``None`` (default) follows ``MeshData.subdivision`` (auto from the mesh
+        curve order). An int overrides it with a fixed number of sub-triangles
+        per face — lowering it draws curved tets coarser but much faster, the
+        main lever for rotating big curved volume meshes."""
+        return self._subdivision_override
+
+    @subdivision.setter
+    def subdivision(self, value):
+        self._subdivision_override = None if value is None else max(1, int(value))
+        self.set_needs_update()
+
     def get_bounding_box(self) -> tuple[list[float], list[float]] | None:
         bbox = self.data.get_bounding_box()
         if self.symmetry:
@@ -973,7 +989,11 @@ class MeshElements3d(Renderer):
         self.data.update(options)
         self.clipping.update(options)
         self._buffers = self.data.get_buffers()
-        self._subdivision = self.data.subdivision
+        self._subdivision = (
+            self.data.subdivision
+            if self._subdivision_override is None
+            else self._subdivision_override
+        )
         self.uniforms.subdivision = self._subdivision
         self.uniforms.update_buffer()
         self.n_instances = self.data.num_elements["faces"]

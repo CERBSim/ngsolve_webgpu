@@ -39,10 +39,12 @@ struct FaceInfo {
     elementId: u32,
     faceId: u32,
     subdivision: u32,
+    inFlatBatch: u32,
 }
 
 fn decodeFaceInstance(instanceId: u32) -> FaceInfo {
     var info: FaceInfo;
+    info.inFlatBatch = 0u;
 
     let offset_3d = mesh.offset_3d_data;
     let numElements = bitcast<u32>(mesh.data[offset_3d]);
@@ -67,6 +69,7 @@ fn decodeFaceInstance(instanceId: u32) -> FaceInfo {
         info.faceId = instanceId % 4u;
         info.elementId = instanceId / 4u;
         info.subdivision = 1u;
+        info.inFlatBatch = 1u;
     } else if (instanceId < curvedEnd) {
         // Curved tet faces
         let local = instanceId - extraStart;
@@ -144,8 +147,7 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
         }
     }
 
-    // In flat range: skip curved tets (they are rendered in the subdivided range)
-    if (info.subdivision == 1u && is_curved) {
+    if (info.inFlatBatch == 1u && is_curved) {
         return zero;
     }
 
