@@ -62,7 +62,7 @@ fn fragment_main(input: GeoFragmentInput) -> @location(0) vec4<f32> {
   if (color.a >= 1.0) { discard; }
 #endif TRANSPARENT_PASS
   let lit = lightCalcColor(input.p, input.n, color);
-  var result = applyHighlight(lit, input.id, input.index);
+  var result = applyHighlight(lit, input.index, input.index);
   if (u_highlight.solid_index != 0xFFFFFFFFu && u_solid_ids[input.index] == u_highlight.solid_index) {
       var face_selected = false;
 #ifdef HAS_SELECTION

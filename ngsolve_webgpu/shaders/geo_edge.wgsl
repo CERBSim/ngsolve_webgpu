@@ -92,7 +92,7 @@ fn fragment_main(input: GeoEdgeInput) -> @location(0) vec4<f32> {
                    u_color[input.index * 4 + 1] * a,
                    u_color[input.index * 4 + 2] * a,
                    a);
-  return applyHighlight(color, input.id, input.index);
+  return applyHighlight(color, input.index, input.index);
 }
 
 @fragment
