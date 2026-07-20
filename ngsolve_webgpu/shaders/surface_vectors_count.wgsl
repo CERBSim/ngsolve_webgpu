@@ -37,7 +37,7 @@ fn evalCurvedPos(id: u32, lam: vec2f) -> vec3f {
 
 @compute @workgroup_size(256)
 fn compute_surface_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
-  let n_trigs = mesh.num_trigs;
+  let n_trigs = mesh.num_trigs + mesh.num_quads;
   for (var trigId = id.x; trigId<n_trigs; trigId+=256*1024) {
     let tri = loadTriangle(trigId);
 #ifdef REGION_VISIBILITY

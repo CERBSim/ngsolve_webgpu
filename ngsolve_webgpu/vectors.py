@@ -508,7 +508,7 @@ class SurfaceVectors(VectorRenderer):
         self._vec_indirect_id = None
 
     def update(self, options):
-        self.n_search_els = self.function_data.mesh_data.ngs_mesh.GetNE(ngs.BND)
+        self.n_search_els = self.function_data.mesh_data.num_elements[ElType.TRIG]
         super().update(options)
 
     def compute_vectors(self):
