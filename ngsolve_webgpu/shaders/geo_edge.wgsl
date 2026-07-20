@@ -10,6 +10,8 @@
 @group(0) @binding(92) var<uniform> u_thickness: f32;
 @group(0) @binding(93) var<storage> u_indices: array<u32>;
 
+const EDGE_DEPTH_OFFSET: f32 = 2.0e-4;
+
 struct GeoEdgeInput
 {
   @builtin(position) position: vec4<f32>,
@@ -77,7 +79,8 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
   }
 
   pos = vec4<f32>(pos.xy + normal*pos.w, pos.zw);
-  
+  pos.z -= EDGE_DEPTH_OFFSET * pos.w;
+
   return GeoEdgeInput(pos, p, u_indices[instanceId], instanceId);
 }
 

@@ -150,10 +150,6 @@ class GeometryEdgeRenderer(BaseGeometryRenderer):
     n_vertices: int = 4
     topology: PrimitiveTopology = PrimitiveTopology.triangle_strip
 
-    # make sure that edges are rendered on top of faces
-    depthBias: int = -5
-    depthBiasSlopeScale: int = -5
-
     def __init__(self, geo, clipping, symmetry=None):
         self.geo = geo
         super().__init__(clipping, label="GeometryEdges")
@@ -214,8 +210,6 @@ class GeometryEdgeRenderer(BaseGeometryRenderer):
 class GeometryVertexRenderer(BaseGeometryRenderer):
     n_vertices: int = 4
     topology: PrimitiveTopology = PrimitiveTopology.triangle_strip
-    depthBias: int = -10
-    depthBiasSlopeScale: int = -10
 
     def __init__(self, geo, clipping):
         self.geo = geo
