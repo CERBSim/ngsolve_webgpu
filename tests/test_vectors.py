@@ -114,7 +114,7 @@ class TestVectors:
         clipping = Clipping()
         clipping.mode = clipping.Mode.PLANE
         clipping.center = [0.5, 0.5, 0.5]
-        renderer = ClippingVectors(function_data, grid_size=200, clipping=clipping)
+        renderer = ClippingVectors(function_data, grid_size=30, clipping=clipping)
         scene = wj.Draw([renderer], 600, 600)
 
         webgpu_env.assert_matches_baseline(scene, "clipping_vectors_mixed_elements.png")
