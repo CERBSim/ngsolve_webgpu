@@ -313,7 +313,7 @@ class FunctionData:
     def _create_data(self):
         try:
             self.data_2d, self.minval, self.maxval = evaluate_cf(
-                self.cf, self.mesh_data.ngs_mesh, self.order
+                self.cf, self.mesh_data.reg_or_mesh, self.order
             )
         except Exception:
             # Fallback: try BoundaryFromVolumeCF for volume-only CFs (e.g. MaterialCF)
@@ -321,7 +321,7 @@ class FunctionData:
                 import ngsolve as ngs
                 cf_bnd = ngs.BoundaryFromVolumeCF(self.cf)
                 self.data_2d, self.minval, self.maxval = evaluate_cf(
-                    cf_bnd, self.mesh_data.ngs_mesh, self.order
+                    cf_bnd, self.mesh_data.reg_or_mesh, self.order
                 )
             except Exception:
                 self.data_2d = None
@@ -330,7 +330,7 @@ class FunctionData:
         if self.need_3d:
             try:
                 self.data_3d, minval, maxval = self.evaluate_3d(
-                self.cf, self.mesh_data.ngs_mesh, self.order_3d
+                self.cf, self.mesh_data.reg_or_mesh, self.order_3d
                 )
                 # evaluate_3d returns empty array for non-3D regions; treat as None
                 if self.data_3d is not None and len(self.data_3d) == 0:

@@ -124,7 +124,7 @@ class MeshData:
     cpu_data: bytes | None = None
     gpu_data: Buffer | None = None
     
-    _ngs_mesh = None
+    _reg_or_mesh = None
     _last_mesh_timestamp: int = -1
     _timestamp: float = -1
     _need_3d: bool = False
@@ -140,7 +140,7 @@ class MeshData:
         if isinstance(mesh, netgen.meshing.Mesh):
             self.mesh = mesh
         else:
-            self._ngs_mesh = mesh
+            self._reg_or_mesh = mesh
             import ngsolve as ngs
 
             if isinstance(mesh, ngs.Region):
@@ -173,12 +173,23 @@ class MeshData:
             )
 
     @property
+    def reg_or_mesh(self):
+        """The drawn object as given: an ``ngsolve.Region`` when drawing on a
+        region, otherwise the ``Mesh``. Use this for region-aware code (element
+        filtering, ``evaluate_cf``); use :attr:`ngs_mesh` when you need the
+        whole ``Mesh``."""
+        import ngsolve
+
+        if self._reg_or_mesh is None:
+            self._reg_or_mesh = ngsolve.Mesh(self.mesh)
+        return self._reg_or_mesh
+
+    @property
     def ngs_mesh(self):
         import ngsolve
 
-        if self._ngs_mesh is None:
-            self._ngs_mesh = ngsolve.Mesh(self.mesh)
-        return self._ngs_mesh
+        m = self.reg_or_mesh
+        return m.mesh if isinstance(m, ngsolve.Region) else m
 
     @property
     def need_3d(self):
@@ -210,14 +221,15 @@ class MeshData:
 
                 if self.curvature_data:
                     self.curvature_data.update(options)
-                    self.elements["curvature_2d"] = self.curvature_data.data_2d
-                else:
-                    self.elements["curvature_2d"] = np.array([0], dtype=np.float32)
-                self.gpu_elements.pop("curvature_2d", None)
 
                 curvature_2d = b''
-                if self.curvature_data:
+                if self.curvature_data and self.curvature_data.data_2d is not None:
+                    self.elements["curvature_2d"] = self.curvature_data.data_2d
                     curvature_2d = self.curvature_data.data_2d.tobytes()
+                else:
+                    self.elements["curvature_2d"] = np.array([0], dtype=np.float32)
+                    self.mesh_metadata.is_curved = 0
+                self.gpu_elements.pop("curvature_2d", None)
                 curvature_3d = b''
                 if self.curvature_3d_data is not None:
                     curvature_3d = self.curvature_3d_data.tobytes()
@@ -256,7 +268,7 @@ class MeshData:
         if self.el2d_bitarray is not None:
             trigs = trigs[np.array(self.el2d_bitarray, dtype=bool)]
         if self.on_region:
-            region = self.ngs_mesh
+            region = self.reg_or_mesh
             import ngsolve as ngs
 
             if region.VB() == ngs.VOL and region.mesh.dim == 3:
@@ -683,6 +695,7 @@ class BaseMeshElements2d(Renderer):
         self.clipping = clipping or Clipping()
         self.color_uniform = None
         self.symmetry = symmetry
+        self.region_visibility = None
         from .cf import ComplexSettings
         from .pick import HighlightUniforms
         self.gpu_objects.complex_settings = ComplexSettings()
@@ -707,6 +720,8 @@ class BaseMeshElements2d(Renderer):
             order = max(order, self.data.deformation_data.order)
 
         self.shader_defines = {"MAX_EVAL_ORDER": 1, "MAX_EVAL_ORDER_VEC3": order + 1}
+        from .region_visibility import RegionVisibility
+        RegionVisibility.apply(self, self.shader_defines)
         if self.symmetry:
             self.n_instances *= self.symmetry.n_copies
             self.shader_defines["SYMMETRY"] = "1"
@@ -722,12 +737,14 @@ class BaseMeshElements2d(Renderer):
         mesh_data = self.data
         if isinstance(mesh_data, FunctionData):
             mesh_data = mesh_data.mesh_data
+        from .region_visibility import RegionVisibility
         bindings = [
             *self.clipping.get_bindings(),
             *mesh_data.get_bindings(),
             UniformBinding(Binding.SUBDIVISION, self._buffers["subdivision"]),
             *self.gpu_objects.complex_settings.get_bindings(),
             *self._highlight_uniforms.get_bindings(),
+            *RegionVisibility.bindings(self),
         ]
         if hasattr(self, "color_uniform"):
             bindings.append(BufferBinding(54, self.color_uniform))
@@ -931,12 +948,10 @@ class MeshElements3d(Renderer):
         self._shrink = 1.0
         self._subdivision_override = None
         self.uniforms = None
+        self.region_visibility = None
         self._highlight_uniforms = HighlightUniforms()
         if colors is None:
-            ngs_mesh = data.ngs_mesh
-            if not hasattr(ngs_mesh, "GetMaterials"):
-                ngs_mesh = ngs_mesh.mesh
-            colors = [[255, 0, 0, 255] for _ in range(len(ngs_mesh.GetMaterials()))]
+            colors = [[255, 0, 0, 255] for _ in range(len(data.ngs_mesh.GetMaterials()))]
         self.gpu_objects.colormap = Colormap(colormap=colors, minval=-0.5, maxval=len(colors) - 0.5)
         self.gpu_objects.colormap.discrete = 1
         self.gpu_objects.colormap.n_colors = len(colors)
@@ -1002,6 +1017,8 @@ class MeshElements3d(Renderer):
         self._n_instances_subdiv = self.n_instances - self._n_instances_flat
         self.n_vertices = 3 * self._subdivision ** 2
         self.shader_defines = self.data.get_shader_defines()
+        from .region_visibility import RegionVisibility
+        RegionVisibility.apply(self, self.shader_defines)
         if self.symmetry:
             self.n_instances *= self.symmetry.n_copies
             self._n_instances_flat *= self.symmetry.n_copies
@@ -1037,12 +1054,14 @@ class MeshElements3d(Renderer):
         return out
 
     def get_bindings(self):
+        from .region_visibility import RegionVisibility
         bindings = [
             *self.clipping.get_bindings(),
             *self.data.get_bindings(),
             *self.uniforms.get_bindings(),
             *self.gpu_objects.colormap.get_bindings(),
             *self._highlight_uniforms.get_bindings(),
+            *RegionVisibility.bindings(self),
         ]
         if self.symmetry:
             bindings += self.symmetry.get_bindings(self.data.num_elements["faces"])

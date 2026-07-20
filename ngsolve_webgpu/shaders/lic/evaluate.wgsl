@@ -24,6 +24,7 @@
 #import ngsolve/lic/common
 #import ngsolve/eval/trig
 #import ngsolve/mesh/utils
+#import ngsolve/region_visibility
 #import camera
 
 @group(0) @binding(41) var u_lic_field: texture_storage_2d<rgba32float, write>;
@@ -76,6 +77,11 @@ fn evaluate_lic_field(@builtin(global_invocation_id) id: vec3<u32>) {
     let eps = 0.01 / u_lic.inv_extent;
 
     for (var tetId = id.x; tetId < n_tets; tetId += 256u * 1024u) {
+#ifdef REGION_VISIBILITY
+        if (regionAlphaVol(getTetrahedron(tetId).index) == 0.0) {
+            continue;
+        }
+#endif REGION_VISIBILITY
         let p_tet = getTetPoints(tetId);
         let lam_node = array(vec3f(1.0, 0.0, 0.0), vec3f(0.0, 1.0, 0.0),
                              vec3f(0.0, 0.0, 1.0), vec3f(0.0, 0.0, 0.0));
@@ -218,6 +224,11 @@ fn evaluate_lic_field_surface(@builtin(global_invocation_id) id: vec3<u32>) {
 
     for (var instanceId = id.x; instanceId < n_trigs; instanceId += 256u * 1024u) {
         let tri = loadTriangle(instanceId);
+#ifdef REGION_VISIBILITY
+        if (regionAlphaSurf(tri.index) == 0.0) {
+            continue;
+        }
+#endif REGION_VISIBILITY
         let trigId = tri.nr;
 
         // World positions of the three corners (curvature-aware, like the renderer).

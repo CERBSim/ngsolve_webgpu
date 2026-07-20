@@ -56,6 +56,7 @@ class ClippingCF(Renderer):
         from .pick import HighlightUniforms
         self._clipping = clipping or Clipping()
         self.clipping = Clipping()
+        self.region_visibility = None
         self.gpu_objects.colormap = colormap or Colormap()
         self.data = data
         self.data.need_3d = True
@@ -105,6 +106,8 @@ class ClippingCF(Renderer):
         if self.data.mesh_data.curvature_3d_data is None:
             clip_subdiv = 1
         self.shader_defines["CLIPPING_SUBDIVISION"] = clip_subdiv
+        from .region_visibility import RegionVisibility
+        RegionVisibility.apply(self, self.shader_defines)
         self.n_vertices = 3 * clip_subdiv * clip_subdiv
         self._clipping.update(options)
 
@@ -231,6 +234,7 @@ class ClippingCF(Renderer):
             *self.clipping.get_bindings(),
         ]
         if compute:
+            from .region_visibility import RegionVisibility
             bindings += [
                 BufferBinding(
                     21,
@@ -240,6 +244,7 @@ class ClippingCF(Renderer):
                 ),
                 BufferBinding(24, self.cut_trigs, read_only=False),
                 *self.gpu_objects.complex_settings.get_bindings(),
+                *RegionVisibility.bindings(self),
             ]
         else:
             bindings += [
@@ -346,13 +351,17 @@ class ClippingCF(Renderer):
 
         fill_pass_id = f"clip_fill_{self._id}"
 
+        triggers = [clipping_buf_id]
+        if self.region_visibility is not None:
+            triggers.append(buffer_registry.get_id(self.region_visibility.buffer))
+
         return [
             ExportComputePass(
                 id=fill_pass_id,
                 shader=shader,
                 bindings=fill_binding_map,
                 workgroups=[1024, 1, 1],
-                triggers=[clipping_buf_id],
+                triggers=triggers,
                 reset_buffers=[trig_counter_id],
                 count_then_fill={
                     "counter_id": trig_counter_id,

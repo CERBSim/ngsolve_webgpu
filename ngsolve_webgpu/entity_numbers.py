@@ -87,10 +87,7 @@ class EntityNumbers(Renderer):
 
     def _update_edges(self):
         """Build edge connectivity buffer from NGSolve mesh."""
-        import ngsolve
         ngs_mesh = self.data.ngs_mesh
-        if not isinstance(ngs_mesh, ngsolve.Mesh):
-            ngs_mesh = ngsolve.Mesh(self.data.mesh)
         edges = np.array(
             [(e.vertices[0].nr, e.vertices[1].nr) for e in ngs_mesh.edges],
             dtype=np.uint32,
@@ -100,10 +97,7 @@ class EntityNumbers(Renderer):
 
     def _update_facets(self):
         """Build facet connectivity buffer from NGSolve mesh."""
-        import ngsolve
         ngs_mesh = self.data.ngs_mesh
-        if not isinstance(ngs_mesh, ngsolve.Mesh):
-            ngs_mesh = ngsolve.Mesh(self.data.mesh)
         facets = []
         for f in ngs_mesh.faces:
             verts = [v.nr for v in f.vertices]

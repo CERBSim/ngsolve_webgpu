@@ -1,6 +1,7 @@
 #import clipping
 // #import colormap
 #import ngsolve/clipping/common
+#import ngsolve/region_visibility
 
 @group(0) @binding(21) var<storage, read_write> count_vectors: atomic<u32>;
 @group(0) @binding(22) var<storage, read_write> positions: array<f32>;
@@ -68,6 +69,11 @@ fn evalTetReIm(data: ptr<storage, array<f32>, read>,
 @compute @workgroup_size(256)
 fn compute_clipping_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
   for (var tetId = id.x; tetId<u_ntets; tetId+=256*1024) {
+#ifdef REGION_VISIBILITY
+    if (regionAlphaVol(getTetrahedron(tetId).index) == 0.0) {
+      continue;
+    }
+#endif REGION_VISIBILITY
     let p_tet = getTetPoints(tetId);
     let lam_clip = array(vec3f(1.0, 0.0, 0.0), vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), vec3f(0.0, 0.0, 0.0));
 

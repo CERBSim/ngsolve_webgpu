@@ -60,6 +60,8 @@ class _VectorPhaseAnimation:
             time.sleep(1 / self._fps)
 
 class VectorRenderer(ShapeRenderer):
+    _vector_gui_label = "Vectors"
+
     def __init__(
         self,
         function_data: FunctionData,
@@ -93,6 +95,7 @@ class VectorRenderer(ShapeRenderer):
         self._anim_speed = 1.0
         self.user_scale = 1.0
         self._directions_per_instance = True
+        self.region_visibility = None
         super().__init__(self.generate_shape(), None, None, colormap=colormap)
 
     def set_grid_size(self, grid_size: float):
@@ -140,7 +143,12 @@ class VectorRenderer(ShapeRenderer):
             defines["IS_COMPLEX"] = 1
         if self.scale_by_value:
             defines["SCALE_BY_VALUE"] = 1
+        if self._region_visibility_enabled():
+            defines["REGION_VISIBILITY"] = 1
         return defines
+
+    def _region_visibility_enabled(self):
+        return self.region_visibility is not None
 
     def get_compute_bindings(self):
         self.u_grid_spacing = uniform_from_array(
@@ -185,6 +193,8 @@ class VectorRenderer(ShapeRenderer):
         ]
         if self.function_data.cf.is_complex:
             bindings.append(BufferBinding(25, self.__buffers["directions_imag"], read_only=False))
+        if self._region_visibility_enabled():
+            bindings += self.region_visibility.get_bindings()
         return bindings
 
     def allocate_buffers(self):
@@ -242,13 +252,21 @@ class VectorRenderer(ShapeRenderer):
         )
         n_work_groups = min(self.n_search_els // 256 + 1, 1024)
         count_shader = self.compute_shader_file.replace('.wgsl', '_count.wgsl')
+        count_bindings = [
+            BufferBinding(110, self.function_data.mesh_data.gpu_data),
+            BufferBinding(21, self.u_nvectors, read_only=False),
+            UniformBinding(31, self.u_grid_spacing),
+        ]
+        count_defines = {}
+        if self._region_visibility_enabled():
+            count_bindings += self.region_visibility.get_bindings()
+            count_defines["REGION_VISIBILITY"] = 1
         run_compute_shader(
             read_shader_file(count_shader),
-            [BufferBinding(110, self.function_data.mesh_data.gpu_data),
-             BufferBinding(21, self.u_nvectors, read_only=False),
-             UniformBinding(31, self.u_grid_spacing)],
+            count_bindings,
             n_work_groups,
             entry_point=self.compute_entry_point,
+            defines=count_defines,
         )
         self.n_vectors = int(read_buffer(self.u_nvectors, np.uint32)[0])
         write_array_to_buffer(self.u_nvectors, np.array([0], dtype=np.uint32))
@@ -437,8 +455,35 @@ class VectorRenderer(ShapeRenderer):
             if self._scene:
                 self._scene.render()
 
+    def _grid_size_export_interaction(self, buffer_registry):
+        """Expose the arrow grid density as a slider in the JS-engine GUI.
+
+        Writes ``box_size / grid_size`` to the compute pass's grid-spacing
+        uniform (matching :meth:`set_grid_size`); that buffer is the recompute
+        trigger, so dragging the slider regenerates the arrows live.
+        """
+        from webgpu.export.gui import gui_interaction, Slider, Write, Target
+
+        u = getattr(self, "u_grid_spacing", None)
+        if u is None:
+            return []
+        try:
+            buf_id = buffer_registry.get_id(u)
+        except KeyError:
+            return []
+        box = float(self.box_size)
+        current = box / self.grid_spacing if self.grid_spacing else 20.0
+        return [gui_interaction(
+            self._vector_gui_label,
+            [Slider(var="grid_size", name="Grid size",
+                    default=float(round(current)), min=2.0, max=80.0, step=1.0)],
+            [Write(targets=[Target(buf_id, offset=0, dtype="f32")],
+                   expr=f"{box!r} / Math.max(grid_size, 1.0)", trigger="grid_size")],
+        )]
+
     def get_export_interactions(self, options, buffer_registry):
         out = list(super().get_export_interactions(options, buffer_registry))
+        out += self._grid_size_export_interaction(buffer_registry)
         if self.function_data.cf.is_complex:
             out += _complex_phase_export_interactions(
                 [
@@ -450,6 +495,8 @@ class VectorRenderer(ShapeRenderer):
         return out
 
 class SurfaceVectors(VectorRenderer):
+    _vector_gui_label = "Surface Vectors"
+
     def __init__(self, function_data: FunctionData, grid_size: float = 20, clipping: Clipping = None, colormap: Colormap = None, symmetry=None, vector_symmetry="polar", scale_by_value: bool = False):
         self.compute_shader_file = "ngsolve/surface_vectors.wgsl"
         self.compute_entry_point = "compute_surface_vectors"
@@ -525,7 +572,9 @@ class SurfaceVectors(VectorRenderer):
         # Mesh/field/deformation changes recompute through the host dirty path
         # (set_needs_update → notifyDirty), and the engine re-marks this trigger
         # itself after a count-then-fill resize.
-        trigger_id = buffer_registry.get_id(self.u_grid_spacing)
+        triggers = [buffer_registry.get_id(self.u_grid_spacing)]
+        if self._region_visibility_enabled():
+            triggers.append(buffer_registry.get_id(self.region_visibility.buffer))
 
         n_work_groups = min(self.n_search_els // 256 + 1, 1024)
         self._vec_js = True
@@ -535,7 +584,7 @@ class SurfaceVectors(VectorRenderer):
                 shader=shader,
                 bindings=binding_map,
                 workgroups=[n_work_groups, 1, 1],
-                triggers=[trigger_id],
+                triggers=triggers,
                 reset_buffers=[counter_id],
                 entry_point=self.compute_entry_point,
                 count_then_fill={
@@ -568,6 +617,8 @@ class SurfaceVectors(VectorRenderer):
         return result
 
 class ClippingVectors(VectorRenderer):
+    _vector_gui_label = "Clipping Vectors"
+
     def __init__(
         self,
         function_data: FunctionData,
@@ -594,6 +645,12 @@ class ClippingVectors(VectorRenderer):
         self._vec_indirect = None
         self._vec_indirect_id = None
         self.clipping.callbacks.append(self._on_clipping_changed)
+
+    def _region_visibility_enabled(self):
+        return (
+            self.region_visibility is not None
+            and not self.function_data.cf.is_complex
+        )
 
     def _on_clipping_changed(self):
         """Clip plane moved/rotated. In JS-compute mode the engine re-runs the
@@ -673,13 +730,17 @@ class ClippingVectors(VectorRenderer):
                 np.array([-1], dtype=np.int32),
                 reuse=getattr(self, '_u_component', None))),
         ]
+        count_defines = {"MODE": 0, "MAX_EVAL_ORDER": self.function_data.order, "MAX_EVAL_ORDER_VEC3": 1}
+        if self._region_visibility_enabled():
+            count_bindings += self.region_visibility.get_bindings()
+            count_defines["REGION_VISIBILITY"] = 1
         vec3_order = mesh_data.get_shader_defines()["MAX_EVAL_ORDER_VEC3"]
         run_compute_shader(
             read_shader_file(self.compute_shader_file),
             count_bindings,
             n_work_groups,
             entry_point=self.compute_entry_point,
-            defines={"MODE": 0, "MAX_EVAL_ORDER": self.function_data.order, "MAX_EVAL_ORDER_VEC3": 1},
+            defines=count_defines,
         )
         count_approx = int(read_buffer(self.u_nvectors, np.uint32)[0])
         self.n_vectors = count_approx * 2 + 100
@@ -693,6 +754,8 @@ class ClippingVectors(VectorRenderer):
             eval_defines["IS_COMPLEX"] = 1
         if self.scale_by_value:
             eval_defines["SCALE_BY_VALUE"] = 1
+        if self._region_visibility_enabled():
+            eval_defines["REGION_VISIBILITY"] = 1
         run_compute_shader(
             read_shader_file(self.compute_shader_file),
             self.get_compute_bindings(),
@@ -753,6 +816,8 @@ class ClippingVectors(VectorRenderer):
             defines["IS_COMPLEX"] = 1
         if self.scale_by_value:
             defines["SCALE_BY_VALUE"] = 1
+        if self._region_visibility_enabled():
+            defines["REGION_VISIBILITY"] = 1
         shader = preprocess_shader_code(
             read_shader_file(self.compute_shader_file), defines=defines
         )
@@ -794,13 +859,16 @@ class ClippingVectors(VectorRenderer):
 
         n_work_groups = min(self.n_search_els // 256 + 1, 1024)
         self._vec_js = True
+        triggers = [clip_id, buffer_registry.get_id(self.u_grid_spacing)]
+        if self._region_visibility_enabled():
+            triggers.append(buffer_registry.get_id(self.region_visibility.buffer))
         return [
             ExportComputePass(
                 id=f"clip_vectors_{self._id}",
                 shader=shader,
                 bindings=binding_map,
                 workgroups=[n_work_groups, 1, 1],
-                triggers=[clip_id],
+                triggers=triggers,
                 reset_buffers=[counter_id],
                 entry_point=self.compute_entry_point,
                 count_then_fill={

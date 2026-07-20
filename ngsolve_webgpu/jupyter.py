@@ -103,6 +103,12 @@ waitTillPyodideReady();
         local_install(["pyngcore", "netgen", "ngsolve"])
 
 
+def _manifold_dim(mesh):
+    if isinstance(mesh, ngs.Region):
+        return mesh.mesh.dim - int(mesh.VB())
+    return mesh.dim
+
+
 def Draw(
     obj: ngs.GridFunction | ngs.CoefficientFunction | ngs.Mesh | ngocc.OCCGeometry | ngocc.TopoDS_Shape | list[Renderer] | Renderer,
     mesh: ngs.Mesh | None = None,
@@ -164,7 +170,7 @@ def Draw(
         render_objects.append(render_geo)
 
     if mesh is not None:
-        dim = mesh.mesh.dim if isinstance(mesh, ngs.Region) else mesh.dim
+        dim = _manifold_dim(mesh)
     else:
         dim = 3
 
@@ -198,14 +204,16 @@ def Draw(
         render_objects.append(Colorbar(colormap=colormap))
         if vectors:
             options = vectors if isinstance(vectors, dict) else {}
-            if dim != 2:
-                raise ValueError("Vectors currently only implemented on 2d meshes")
-            from .cf import VectorCFRenderer
+            from .vectors import SurfaceVectors, ClippingVectors
 
-            vcf = VectorCFRenderer(obj, mesh, **options)
-            vcf.colormap = r_cf.colormap
-            render_objects.append(vcf)
-        if mesh.dim == 3:
+            render_objects.append(
+                SurfaceVectors(function_data, clipping=clipping, colormap=colormap, **options)
+            )
+            if dim == 3:
+                render_objects.append(
+                    ClippingVectors(function_data, clipping=clipping, colormap=colormap, **options)
+                )
+        if dim == 3:
             clipping_cf = ClippingIsolineRenderer(function_data, clipping=clipping,
                                                      n_lines=n_lines, show_field=True, colormap=colormap)
             render_objects.append(clipping_cf)

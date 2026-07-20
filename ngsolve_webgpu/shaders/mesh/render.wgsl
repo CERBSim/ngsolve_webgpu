@@ -6,6 +6,7 @@
 
 #import ngsolve/eval/trig
 #import ngsolve/mesh/utils
+#import ngsolve/region_visibility
 #ifdef SYMMETRY
 #import ngsolve/symmetry
 #endif SYMMETRY
@@ -61,6 +62,13 @@ fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_ind
     let tri = loadTriangle(trigId);
 
     let index = tri.index;
+
+#ifdef REGION_VISIBILITY
+    if (regionAlphaSurf(index) == 0.0) {
+        var hidden: VertexOutput2d;
+        return hidden;
+    }
+#endif REGION_VISIBILITY
 
     let subdivision = u_subdivision;
     let h = 1./ f32(subdivision);
@@ -328,6 +336,14 @@ fn calcTrig(tri: Triangle, vertexId: u32, instanceId: u32, rawInstanceId: u32)
     let p = tri.p;
     let trigId = tri.nr;
     let index = tri.index;
+
+#ifdef REGION_VISIBILITY
+    if (regionAlphaSurf(index) == 0.0) {
+        var hidden: VertexOutput2d;
+        return hidden;
+    }
+#endif REGION_VISIBILITY
+
     let subdivision = u_subdivision;
     let h = 1.0 / f32(subdivision);
 

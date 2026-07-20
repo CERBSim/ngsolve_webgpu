@@ -1,4 +1,5 @@
 #import ngsolve/mesh/utils
+#import ngsolve/region_visibility
 
 @group(0) @binding(21) var<storage, read_write> count_vectors: atomic<u32>;
 @group(0) @binding(31) var<uniform> u_gridsize: f32;
@@ -38,7 +39,13 @@ fn evalCurvedPos(id: u32, lam: vec2f) -> vec3f {
 fn compute_surface_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
   let n_trigs = mesh.num_trigs;
   for (var trigId = id.x; trigId<n_trigs; trigId+=256*1024) {
-    var p = loadTriangle(trigId).p;
+    let tri = loadTriangle(trigId);
+#ifdef REGION_VISIBILITY
+    if (regionAlphaSurf(tri.index) == 0.0) {
+      continue;
+    }
+#endif REGION_VISIBILITY
+    var p = tri.p;
 
     if (mesh.is_curved == 1u) {
       p[0] = evalCurvedPos(trigId, vec2f(1.0, 0.0));

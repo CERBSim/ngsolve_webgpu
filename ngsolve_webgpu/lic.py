@@ -327,6 +327,8 @@ class ClippingLIC(ClippingCF):
         }
         if self.data.cf.is_complex:
             d["IS_COMPLEX"] = 1
+        if self.region_visibility is not None:
+            d["REGION_VISIBILITY"] = 1
         return d
 
     def _dispatch_lic(self, options: RenderOptions):
@@ -380,7 +382,7 @@ class ClippingLIC(ClippingCF):
         # camera uniform (0) for cameraMapPoint. It does NOT use deformation-2d(16),
         # the tet counter (21), the cut-trig output (24) or u_ntets(22), so those
         # are excluded.
-        EVAL_REFERENCED = {110, 17, 18, 13, 1, 56}
+        EVAL_REFERENCED = {110, 17, 18, 13, 1, 56, 34}
         eval_bindings = [b for b in self.get_bindings(compute=True) if b.nr in EVAL_REFERENCED]
         eval_bindings += self.gpu_objects.settings.get_bindings()       # 55 u_function_component
         eval_bindings += self._lic_uniforms.get_bindings()              # 40 u_lic
@@ -633,6 +635,8 @@ class SurfaceLIC(CFRenderer):
             "MAX_EVAL_ORDER": max(field_order, 1),
             "MAX_EVAL_ORDER_VEC3": max(field_order, curv, 1),
         }
+        if self.region_visibility is not None:
+            d["REGION_VISIBILITY"] = 1
         return d
 
     def _dispatch_lic(self, options: RenderOptions):
@@ -679,6 +683,8 @@ class SurfaceLIC(CFRenderer):
         eval_bindings += self._lic_uniforms.get_bindings()              # 40 u_lic
         eval_bindings += options._camera_uniforms.get_bindings()        # 0  u_camera
         eval_bindings += [StorageTextureBinding(41, self._field_tex, access="write-only", dim=2)]
+        if self.region_visibility is not None:
+            eval_bindings += self.region_visibility.get_bindings()
 
         n_trigs = int(self.n_instances)
         n_wg = min(n_trigs // 256 + 1, 1024)

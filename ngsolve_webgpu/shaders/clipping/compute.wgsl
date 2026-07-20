@@ -1,6 +1,7 @@
 #import clipping
 #import ngsolve/clipping/common
 #import ngsolve/eval/tet
+#import ngsolve/region_visibility
 
 @group(0) @binding(21) var<storage, read_write> count_trigs: atomic<u32>;
 @group(0) @binding(22) var<uniform> u_ntets: u32;
@@ -14,6 +15,11 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
   let n_tets = bitcast<u32>(mesh.data[offset_3d + 0]) + bitcast<u32>(mesh.data[offset_3d + 2]) + 2 * bitcast<u32>(mesh.data[offset_3d + 3]) + 5*bitcast<u32>(mesh.data[offset_3d + 4]);
   
   for (var i = id.x; i<n_tets; i+=256*1024) {
+#ifdef REGION_VISIBILITY
+    if (regionAlphaVol(getTetrahedron(i).index) == 0.0) {
+      continue;
+    }
+#endif REGION_VISIBILITY
     let p = getTetPoints(i);
     let lam = array(vec3f(1.0, 0.0, 0.0), vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), vec3f(0.0, 0.0, 0.0));
 

@@ -121,6 +121,13 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
     }
 
     var element = getElem(info.elementId);
+
+#ifdef REGION_VISIBILITY
+    if (regionAlphaVol(element.index) == 0.0) {
+        return zero;
+    }
+#endif REGION_VISIBILITY
+
     let center = getCenter(element);
 
 #ifdef FACET_CF
