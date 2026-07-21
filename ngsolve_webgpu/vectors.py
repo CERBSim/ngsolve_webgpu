@@ -508,6 +508,7 @@ class SurfaceVectors(VectorRenderer):
         self._vec_indirect_id = None
 
     def update(self, options):
+        self.function_data.update(options)
         self.n_search_els = self.function_data.mesh_data.num_elements[ElType.TRIG]
         super().update(options)
 
