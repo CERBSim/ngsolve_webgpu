@@ -17,6 +17,22 @@ from .cf import vandermonde_1d, vandermonde_trig
 from .mesh import MeshData, MeshElements3d
 
 
+def _as_displacement(values, n_edges, ndof, dim):
+    """Reshape evaluated deformation values into (n_edges, ndof, 3).
+
+    Follows the mesh deformation convention: a scalar field displaces in z, a
+    2d field in the xy-plane."""
+    values = values.reshape(n_edges, ndof, dim)
+    if dim == 3:
+        return values
+    out = np.zeros((n_edges, ndof, 3))
+    if dim == 1:
+        out[:, :, 2] = values[:, :, 0]
+    else:
+        out[:, :, : min(dim, 3)] = values[:, :, :3]
+    return out
+
+
 class FacetFunctionData:
     """Extract and pack CF values on element-boundary facets for GPU rendering."""
 
@@ -64,7 +80,9 @@ class FacetFunctionData:
         if deformation_cf is not None:
             with ngs.TaskManager():
                 deform_coords = deformation_cf(mpts)
-            deform_coords = np.array(deform_coords).reshape(n_edges, ndof, 3)
+            deform_coords = _as_displacement(
+                np.real(np.array(deform_coords)), n_edges, ndof, deformation_cf.dim
+            )
             deform_bernstein = np.einsum("ij,ejd->eid", ibmat, deform_coords).astype(np.float32)
 
         # Pack buffers

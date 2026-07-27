@@ -30,7 +30,39 @@ struct VertexOutput2d {
   @location(4) @interpolate(flat) index: u32,
   @location(5) @interpolate(flat) instanceId: u32,
   @location(6) @interpolate(flat) value_sign: f32,
+  @location(7) lam_prod: f32,
+  @location(8) @interpolate(flat) quad_ab: vec2<f32>,
 };
+
+fn quadLamCoeffs(tri: Triangle) -> vec2<f32> {
+    if (tri.npElement != 4u) {
+        return vec2f(0.0);
+    }
+    let e1 = tri.p[1] - tri.p[0];
+    let e2 = tri.p[2] - tri.p[0];
+    let nrm = cross(e1, e2);
+    let den = dot(nrm, nrm);
+    if (den < 1e-30) {
+        return vec2f(0.0);
+    }
+    return vec2f(dot(cross(tri.bilinear, e2), nrm),
+                 dot(cross(e1, tri.bilinear), nrm)) / den;
+}
+
+fn correctQuadLam(lam: vec2<f32>, lam_prod: f32, ab: vec2<f32>) -> vec2<f32> {
+    let defect = lam_prod - lam.x * lam.y;
+    let qa = ab.x * ab.y;
+    let qb = 1.0 + ab.x * lam.y + ab.y * lam.x;
+    if (abs(qb) < 1e-12) {
+        return lam;
+    }
+    let disc = qb * qb + 4.0 * qa * defect;
+    var k = defect / qb;
+    if (abs(qa) > 1e-20 && disc > 0.0) {
+        k = 2.0 * defect / (qb + sign(qb) * sqrt(disc));
+    }
+    return lam + k * ab;
+}
 
 struct VertexOutput3d {
   @builtin(position) fragPosition: vec4<f32>,
@@ -103,15 +135,12 @@ fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_ind
       {
         var pi = (vertexId+2) % 3u;
 
-        // For quads, don't draw the diagonal edge (p2-p0) 
-        // in order to do that, just draw the "last" vertex at p1 again
         if(tri.npElement == 4u && vertexId == 3u) {
-          // todo: fix curved quads
-          lam = calcTriLam(tri, vertexId, h);
           pi = 1u;
         }
 
         position = tri.p[pi];
+        lam = calcTriLam(tri, pi, 1.0);
       }
     else
       {
@@ -142,7 +171,8 @@ fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_ind
     let value_sign = 1.0;
 #endif SYMMETRY
     return VertexOutput2d(cameraMapPoint(position), position, lam, tri.nr,
-                          normal, index, trigId, value_sign);
+                          normal, index, trigId, value_sign,
+                          lam.x * lam.y, quadLamCoeffs(tri));
 }
 
 
@@ -150,7 +180,8 @@ fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_ind
 fn fragmentTrig(input: VertexOutput2d) -> @location(0) vec4<f32> {
     checkClipping(input.p);
     let p = &u_function_values_2d;
-    let value = evalTrig(p, input.instanceId, u_function_component, input.lam) * input.value_sign;
+    let lam = correctQuadLam(input.lam, input.lam_prod, input.quad_ab);
+    let value = evalTrig(p, input.instanceId, u_function_component, lam) * input.value_sign;
     var color = applyHighlight(getColor(value), input.instanceId, input.index);
     if(color.a < 0.01) {
         discard;
@@ -354,15 +385,14 @@ fn calcTrig(tri: Triangle, vertexId: u32, instanceId: u32, rawInstanceId: u32)
 
     if subdivision == 1 {
         position = p[vertexId];
+        let t = elementTangents(tri, lam);
         if (u_deformation_values_2d[0] != -1.) {
           let pos_and_gradients = u_deformation_scale * evalTrigVec3GradComplex(&u_deformation_values_2d, instanceId, lam, 0u);
           position += pos_and_gradients[0];
-          var v1 = p[0] - p[2] + pos_and_gradients[1];
-          var v2 = p[1] - p[2] + pos_and_gradients[2];
-          normal = normalize(cross(v1, v2));
+          normal = normalize(cross(t[0] + pos_and_gradients[1], t[1] + pos_and_gradients[2]));
         }
         else {
-          normal = cross(p[1] - p[0], p[2] - p[0]);
+          normal = cross(t[0], t[1]);
         }
     } else {
         var subTrigId: u32 = vertexId / 3u;
@@ -374,8 +404,13 @@ fn calcTrig(tri: Triangle, vertexId: u32, instanceId: u32, rawInstanceId: u32)
             lam[1] = 1.0 - lam[1];
         }
 
-
-        var pos_and_gradients = evalTrigVec3Grad(&mesh.data, instanceId, lam, mesh.offset_curvature_2d);
+        var pos_and_gradients = mat3x3<f32>(vec3f(0.0), vec3f(0.0), vec3f(0.0));
+        if (mesh.is_curved != 0u) {
+            pos_and_gradients = evalTrigVec3Grad(&mesh.data, instanceId, lam, mesh.offset_curvature_2d);
+        } else {
+            let t = elementTangents(tri, lam);
+            pos_and_gradients = mat3x3<f32>(elementPos(tri, lam), t[0], t[1]);
+        }
         if (u_deformation_values_2d[0] != -1.) {
           pos_and_gradients += u_deformation_scale * evalTrigVec3GradComplex(&u_deformation_values_2d, instanceId, lam, 0u);
         }
@@ -401,5 +436,6 @@ fn calcTrig(tri: Triangle, vertexId: u32, instanceId: u32, rawInstanceId: u32)
     let value_sign = 1.0;
 #endif SYMMETRY
     return VertexOutput2d(mapped_position, position, lam, trigId, normal,
-                          index, instanceId, value_sign);
+                          index, instanceId, value_sign,
+                          lam.x * lam.y, quadLamCoeffs(tri));
 }

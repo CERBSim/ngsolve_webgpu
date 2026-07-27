@@ -5,7 +5,8 @@
 fn fragmentIsolines(input: VertexOutput2d) -> @location(0) vec4<f32> {
     checkClipping(input.p);
     let p = &u_function_values_2d;
-    let value = evalTrig(p, input.instanceId, u_function_component, input.lam) * input.value_sign;
+    let lam = correctQuadLam(input.lam, input.lam_prod, input.quad_ab);
+    let value = evalTrig(p, input.instanceId, u_function_component, lam) * input.value_sign;
 
     if (u_isolines.n_lines == 0u) {
         // No isolines — just render the field (fallback)

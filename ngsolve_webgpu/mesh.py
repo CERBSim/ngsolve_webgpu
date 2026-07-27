@@ -312,6 +312,7 @@ class MeshData:
         all_data = np.concatenate( (metadata, trigs_data.flatten(), quad_numbers, np.array(quads_data, dtype=np.int32)))
         self.elements[ElType.TRIG] = all_data
         self.num_elements[ElType.TRIG] += num_quads
+        self.num_elements["quads"] = int(num_quads)
 
         # Vertices (read after elements for lock-free live meshing safety)
         nv = len(mesh.Points())
@@ -414,7 +415,7 @@ class MeshData:
             curve_order = 1
             print("Mesh has no curve order, using 1, update NGSolve/Netgen to detect curved meshes")
         if self.deformation_data is not None:
-            curve_order = max(curve_order, self.deformation_data.order)
+            curve_order = max(curve_order, self.deformation_data.base_order)
         if curve_order > 1:
             import ngsolve as ngs
 
@@ -435,7 +436,7 @@ class MeshData:
         if self.subdivision is None:
             deformation_order = 1
             if self.deformation_data:
-                deformation_order = self.deformation_data.order
+                deformation_order = self.deformation_data.base_order
             order = max(curve_order, deformation_order)
             if order > 3:
                 subdiv = (order + 2) // 3 + 1

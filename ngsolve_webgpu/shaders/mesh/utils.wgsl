@@ -34,6 +34,7 @@ struct Triangle {
   npElement: u32,
   trigOfElement: u32,
   index: u32,
+  bilinear: vec3<f32>,
 };
 
 struct Element {
@@ -99,8 +100,11 @@ fn loadTriangle(instanceId: u32) -> Triangle {
           bitcast<u32>(mesh.data[trig_base + 2u])
       );
 
+    tri.bilinear = vec3f(0.0);
     if(tri.npElement==4){
         let pi3 = bitcast<u32>(mesh.data[offset_2d + u32(-signedIndex)]);
+        tri.bilinear = getVertex(vid[0]) - getVertex(vid[1])
+                     + getVertex(vid[2]) - getVertex(pi3);
         if(isSecondTrigOfQuad) {
             tri.trigOfElement = 1;
             vid = vec3u(vid[2], pi3, vid[1]);
@@ -132,6 +136,23 @@ fn calcTriLam(tri: Triangle, vertexId: u32, h: f32) -> vec2<f32> {
     }
     
     return lam;
+}
+
+fn elementPos(tri: Triangle, lam: vec2<f32>) -> vec3<f32> {
+    if (tri.npElement == 4u) {
+        return tri.p[0] + lam.x * (tri.p[1] - tri.p[0])
+                        + lam.y * (tri.p[2] - tri.p[0])
+                        + lam.x * lam.y * tri.bilinear;
+    }
+    return tri.p[2] + lam.x * (tri.p[0] - tri.p[2]) + lam.y * (tri.p[1] - tri.p[2]);
+}
+
+fn elementTangents(tri: Triangle, lam: vec2<f32>) -> mat2x3<f32> {
+    if (tri.npElement == 4u) {
+        return mat2x3<f32>(tri.p[1] - tri.p[0] + lam.y * tri.bilinear,
+                           tri.p[2] - tri.p[0] + lam.x * tri.bilinear);
+    }
+    return mat2x3<f32>(tri.p[0] - tri.p[2], tri.p[1] - tri.p[2]);
 }
 
 fn getElem(elementId: u32) -> Element {

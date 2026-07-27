@@ -224,10 +224,16 @@ class FunctionData:
     ):
         self.mesh_data = mesh_data
         self.cf = cf
+        self._base_order = order
         self.order = order
         self.order_3d = order if order3d == -1 else order3d
         self._need_3d = mesh_data.need_3d
         self._component_param = None
+
+    @property
+    def base_order(self):
+        """Requested order, without the extra order spent on quads."""
+        return self._base_order
 
     @property
     def num_components(self):
@@ -311,6 +317,9 @@ class FunctionData:
         return self.mesh_data.deformation_data
 
     def _create_data(self):
+        self.order = self._base_order
+        if self.mesh_data.num_elements.get("quads", 0):
+            self.order = 2 * self._base_order
         try:
             self.data_2d, self.minval, self.maxval = evaluate_cf(
                 self.cf, self.mesh_data.reg_or_mesh, self.order
