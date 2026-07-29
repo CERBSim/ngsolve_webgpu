@@ -14,7 +14,7 @@ const EDGE_DEPTH_OFFSET: f32 = 2.0e-4;
 
 struct GeoEdgeInput
 {
-  @builtin(position) position: vec4<f32>,
+  @invariant @builtin(position) position: vec4<f32>,
   @location(0) p: vec3<f32>,
   @location(1) @interpolate(flat) index: u32,
   @location(2) @interpolate(flat) id: u32,

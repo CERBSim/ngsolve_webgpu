@@ -19,7 +19,7 @@
 const CLIP_SUBDIV: u32 = @CLIPPING_SUBDIVISION@;
 
 struct VertexOutputClip {
-  @builtin(position) fragPosition: vec4<f32>,
+  @invariant @builtin(position) fragPosition: vec4<f32>,
   @location(0) p: vec3<f32>,
   @location(1) n: vec3<f32>,
   @location(2) lam: vec3<f32>,

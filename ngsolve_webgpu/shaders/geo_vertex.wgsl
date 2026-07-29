@@ -10,7 +10,7 @@ const VERTEX_DEPTH_OFFSET: f32 = 4.0e-4;
 
 struct GeoVertexInput
 {
-  @builtin(position) position: vec4<f32>,
+  @invariant @builtin(position) position: vec4<f32>,
   @location(0) local: vec2<f32>,
   @location(1) @interpolate(flat) index: u32,
   @location(2) p: vec3<f32>,

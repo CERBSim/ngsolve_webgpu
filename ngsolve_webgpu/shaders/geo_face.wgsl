@@ -13,7 +13,7 @@
 @group(0) @binding(94) var<storage> u_solid_ids: array<u32>;
 
 struct GeoFragmentInput {
-  @builtin(position) position: vec4<f32>,
+  @invariant @builtin(position) position: vec4<f32>,
     @location(0) p: vec3<f32>,
     @location(1) n: vec3<f32>,
     @location(2) @interpolate(flat) id: u32,

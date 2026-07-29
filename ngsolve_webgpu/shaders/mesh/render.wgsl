@@ -15,14 +15,14 @@
 #endif LIC
 
 struct VertexOutput1d {
-  @builtin(position) fragPosition: vec4<f32>,
+  @invariant @builtin(position) fragPosition: vec4<f32>,
   @location(0) p: vec3<f32>,
   @location(1) lam: f32,
   @location(2) @interpolate(flat) id: u32,
 };
 
 struct VertexOutput2d {
-  @builtin(position) fragPosition: vec4<f32>,
+  @invariant @builtin(position) fragPosition: vec4<f32>,
   @location(0) p: vec3<f32>,
   @location(1) lam: vec2<f32>,
   @location(2) @interpolate(flat) id: u32,
@@ -65,7 +65,7 @@ fn correctQuadLam(lam: vec2<f32>, lam_prod: f32, ab: vec2<f32>) -> vec2<f32> {
 }
 
 struct VertexOutput3d {
-  @builtin(position) fragPosition: vec4<f32>,
+  @invariant @builtin(position) fragPosition: vec4<f32>,
   @location(0) p: vec3<f32>,
   @location(1) lam: vec3<f32>,
   @location(2) @interpolate(flat) id: u32,
@@ -199,7 +199,7 @@ fn fragmentEdge(@location(0) p: vec3<f32>) -> @location(0) vec4<f32> {
 }
 
 struct MeshFragmentInput {
-  @builtin(position) fragPosition: vec4<f32>,
+  @invariant @builtin(position) fragPosition: vec4<f32>,
   @location(0) p: vec3<f32>,
   @location(1) n: vec3<f32>,
   @location(2) @interpolate(flat) id: u32,

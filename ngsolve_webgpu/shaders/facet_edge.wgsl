@@ -10,7 +10,7 @@
 @group(0) @binding(84) var<uniform> u_facet_deformation_scale: f32;
 
 struct FacetVertexOutput {
-  @builtin(position) fragPosition: vec4<f32>,
+  @invariant @builtin(position) fragPosition: vec4<f32>,
   @location(0) p: vec3<f32>,
   @location(1) value: f32,
 };
