@@ -774,7 +774,7 @@ class MeshElements2d(BaseMeshElements2d):
         if colors is None:
             mesh = data.mesh
             colors = [get_color(fd) for fd in mesh.FaceDescriptors()]
-        self.gpu_objects.colormap = Colormap(colormap=colors, minval=0, maxval=len(colors)-1)
+        self.gpu_objects.colormap = Colormap(colormap=colors, minval=0, maxval=len(colors))
         self.gpu_objects.colormap.discrete = 1
         self.gpu_objects.colormap.n_colors = len(colors)
         self.transparent = any(len(c) > 3 and c[3] < 255 for c in colors)
