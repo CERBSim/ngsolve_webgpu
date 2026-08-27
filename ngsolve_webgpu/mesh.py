@@ -4,6 +4,7 @@ import netgen.meshing
 import typing
 import numpy as np
 import threading
+import weakref
 
 from webgpu.clipping import Clipping
 from webgpu.font import Font
@@ -108,17 +109,26 @@ class _MeshMetaData(ct.Structure):
         ("is_curved", ct.c_uint32),
     ]
 
-class MeshData:
-    # only for drawing the mesh, not needed for function values
+_shared_mesh_buffers = weakref.WeakValueDictionary()
+
+
+class MeshBuffers:
+    """CPU/GPU buffers built from one mesh (element tables, curvature, the
+    "mesh" storage buffer). Shared by all MeshData views on the same mesh;
+    per-view state (deformation) lives on MeshData. subdivision, need_3d and
+    the required eval order only ever grow, so all views can rely on the
+    shared data."""
+
     num_elements: dict[str | ElType, int]
     elements: dict[str | ElType, np.ndarray]
     gpu_elements: dict[str | ElType, Buffer]
-    subdivision: int
 
     el2d_bitarray = None
     el3d_bitarray = None
-    mesh: "netgen.meshing.Mesh | ngsolve.Mesh"
+    mesh: "netgen.meshing.Mesh"
     curvature_data = None
+    curvature_3d_data = None
+    # always None, lets FunctionData treat MeshBuffers like a MeshData
     deformation_data = None
     
     cpu_data: bytes | None = None
@@ -154,23 +164,54 @@ class MeshData:
         self.gpu_data = None
         
         self.gpu_elements = {}
-        self.subdivision = None
-        self._deformation_scale = 1
+        self._subdivision = None
+        self._extra_order = 1
         self._update_lock = Lock()
 
-    @property
-    def deformation_scale(self):
-        return self._deformation_scale
+    @staticmethod
+    def get_shared(mesh, el2d_bitarray=None, el3d_bitarray=None):
+        """Shared instance per mesh/region; filtered instances stay private."""
+        if el2d_bitarray is not None or el3d_bitarray is not None:
+            return MeshBuffers(mesh, el2d_bitarray, el3d_bitarray)
+        import netgen.meshing
 
-    @deformation_scale.setter
-    def deformation_scale(self, value):
-        self._deformation_scale = value
-        if self.gpu_elements and "deformation_scale" in self.gpu_elements:
-            get_device().queue.writeBuffer(
-                self.gpu_elements["deformation_scale"],
-                0,
-                np.array([self._deformation_scale], dtype=np.float32).tobytes(),
-            )
+        if isinstance(mesh, netgen.meshing.Mesh):
+            key = (id(mesh),)
+        else:
+            import ngsolve as ngs
+
+            if isinstance(mesh, ngs.Region):
+                mask = np.array(mesh.Mask(), dtype=bool).tobytes()
+                key = (id(mesh.mesh.ngmesh), repr(mesh.VB()), mask)
+            else:
+                key = (id(mesh.ngmesh),)
+        shared = _shared_mesh_buffers.get(key)
+        if shared is None:
+            # the instance holds the mesh alive, so the id in the key cannot
+            # be reused while the entry exists
+            shared = MeshBuffers(mesh)
+            _shared_mesh_buffers[key] = shared
+        return shared
+
+    @property
+    def subdivision(self):
+        return self._subdivision
+
+    @subdivision.setter
+    def subdivision(self, value):
+        if value is None:
+            return
+        if self._subdivision is not None and value <= self._subdivision:
+            return
+        self._subdivision = value
+        self.set_needs_update()
+
+    def require_order(self, order):
+        """Views with deformation register their order here; curvature and
+        auto-subdivision are derived from the max over all views."""
+        if order > self._extra_order:
+            self._extra_order = order
+            self.set_needs_update()
 
     @property
     def reg_or_mesh(self):
@@ -197,10 +238,11 @@ class MeshData:
 
     @need_3d.setter
     def need_3d(self, value: bool):
-        if value == self._need_3d:
+        # only grows: once any view needs 3d data we keep building it
+        if not value or self._need_3d:
             return
+        self._need_3d = True
         self.set_needs_update()
-        self._need_3d = value
 
     def set_needs_update(self):
         """Update GPU data on next render call"""
@@ -243,10 +285,6 @@ class MeshData:
                     data_3d = self.elements[ElType.TET].tobytes()
                 self.cpu_data = bytes(self.mesh_metadata) + vertices + data_2d + data_3d + curvature_2d + curvature_3d
                 self._gpu_dirty = True
-
-            if self.deformation_data:
-                self.deformation_data.update(options)
-
 
     def _create_data(self):
         # TODO: implement other element types than triangles
@@ -414,8 +452,7 @@ class MeshData:
         except:
             curve_order = 1
             print("Mesh has no curve order, using 1, update NGSolve/Netgen to detect curved meshes")
-        if self.deformation_data is not None:
-            curve_order = max(curve_order, self.deformation_data.base_order)
+        curve_order = max(curve_order, self._extra_order)
         if curve_order > 1:
             import ngsolve as ngs
 
@@ -431,20 +468,17 @@ class MeshData:
                 self.curvature_3d_data = None
         else:
             self.curvature_3d_data = None
-            if self.subdivision is None:
-                self.subdivision = 1
-        if self.subdivision is None:
-            deformation_order = 1
-            if self.deformation_data:
-                deformation_order = self.deformation_data.base_order
-            order = max(curve_order, deformation_order)
+            if self._subdivision is None:
+                self._subdivision = 1
+        if self._subdivision is None:
+            order = curve_order
             if order > 3:
                 subdiv = (order + 2) // 3 + 1
             elif order > 1:
                 subdiv = 3
             else:
                 subdiv = 1
-            self.subdivision = subdiv
+            self._subdivision = subdiv
 
         for key in self.num_elements:
             self.num_elements[key] = int(self.num_elements[key])
@@ -626,24 +660,168 @@ class MeshData:
                 label="subdivision",
                 reuse=self.gpu_elements.get("subdivision", None),
             )
-        if "deformation_scale" not in self.gpu_elements:
-            self.gpu_elements["deformation_scale"] = uniform_from_array(
-                np.array([self.deformation_scale], dtype=np.float32),
-                label="deformation_scale",
-                reuse=self.gpu_elements.get("deformation_scale", None),
-            )
 
         result = self.gpu_elements.copy()
+        result["mesh"] = self.gpu_data
+
+        return result
+
+
+class MeshData:
+    """Per-view handle on the shared MeshBuffers of a mesh. Geometry state
+    (elements, curvature, subdivision, need_3d) is shared across all MeshData
+    of the same mesh; deformation and its scale are individual per view."""
+
+    _timestamp: float = -1
+
+    def __init__(self, mesh, el2d_bitarray=None, el3d_bitarray=None):
+        self.mesh_buffers = MeshBuffers.get_shared(mesh, el2d_bitarray, el3d_bitarray)
+        self._deformation_data = None
+        self._deformation_scale = 1
+        self._scale_buffer = None
+        self._dummy_buffer = None
+        self._timestamp = -1
+
+    @property
+    def deformation_data(self):
+        return self._deformation_data
+
+    @deformation_data.setter
+    def deformation_data(self, value):
+        if value is self._deformation_data:
+            return
+        self._deformation_data = value
+        if value is not None:
+            self.mesh_buffers.require_order(value.base_order)
+        self._timestamp = -1
+
+    @property
+    def deformation_scale(self):
+        return self._deformation_scale
+
+    @deformation_scale.setter
+    def deformation_scale(self, value):
+        self._deformation_scale = value
+        if self._scale_buffer is not None:
+            get_device().queue.writeBuffer(
+                self._scale_buffer,
+                0,
+                np.array([value], dtype=np.float32).tobytes(),
+            )
+
+    @property
+    def mesh(self):
+        return self.mesh_buffers.mesh
+
+    @property
+    def on_region(self):
+        return self.mesh_buffers.on_region
+
+    @property
+    def reg_or_mesh(self):
+        return self.mesh_buffers.reg_or_mesh
+
+    @property
+    def ngs_mesh(self):
+        return self.mesh_buffers.ngs_mesh
+
+    @property
+    def el2d_bitarray(self):
+        return self.mesh_buffers.el2d_bitarray
+
+    @property
+    def el3d_bitarray(self):
+        return self.mesh_buffers.el3d_bitarray
+
+    @property
+    def elements(self):
+        return self.mesh_buffers.elements
+
+    @property
+    def num_elements(self):
+        return self.mesh_buffers.num_elements
+
+    @property
+    def cpu_data(self):
+        return self.mesh_buffers.cpu_data
+
+    @property
+    def gpu_data(self):
+        return self.mesh_buffers.gpu_data
+
+    @property
+    def curvature_data(self):
+        return self.mesh_buffers.curvature_data
+
+    @property
+    def curvature_3d_data(self):
+        return self.mesh_buffers.curvature_3d_data
+
+    @property
+    def mesh_metadata(self):
+        return self.mesh_buffers.mesh_metadata
+
+    @property
+    def gpu_elements(self):
+        elements = dict(self.mesh_buffers.gpu_elements)
+        if self._scale_buffer is not None:
+            elements["deformation_scale"] = self._scale_buffer
+        return elements
+
+    @property
+    def subdivision(self):
+        return self.mesh_buffers.subdivision
+
+    @subdivision.setter
+    def subdivision(self, value):
+        self.mesh_buffers.subdivision = value
+
+    @property
+    def need_3d(self):
+        return self.mesh_buffers.need_3d
+
+    @need_3d.setter
+    def need_3d(self, value):
+        self.mesh_buffers.need_3d = value
+
+    def set_needs_update(self):
+        self._timestamp = -1
+        self.mesh_buffers.set_needs_update()
+
+    @property
+    def needs_update(self):
+        return self._timestamp < 0 or self.mesh_buffers.needs_update
+
+    @check_timestamp
+    def update(self, options: RenderOptions):
+        # prevent recursion
+        self._timestamp = options.timestamp
+        self.mesh_buffers.update(options)
+        if self._deformation_data:
+            self._deformation_data.update(options)
+
+    def get_bounding_box(self):
+        return self.mesh_buffers.get_bounding_box()
+
+    def get_buffers(self):
+        result = self.mesh_buffers.get_buffers()
+
+        self._scale_buffer = uniform_from_array(
+            np.array([self._deformation_scale], dtype=np.float32),
+            label="deformation_scale",
+            reuse=self._scale_buffer,
+        )
+        result["deformation_scale"] = self._scale_buffer
+
         self._dummy_buffer = buffer_from_array(
             np.array([-1], dtype=np.float32),
             label="dummy_deformation",
-            reuse=getattr(self, "_dummy_buffer", None)
+            reuse=self._dummy_buffer,
         )
-
         result["deformation_2d"] = self._dummy_buffer
         result["deformation_3d"] = self._dummy_buffer
-        if self.deformation_data:
-            deform_buffers = self.deformation_data.get_buffers(include_mesh_data=False)
+        if self._deformation_data:
+            deform_buffers = self._deformation_data.get_buffers(include_mesh_data=False)
             if "data_2d" in deform_buffers:
                 result["deformation_2d"] = deform_buffers["data_2d"]
             if "data_3d" in deform_buffers:
@@ -657,12 +835,12 @@ class MeshData:
         dummy = self._dummy_buffer
         bindings = [
             BufferBinding(Binding.MESH_DATA, self.gpu_data),
-            UniformBinding(Binding.DEFORMATION_SCALE, self.gpu_elements['deformation_scale']),
+            UniformBinding(Binding.DEFORMATION_SCALE, self._scale_buffer),
         ]
-        if self.deformation_data is not None:
+        if self._deformation_data is not None:
             bindings += [
-                BufferBinding(Binding.DEFORMATION_VALUES, self.deformation_data.gpu_2d or dummy),
-                BufferBinding(Binding.DEFORMATION_3D_VALUES, self.deformation_data.gpu_3d or dummy),
+                BufferBinding(Binding.DEFORMATION_VALUES, self._deformation_data.gpu_2d or dummy),
+                BufferBinding(Binding.DEFORMATION_3D_VALUES, self._deformation_data.gpu_3d or dummy),
             ]
         else:
             bindings += [
@@ -674,7 +852,7 @@ class MeshData:
         
     def get_shader_defines(self):
         order = 1
-        for d in [self.curvature_data, self.deformation_data]:
+        for d in [self.curvature_data, self._deformation_data]:
             if d is not None:
                 order = max(order, d.order)
                 

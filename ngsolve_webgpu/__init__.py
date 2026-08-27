@@ -1,4 +1,5 @@
 from .mesh import (
+    MeshBuffers,
     MeshData,
     MeshWireframe2d,
     MeshElements2d,
