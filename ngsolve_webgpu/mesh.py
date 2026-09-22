@@ -333,12 +333,14 @@ class MeshBuffers:
         quads_data = []
 
         el_numers = np.array(range(len(trigs)), dtype=np.int32)
-        quads_index = trigs["np"] == 4
+        trigs_np = (trigs["np"] if "np" in trigs.dtype.names
+                    else netgen.meshing.ElementNP[trigs["type"]])
+        quads_index = trigs_np == 4
         quad_numbers = el_numers[quads_index]
         num_quads = np.sum(quads_index)
 
         for i in range(len(trigs)):
-            if trigs["np"][i] == 4:
+            if trigs_np[i] == 4:
                 pi3 = trigs["nodes"][i][3] - 1
                 idx = trigs["index"][i] - 1
                 offset = 2 + num_quads + len(trigs)*4 + len(quads_data)
@@ -368,9 +370,11 @@ class MeshBuffers:
             els = mesh.Elements3D().NumPy()
             if self.el3d_bitarray is not None:
                 els = els[np.array(self.el3d_bitarray, dtype=bool)]
+            els_np = (els["np"] if "np" in els.dtype.names
+                      else netgen.meshing.ElementNP[els["type"]])
             for num_pts in (4, 5, 6, 8, 10):
                 eltype = ElType.from_dim_np(3, num_pts)
-                filtered = els[els["np"] == num_pts]
+                filtered = els[els_np == num_pts]
                 nels = len(filtered)
                 if nels == 0:
                     continue
@@ -391,12 +395,12 @@ class MeshBuffers:
             els_numbers = np.array(range(len(els)), dtype=np.int32)
 
             rest_index = (
-                (els["np"] == 5) | 
-                (els["np"] == 6) | 
-                (els["np"] == 8) | 
-                (els["np"] == 10)
+                (els_np == 5) |
+                (els_np == 6) |
+                (els_np == 8) |
+                (els_np == 10)
             )
-            np_vals = els["np"]
+            np_vals = els_np
 
             rest_mask = np.isin(np_vals, (5, 6, 8, 10))
             rest_numbers = els_numbers[rest_mask]
@@ -426,7 +430,7 @@ class MeshBuffers:
             base_offset = 5 + len(els) * 5 + n_curved_all + num_rests
 
             for i in range(len(els)):
-                np_val = els["np"][i]
+                np_val = els_np[i]
 
                 if np_val in (5, 6, 8):
                     extra_nodes = [
@@ -529,7 +533,8 @@ class MeshBuffers:
             self.curvature_3d_data = None
             return
 
-        np_vals = els['np']
+        np_vals = (els["np"] if "np" in els.dtype.names
+                   else netgen.meshing.ElementNP[els["type"]])
         curved_flag = els['curved']
         lookup = np.full(n_total, -1, dtype=np.int32)
         all_coeffs = []
