@@ -1305,10 +1305,10 @@ class MeshIdentifications(Renderer):
             self._buffers = {}
             return
 
-        # netgen point ids are 1-based PointId objects; map each (pid1, pid2)
-        # pair to vertex coordinates
+        # netgen point ids are 1-based PointId objects; entries are
+        # (pid1, pid2) or (pid1, pid2, ident_nr) in newer netgen
         node_ids = np.array(
-            [(p1.nr, p2.nr) for p1, p2 in idents], dtype=np.int64
+            [(ident[0].nr, ident[1].nr) for ident in idents], dtype=np.int64
         ) - 1  # (n_idents, 2)
         seg_coords = vertices[node_ids].reshape(-1, 6).astype(np.float32)
 
