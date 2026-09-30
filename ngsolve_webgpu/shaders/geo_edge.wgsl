@@ -7,8 +7,14 @@
 
 @group(0) @binding(90) var<storage> u_vertices: array<f32>;
 @group(0) @binding(91) var<storage> u_color: array<f32>;
-@group(0) @binding(92) var<uniform> u_thickness: f32;
+// ndc: width in NDC y units, px / pick_px: width in CSS pixels (drawn / pick pass) if > 0
+struct LineWidth { ndc: f32, px: f32, pick_px: f32, pad: f32 };
+@group(0) @binding(92) var<uniform> u_width: LineWidth;
 @group(0) @binding(93) var<storage> u_indices: array<u32>;
+#ifdef WIDTH_SCALE
+// drawn width factor per index
+@group(0) @binding(94) var<storage> u_width_scale: array<f32>;
+#endif WIDTH_SCALE
 
 const EDGE_DEPTH_OFFSET: f32 = 2.0e-4;
 
@@ -52,9 +58,20 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
   sp1.x *= u_camera.aspect;
   sp2.x *= u_camera.aspect;
   let v = normalize(sp2 - sp1);
-  var thickness = u_thickness * 0.5;
+  let px2ndc = max(u_camera.dpr, 1.0) / f32(max(u_camera.height, 1u));
+  var thickness = u_width.ndc * 0.5;
+  if (u_width.px > 0.0) {
+    thickness = u_width.px * px2ndc;
+  }
+#ifdef WIDTH_SCALE
+  thickness *= u_width_scale[u_indices[instanceId]];
+#endif WIDTH_SCALE
 #ifdef SELECT_PIPELINE
-    thickness = 10*thickness;
+  if (u_width.pick_px > 0.0) {
+    thickness = u_width.pick_px * px2ndc;
+  } else {
+    thickness = 10 * thickness;
+  }
 #endif SELECT_PIPELINE
   var normal = vec2<f32>(-v.y, v.x) * thickness;
   normal.x = normal.x / u_camera.aspect;

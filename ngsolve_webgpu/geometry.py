@@ -50,6 +50,66 @@ class BaseGeometryRenderer(Renderer):
         )
 
 
+class PixelSize:
+    """Screen size of lines / points: ``thickness`` in NDC y units (scales with the canvas
+    height), ``thickness_px`` in CSS pixels if set. ``pick_px`` is the size in the pick pass
+    in CSS pixels (None: 10x the drawn width for lines, 3x the diameter for points), i.e. the
+    pick tolerance of thin lines."""
+
+    thickness_px: float | None = None
+    pick_px: float | None = None
+    _size_buffer = None
+    _width_scale = None
+    _width_buffer = None
+
+    def set_pixel_size(self, px, pick_px=None):
+        """Drawn size and pick size in CSS pixels (None: back to ``thickness``)."""
+        self.thickness_px, self.pick_px = px, pick_px
+        if self._size_buffer is not None:
+            self._size_uniform()
+
+    def set_width_scale(self, scale):
+        """Factor on the drawn size per edge / vertex index (e.g. thicker selected edges), the
+        pick size is not scaled. None: all 1. Enabling it once rebuilds the pipelines."""
+        if scale is None:
+            if self._width_scale is not None:
+                self._width_scale = self._width_buffer = None
+                self.shader_defines.pop("WIDTH_SCALE", None)
+                self.set_needs_update()
+            return
+        scale = np.ascontiguousarray(scale, dtype=np.float32).reshape(-1)
+        if len(scale) == 0:
+            scale = np.ones(1, dtype=np.float32)
+        old = self._width_scale
+        self._width_scale = scale
+        if self._width_buffer is not None and old is not None and len(old) == len(scale):
+            self.device.queue.writeBuffer(self._width_buffer, 0, scale.tobytes())
+        elif old is None or len(old) != len(scale):
+            self._width_buffer = None
+            self.set_needs_update()
+
+    def _width_bindings(self, n):
+        """Binding 94 of the width scale, padded to *n* entries."""
+        scale = self._width_scale
+        if scale is None:
+            self.shader_defines.pop("WIDTH_SCALE", None)
+            return []
+        if len(scale) < n:
+            scale = self._width_scale = np.concatenate(
+                [scale, np.ones(n - len(scale), dtype=np.float32)])
+        if self._width_buffer is None:
+            self._width_buffer = buffer_from_array(scale, label=self.label + " width scale")
+        self.shader_defines["WIDTH_SCALE"] = "1"
+        return [webgpu.BufferBinding(94, self._width_buffer)]
+
+    def _size_uniform(self):
+        data = np.array([self.thickness, self.thickness_px or 0.0, self.pick_px or 0.0, 0.0],
+                        dtype=np.float32)
+        self._size_buffer = uniform_from_array(data, label=self.label + " size",
+                                               reuse=self._size_buffer)
+        return self._size_buffer
+
+
 class GeometryFaceRenderer(BaseGeometryRenderer):
     n_vertices: int = 3
 
@@ -146,7 +206,7 @@ class GeometryFaceRenderer(BaseGeometryRenderer):
         return read_shader_file("ngsolve/geo_face.wgsl")
 
 
-class GeometryEdgeRenderer(BaseGeometryRenderer):
+class GeometryEdgeRenderer(PixelSize, BaseGeometryRenderer):
     n_vertices: int = 4
     topology: PrimitiveTopology = PrimitiveTopology.triangle_strip
 
@@ -179,7 +239,7 @@ class GeometryEdgeRenderer(BaseGeometryRenderer):
         if self.symmetry:
             self.n_instances *= self.symmetry.n_copies
             self.shader_defines["SYMMETRY"] = "1"
-        self.thickness_uniform = uniform_from_array(np.array([self.thickness], dtype=np.float32))
+        self._size_uniform()
         self._buffers = {}
         self._buffers["vertices"] = buffer_from_array(verts)
         self._buffers["colors"] = buffer_from_array(self.colors)
@@ -197,10 +257,11 @@ class GeometryEdgeRenderer(BaseGeometryRenderer):
             *self.clipping.get_bindings(),
             webgpu.BufferBinding(90, self._buffers["vertices"]),
             webgpu.BufferBinding(91, self._buffers["colors"]),
-            webgpu.UniformBinding(92, self.thickness_uniform),
+            webgpu.UniformBinding(92, self._size_buffer),
             webgpu.BufferBinding(93, self._buffers["index"]),
             webgpu.BufferBinding(58, self._buffers["selection"]),
             *self._highlight_uniforms.get_bindings(),
+            *self._width_bindings(len(self.colors) // 4),
         ]
         if self.symmetry:
             bindings += self.symmetry.get_bindings(self._original_n_instances)
