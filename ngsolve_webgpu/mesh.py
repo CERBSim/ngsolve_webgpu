@@ -166,7 +166,7 @@ class MeshBuffers:
         self.gpu_elements = {}
         self._subdivision = None
         self._extra_order = 1
-        self._update_lock = Lock()
+        self._update_lock = threading.RLock()
 
     @staticmethod
     def get_shared(mesh, el2d_bitarray=None, el3d_bitarray=None):
@@ -644,30 +644,31 @@ class MeshBuffers:
         return ([pmin[0], pmin[1], pmin[2]], [pmax[0], pmax[1], pmax[2]])
 
     def get_buffers(self):
-        if self._gpu_dirty:
-            self.gpu_data = buffer_from_array(
-                self.cpu_data,
-                label="mesh",
-                reuse=self.gpu_data,
-            )
-            self._gpu_dirty = False
-
-        for eltype in self.elements:
-            if eltype not in self.gpu_elements:
-                self.gpu_elements[eltype] = buffer_from_array(
-                    self.elements[eltype],
-                    label="mesh_" + str(eltype),
-                    reuse=self.gpu_elements.get(eltype, None),
+        with self._update_lock:
+            if self._gpu_dirty:
+                self.gpu_data = buffer_from_array(
+                    self.cpu_data,
+                    label="mesh",
+                    reuse=self.gpu_data,
                 )
-        if "subdivision" not in self.gpu_elements:
-            self.gpu_elements["subdivision"] = uniform_from_array(
-                np.array([self.subdivision], dtype=np.uint32),
-                label="subdivision",
-                reuse=self.gpu_elements.get("subdivision", None),
-            )
+                self._gpu_dirty = False
 
-        result = self.gpu_elements.copy()
-        result["mesh"] = self.gpu_data
+            for eltype in self.elements:
+                if eltype not in self.gpu_elements:
+                    self.gpu_elements[eltype] = buffer_from_array(
+                        self.elements[eltype],
+                        label="mesh_" + str(eltype),
+                        reuse=self.gpu_elements.get(eltype, None),
+                    )
+            if "subdivision" not in self.gpu_elements:
+                self.gpu_elements["subdivision"] = uniform_from_array(
+                    np.array([self.subdivision], dtype=np.uint32),
+                    label="subdivision",
+                    reuse=self.gpu_elements.get("subdivision", None),
+                )
+
+            result = self.gpu_elements.copy()
+            result["mesh"] = self.gpu_data
 
         return result
 
