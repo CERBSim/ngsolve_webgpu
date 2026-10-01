@@ -5,7 +5,7 @@ from webgpu.font import Font
 from webgpu.renderer import Renderer, RenderOptions
 from webgpu.utils import BufferBinding, UniformBinding, buffer_from_array, uniform_from_array, read_shader_file
 
-from .mesh import MeshData, Binding, ElType
+from .mesh import MeshData, Binding, ElType, POINTINDEX_BASE
 
 
 class EntityNumbers(Renderer):
@@ -117,7 +117,7 @@ class EntityNumbers(Renderer):
             self.n_instances = 0
             return
         seg_data = np.zeros((len(segs), 3), dtype=np.uint32)
-        seg_data[:, :2] = segs["nodes"][:, :2] - 1  # 0-based vertex indices
+        seg_data[:, :2] = segs["nodes"][:, :2] - POINTINDEX_BASE  # 0-based vertex indices
         seg_data[:, 2] = segs["index"] - 1  # 0-based segment index
         self.n_instances = len(seg_data)
         self._segment_buffer = buffer_from_array(seg_data, label="segment_connectivity", reuse=self._segment_buffer)

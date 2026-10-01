@@ -29,6 +29,8 @@ from webgpu.utils import (
 )
 from webgpu.webgpu_api import *
 
+POINTINDEX_BASE = getattr(netgen.meshing.PointId, "base", 1)
+
 
 class Binding:
     """Binding numbers for uniforms in shader code in uniforms.wgsl"""
@@ -317,7 +319,7 @@ class MeshBuffers:
 
         trigs_data = np.zeros((len(trigs), 4), dtype=np.int32)
 
-        trigs_data[:, :3] = trigs["nodes"][:, :3] - 1
+        trigs_data[:, :3] = trigs["nodes"][:, :3] - POINTINDEX_BASE
         trigs_data[:, 3] = trigs["index"] - 1
         # trigs_data = trigs_data.flatten()
 
@@ -341,7 +343,7 @@ class MeshBuffers:
 
         for i in range(len(trigs)):
             if trigs_np[i] == 4:
-                pi3 = trigs["nodes"][i][3] - 1
+                pi3 = trigs["nodes"][i][3] - POINTINDEX_BASE
                 idx = trigs["index"][i] - 1
                 offset = 2 + num_quads + len(trigs)*4 + len(quads_data)
                 quads_data.append(pi3)
@@ -380,14 +382,14 @@ class MeshBuffers:
                     continue
                 lo_num_pts = 4 if num_pts == 10 else num_pts
                 u32array = np.empty((nels, lo_num_pts + 2), dtype=np.uint32)
-                u32array[:, :lo_num_pts] = filtered["nodes"][:, :lo_num_pts] - 1
+                u32array[:, :lo_num_pts] = filtered["nodes"][:, :lo_num_pts] - POINTINDEX_BASE
                 u32array[:, lo_num_pts] = filtered["index"] - 1
                 self.elements[eltype] = u32array
                 self.num_elements[eltype] = len(filtered)
 
             els_data = np.zeros((len(els), 5), dtype=np.int32)
 
-            els_data[:, :4] = els["nodes"][:, :4] - 1
+            els_data[:, :4] = els["nodes"][:, :4] - POINTINDEX_BASE
             els_data[:, 4] = els["index"] - 1
 
             rest_data = []
@@ -434,7 +436,7 @@ class MeshBuffers:
 
                 if np_val in (5, 6, 8):
                     extra_nodes = [
-                        els["nodes"][i][j] - 1 for j in range(4, 4 + (np_val - 4))
+                        els["nodes"][i][j] - POINTINDEX_BASE for j in range(4, 4 + (np_val - 4))
                     ]
 
                     idx = els["index"][i] - 1
@@ -1030,7 +1032,7 @@ class MeshSegments(Renderer):
             return
 
         # build segment endpoint coordinates
-        node_ids = segs["nodes"][:, :2] - 1
+        node_ids = segs["nodes"][:, :2] - POINTINDEX_BASE
         seg_coords = vertices[node_ids].reshape(-1, 6).astype(np.float32)
 
         # indices and colors: one color entry per segment index
@@ -1306,11 +1308,9 @@ class MeshIdentifications(Renderer):
             self._buffers = {}
             return
 
-        # netgen point ids are 1-based PointId objects; entries are
-        # (pid1, pid2) or (pid1, pid2, ident_nr) in newer netgen
         node_ids = np.array(
             [(ident[0].nr, ident[1].nr) for ident in idents], dtype=np.int64
-        ) - 1  # (n_idents, 2)
+        ) - POINTINDEX_BASE  # (n_idents, 2)
         seg_coords = vertices[node_ids].reshape(-1, 6).astype(np.float32)
 
         bbox = self.get_bounding_box()
