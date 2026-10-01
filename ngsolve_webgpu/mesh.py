@@ -1088,7 +1088,7 @@ class MeshSegments(Renderer):
         )
 
         self._thickness_uniform = uniform_from_array(
-            np.array([self.thickness], dtype=np.float32),
+            np.array([self.thickness, 0.0, 0.0, 0.0], dtype=np.float32),
             label="mesh_segments_thickness",
             reuse=self._thickness_uniform,
         )
@@ -1341,7 +1341,7 @@ class MeshIdentifications(Renderer):
         )
 
         self._thickness_uniform = uniform_from_array(
-            np.array([self.thickness], dtype=np.float32),
+            np.array([self.thickness, 0.0, 0.0, 0.0], dtype=np.float32),
             label="mesh_identifications_thickness",
             reuse=self._thickness_uniform,
         )
