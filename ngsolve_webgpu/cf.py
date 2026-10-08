@@ -116,9 +116,30 @@ def _get_bernstein_matrix_trig(n, intrule):
     return mat
 
 
-def evaluate_cf(cf, mesh, order):
+def _mask_blocks(pmat, els, region, bitarray, extra):
+    """Restrict per-element value blocks to the elements in *bitarray* (over
+    all mesh elements of that dimension), the selection MeshBuffers applies to
+    the drawn elements. *pmat* holds one block per element of *region*, then
+    one more block per element with an extra rule, for each entry (np values)
+    of *extra* in turn."""
+    import netgen.meshing
+
+    keep = np.array(bitarray, dtype=bool)
+    in_region = np.isin(els["index"], np.flatnonzero(region.Mask()) + 1)
+    keep, els = keep[in_region], els[in_region]
+    nps = els["np"] if "np" in els.dtype.names else netgen.meshing.ElementNP[els["type"]]
+    parts, start = [pmat[: len(els)][keep]], len(els)
+    for np_values in extra:
+        sel = np.isin(nps, np_values)
+        parts.append(pmat[start : start + sel.sum()][keep[sel]])
+        start += sel.sum()
+    return np.concatenate(parts)
+
+
+def evaluate_cf(cf, mesh, order, el2d_bitarray=None):
     """Evaluate a coefficient function on a mesh and returns the values as a flat array, ready to copy to the GPU as storage buffer.
     The first three entries are the function dimension, the polynomial order, and the is_complex flag.
+    el2d_bitarray: only these surface elements (over all of them), as drawn by MeshBuffers.
     """
     import ngsolve as ngs
     import ngsolve.webgui
@@ -156,6 +177,9 @@ def evaluate_cf(cf, mesh, order):
     
     pmat = np.concatenate((pmat, pmat2), axis=0)
     pmat = pmat.reshape(-1, ndof, comps)
+    if el2d_bitarray is not None:
+        pmat = _mask_blocks(pmat, region.mesh.ngmesh.Elements2D().NumPy(), region,
+                            el2d_bitarray, [(4, 8)])
 
     if is_complex:
         # For complex: compute min/max from absolute values
@@ -322,7 +346,7 @@ class FunctionData:
             self.order = 2 * self._base_order
         try:
             self.data_2d, self.minval, self.maxval = evaluate_cf(
-                self.cf, self.mesh_data.reg_or_mesh, self.order
+                self.cf, self.mesh_data.reg_or_mesh, self.order, self.mesh_data.el2d_bitarray
             )
         except Exception:
             # Fallback: try BoundaryFromVolumeCF for volume-only CFs (e.g. MaterialCF)
@@ -330,7 +354,7 @@ class FunctionData:
                 import ngsolve as ngs
                 cf_bnd = ngs.BoundaryFromVolumeCF(self.cf)
                 self.data_2d, self.minval, self.maxval = evaluate_cf(
-                    cf_bnd, self.mesh_data.reg_or_mesh, self.order
+                    cf_bnd, self.mesh_data.reg_or_mesh, self.order, self.mesh_data.el2d_bitarray
                 )
             except Exception:
                 self.data_2d = None
@@ -479,6 +503,9 @@ class FunctionData:
 
         pmat = np.concatenate((pmat, pmat_pyra, pmat_prism, pmat_hex))
         pmat = pmat.reshape(-1, ndof, comps)
+        if self.mesh_data.el3d_bitarray is not None:
+            pmat = _mask_blocks(pmat, region.mesh.ngmesh.Elements3D().NumPy(), region,
+                                self.mesh_data.el3d_bitarray, [(5, 13), (6, 15), (8, 20)])
 
         is_complex = cf.is_complex
 
