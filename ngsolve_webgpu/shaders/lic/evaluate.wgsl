@@ -233,7 +233,7 @@ fn evaluate_lic_field_surface(@builtin(global_invocation_id) id: vec3<u32>) {
 
         // World positions of the three corners (curvature-aware, like the renderer).
         var wp: array<vec3f, 3>;
-        if (mesh.is_curved == 1u) {
+        if ((mesh.is_curved & 1u) != 0u) {
             for (var k = 0u; k < 3u; k++) {
                 wp[k] = evalTrigVec3(&mesh.data, trigId, corner_lam[k], mesh.offset_curvature_2d);
             }

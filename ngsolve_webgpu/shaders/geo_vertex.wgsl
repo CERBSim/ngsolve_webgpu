@@ -76,6 +76,7 @@ fn fragment_main(input: GeoVertexInput) -> @location(0) vec4<f32> {
   return vec4<f32>(color.rgb * alpha, alpha);
 }
 
+#ifdef SELECT_PIPELINE
 @fragment
 fn fragmentQueryIndex(input: GeoVertexInput) -> @location(0) vec4<u32> {
   checkClipping(input.p);
@@ -84,3 +85,4 @@ fn fragmentQueryIndex(input: GeoVertexInput) -> @location(0) vec4<u32> {
   }
   return vec4<u32>(@RENDER_OBJECT_ID@, bitcast<u32>(input.position.z), 0u, input.index);
 }
+#endif SELECT_PIPELINE

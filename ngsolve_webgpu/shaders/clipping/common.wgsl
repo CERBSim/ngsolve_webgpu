@@ -9,30 +9,10 @@ fn getTetPoints(ei: u32) -> array<vec3f, 4> {
     let tet = getTetrahedron(ei);
     var p = array(getVertex(tet.p[0]), getVertex(tet.p[1]), getVertex(tet.p[2]), getVertex(tet.p[3]));
     let lam = array(vec3f(1.0, 0.0, 0.0), vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), vec3f(0.0, 0.0, 0.0));
-    if (mesh.is_curved != 0u) {
-        let oc3d = mesh.offset_curvature_3d;
-        let n_curved = bitcast<i32>(mesh.data[oc3d + 1u]);
-        if (n_curved > 0) {
-            let lookup_val = bitcast<i32>(mesh.data[oc3d + 2u + tet.id]);
-            if (lookup_val >= 0) {
-                let order = bitcast<i32>(mesh.data[oc3d]);
-                let n_total = bitcast<u32>(mesh.data[mesh.offset_3d_data]);
-                let coeff_start = oc3d + 2u + n_total + u32(lookup_val);
-
-                for (var vi = 0; vi < 4; vi++) {
-                    var ref_coord: vec3f;
-                    if (tet.np == 4u) {
-                        ref_coord = NODE_REF[tet.pi[vi]];
-                        p[vi] = evalTetVec3AtDirect(coeff_start, order, ref_coord);
-                    } else if (tet.np == 6u) {
-                        ref_coord = NODE_REF_PRISM[tet.pi[vi]];
-                        p[vi] = evalPrismVec3At(coeff_start, order, ref_coord);
-                    } else if (tet.np == 8u) {
-                        ref_coord = NODE_REF_HEX[tet.pi[vi]];
-                        p[vi] = evalHexVec3At(coeff_start, order, ref_coord);
-                    }
-                }
-            }
+    let true_map = trueMapOffset(tet.id);
+    if (true_map >= 0) {
+        for (var vi = 0; vi < 4; vi++) {
+            p[vi] = evalTrueMap(tet.np, u32(true_map), nodeRef(tet.np, tet.pi[vi]));
         }
     }
     if(u_deformation_values_3d[0] != -1) {
@@ -45,4 +25,14 @@ fn getTetPoints(ei: u32) -> array<vec3f, 4> {
     return p;
 }
 
-
+// Point with barycentric coordinates lam in sub-tet ei of an element with a true map,
+// including the deformation
+fn subTetPoint(ei: u32, tet: Tetrahedron, true_map: u32, lam: vec3f) -> vec3f {
+    var p = evalTrueMap(tet.np, true_map, subTetRefCoord(tet, lam));
+    if(u_deformation_values_3d[0] != -1) {
+        for(var xi = 0; xi < 3; xi++) {
+            p[xi] += u_deformation_scale * evalTetComplex(&u_deformation_values_3d, ei, xi, lam);
+        }
+    }
+    return p;
+}

@@ -4,7 +4,8 @@
 @fragment
 fn fragmentClippingIsolines(input: VertexOutputClip) -> @location(0) vec4<f32>
 {
-  let value = evalTet(&u_function_values_3d, input.elnr, u_component, input.lam) * input.value_sign;
+  let lam = clipFragmentLam(input.elnr, input.lam, input.p);
+  let value = evalTet(&u_function_values_3d, input.elnr, u_component, lam) * input.value_sign;
 
   if (u_isolines.n_lines == 0u) {
       if (u_isolines.show_field == 0u) { discard; }

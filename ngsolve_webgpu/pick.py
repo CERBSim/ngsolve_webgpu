@@ -12,10 +12,14 @@ class HighlightUniforms(UniformBase):
         ("element_id", ct.c_uint32),
         ("region_index", ct.c_uint32),
         ("solid_index", ct.c_uint32),
+        ("owner_id", ct.c_uint32),
+        ("padding", ct.c_uint32 * 3),
     ]
 
-    def __init__(self, **kwargs):
-        super().__init__(renderer_id=0, element_id=0xFFFFFFFF, region_index=0xFFFFFFFF, solid_index=0xFFFFFFFF, **kwargs)
+    def __init__(self, owner_id=0, **kwargs):
+        # owner_id: _id of the renderer the uniform belongs to, see highlight.wgsl
+        super().__init__(renderer_id=0, element_id=0xFFFFFFFF, region_index=0xFFFFFFFF,
+                         solid_index=0xFFFFFFFF, owner_id=owner_id, **kwargs)
 
 
 class MeshPickResult:

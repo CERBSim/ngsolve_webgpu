@@ -139,6 +139,8 @@ class VectorRenderer(ShapeRenderer):
             order = max(order, md_defines.get("MAX_EVAL_ORDER_VEC3", 1),
                         md_defines.get("MAX_EVAL_ORDER", 1))
         defines = {"MAX_EVAL_ORDER": order, "MAX_EVAL_ORDER_VEC3": order}
+        if md is not None:
+            defines |= md.true_map_defines()
         if self.function_data.cf.is_complex:
             defines["IS_COMPLEX"] = 1
         if self.scale_by_value:
@@ -731,7 +733,8 @@ class ClippingVectors(VectorRenderer):
                 np.array([-1], dtype=np.int32),
                 reuse=getattr(self, '_u_component', None))),
         ]
-        count_defines = {"MODE": 0, "MAX_EVAL_ORDER": self.function_data.order, "MAX_EVAL_ORDER_VEC3": 1}
+        count_defines = {"MODE": 0, "MAX_EVAL_ORDER": self.function_data.order, "MAX_EVAL_ORDER_VEC3": 1,
+                         **mesh_data.true_map_defines()}
         if self._region_visibility_enabled():
             count_bindings += self.region_visibility.get_bindings()
             count_defines["REGION_VISIBILITY"] = 1
@@ -750,7 +753,8 @@ class ClippingVectors(VectorRenderer):
         n_allocated = self.n_vectors
 
         # Eval pass: MODE=1, NEED_EVAL - needs function data + output buffers
-        eval_defines = {"MODE": 1, "NEED_EVAL": 1, "MAX_EVAL_ORDER": self.function_data.order, "MAX_EVAL_ORDER_VEC3": vec3_order}
+        eval_defines = {"MODE": 1, "NEED_EVAL": 1, "MAX_EVAL_ORDER": self.function_data.order, "MAX_EVAL_ORDER_VEC3": vec3_order,
+                        **mesh_data.true_map_defines()}
         if self.function_data.cf.is_complex:
             eval_defines["IS_COMPLEX"] = 1
         if self.scale_by_value:
@@ -812,6 +816,7 @@ class ClippingVectors(VectorRenderer):
             "NEED_EVAL": 1,
             "MAX_EVAL_ORDER": self.function_data.order,
             "MAX_EVAL_ORDER_VEC3": mesh_data.get_shader_defines()["MAX_EVAL_ORDER_VEC3"],
+            **mesh_data.true_map_defines(),
         }
         if self.function_data.cf.is_complex:
             defines["IS_COMPLEX"] = 1

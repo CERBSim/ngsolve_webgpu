@@ -509,6 +509,16 @@ class FunctionData:
 
         is_complex = cf.is_complex
 
+        if not is_complex:
+            # vals[i, :, k] = V @ pmat[i, :, k] in one product, written straight into the output
+            V = vandermonde_3d(order)
+            I, L = pmat.shape[0], V.shape[0]
+            ret = np.empty(3 + I * L * comps, dtype=np.float32)
+            ret[:3] = (cf.dim, order, 0.0)
+            ret[3:].reshape(I, L, comps)[...] = np.matmul(V, pmat)
+            vmin, vmax = _value_range(pmat.reshape(-1, comps))
+            return ret, vmin, vmax
+
         with ngs.TaskManager():
             V_inv = vandermonde_3d(order).T
             I, K, L = pmat.shape[0], pmat.shape[2], V_inv.shape[1]
@@ -550,6 +560,29 @@ class FunctionData:
         )
         return ret, vmin, vmax
     
+def _value_range(values):
+    """([min norm, min per component], [max norm, max per component]) of the (n, comps)
+    *values*, in chunks on threads (numpy releases the GIL in the reductions)."""
+    import os
+    from concurrent.futures import ThreadPoolExecutor
+
+    def part(a):
+        n2 = np.einsum("ij,ij->i", a, a)
+        return a.min(axis=0), a.max(axis=0), n2.min(), n2.max()
+
+    n = min(os.cpu_count() or 1, max(1, len(values) // 100_000))
+    if n == 1:
+        parts = [part(values)]
+    else:
+        with ThreadPoolExecutor(n) as ex:
+            parts = list(ex.map(part, np.array_split(values, n)))
+    minval = np.min([q[0] for q in parts], axis=0)
+    maxval = np.max([q[1] for q in parts], axis=0)
+    vmin = [float(np.sqrt(min(q[2] for q in parts)))] + [float(v) for v in minval]
+    vmax = [float(np.sqrt(max(q[3] for q in parts)))] + [float(v) for v in maxval]
+    return vmin, vmax
+
+
 _vandermonde_mats = {}
 _vandermonde_1d_mats = {}
 _vandermonde_trig_mats = {}
@@ -671,6 +704,20 @@ def get_prism_intrule(order):
                 pts.append((a / n, k / n, l / n))
     _prism_intrules[order] = ngs.IntegrationRule(pts)
     return _prism_intrules[order]
+
+
+_pyramid_intrules = {}
+
+
+def get_pyramid_intrule(order):
+    """Hex nodes in the collapsed coordinates (x/(1-z), y/(1-z), z) of the pyramid,
+    in the storage order of get_hex_intrule."""
+    if order in _pyramid_intrules:
+        return _pyramid_intrules[order]
+    import ngsolve as ngs
+    pts = [(u * (1 - w), v * (1 - w), w) for u, v, w in (ip.point for ip in get_hex_intrule(order))]
+    _pyramid_intrules[order] = ngs.IntegrationRule(pts, [0] * len(pts))
+    return _pyramid_intrules[order]
 
 
 class FunctionUniform(UniformBase):

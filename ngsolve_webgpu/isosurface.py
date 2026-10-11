@@ -131,6 +131,7 @@ def _isosurface_value_export_interactions(settings, levelset, buffer_registry):
 
 
 class IsoSurfaceRenderer(ClippingCF):
+    _needs_clipping_plane = False
     compute_shader = "ngsolve/isosurface/compute.wgsl"
     vertex_entry_point = "vertex_isosurface"
     fragment_entry_point = "fragment_isosurface"

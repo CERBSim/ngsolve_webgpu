@@ -29,50 +29,22 @@ fn vertex_isosurface(@builtin(vertex_index) vertId: u32,
   var J1 = vec3f(0.0);
   var J2 = vec3f(0.0);
 
-  if (mesh.is_curved != 0u) {
-      let oc3d = mesh.offset_curvature_3d;
-      let n_curved = bitcast<i32>(mesh.data[oc3d + 1u]);
-      if (n_curved > 0) {
-          let tet = getTetrahedron(trig.id);
-          let lookup_val = bitcast<i32>(mesh.data[oc3d + 2u + tet.id]);
-          if (lookup_val >= 0) {
-              let order = bitcast<i32>(mesh.data[oc3d]);
-              let n_total = bitcast<u32>(mesh.data[mesh.offset_3d_data]);
-              let coeff_start = oc3d + 2u + n_total + u32(lookup_val);
+  let tet = getTetrahedron(trig.id);
+  let true_map = trueMapOffset(tet.id);
+  if (true_map >= 0) {
+      let result = evalTrueMapGrad(tet.np, u32(true_map), subTetRefCoord(tet, lam.xyz));
+      p = result[0];
 
-              var ref_verts: array<vec3f, 4>;
-              if (tet.np == 4u) {
-                  for (var i = 0; i < 4; i++) { ref_verts[i] = NODE_REF[tet.pi[i]]; }
-              } else if (tet.np == 6u) {
-                  for (var i = 0; i < 4; i++) { ref_verts[i] = NODE_REF_PRISM[tet.pi[i]]; }
-              } else if (tet.np == 8u) {
-                  for (var i = 0; i < 4; i++) { ref_verts[i] = NODE_REF_HEX[tet.pi[i]]; }
-              }
+      // Jacobian: dp/dlam_i via chain rule through parent reference coords
+      let r3 = nodeRef(tet.np, tet.pi[3]);
+      let dpl0 = nodeRef(tet.np, tet.pi[0]) - r3;
+      let dpl1 = nodeRef(tet.np, tet.pi[1]) - r3;
+      let dpl2 = nodeRef(tet.np, tet.pi[2]) - r3;
+      J0 = result[1] * dpl0.x + result[2] * dpl0.y + result[3] * dpl0.z;
+      J1 = result[1] * dpl1.x + result[2] * dpl1.y + result[3] * dpl1.z;
+      J2 = result[1] * dpl2.x + result[2] * dpl2.y + result[3] * dpl2.z;
 
-              let parent_lam = lam.x * ref_verts[0] + lam.y * ref_verts[1]
-                             + lam.z * ref_verts[2] + (1.0 - lam.x - lam.y - lam.z) * ref_verts[3];
-
-              var result: mat4x3f;
-              if (tet.np == 4u) {
-                  result = evalTetVec3GradAtDirect(coeff_start, order, parent_lam);
-              } else if (tet.np == 6u) {
-                  result = evalPrismVec3GradAt(coeff_start, order, parent_lam);
-              } else if (tet.np == 8u) {
-                  result = evalHexVec3GradAt(coeff_start, order, parent_lam);
-              }
-              p = result[0];
-
-              // Jacobian: dp/dlam_i via chain rule through parent reference coords
-              let dpl0 = ref_verts[0] - ref_verts[3];
-              let dpl1 = ref_verts[1] - ref_verts[3];
-              let dpl2 = ref_verts[2] - ref_verts[3];
-              J0 = result[1] * dpl0.x + result[2] * dpl0.y + result[3] * dpl0.z;
-              J1 = result[1] * dpl1.x + result[2] * dpl1.y + result[3] * dpl1.z;
-              J2 = result[1] * dpl2.x + result[2] * dpl2.y + result[3] * dpl2.z;
-
-              is_curved = true;
-          }
-      }
+      is_curved = true;
   }
   if (!is_curved) {
       let points = getTetPoints(trig.id);

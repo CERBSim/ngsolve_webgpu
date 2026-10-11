@@ -76,6 +76,7 @@ fn fragment_main(input: GeoFragmentInput) -> @location(0) vec4<f32> {
   return result;
 }
 
+#ifdef SELECT_PIPELINE
 @fragment
 fn fragmentQueryIndex(input: GeoFragmentInput) -> @location(0) vec4<u32>
 {
@@ -89,3 +90,4 @@ fn fragmentQueryIndex(input: GeoFragmentInput) -> @location(0) vec4<u32>
   }
   return vec4<u32>(@RENDER_OBJECT_ID@, bitcast<u32>(input.position.z), 2u, input.index);
 }
+#endif SELECT_PIPELINE

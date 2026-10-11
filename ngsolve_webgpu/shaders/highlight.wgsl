@@ -1,9 +1,15 @@
 #ifdef RENDER_OBJECT_ID
+// owner_id: id of the renderer this uniform belongs to, a runtime value so that the shader
+// source doesn't depend on the renderer id (pipeline caches are keyed by the source)
 struct HighlightUniforms {
     renderer_id: u32,
     element_id: u32,
     region_index: u32,
     solid_index: u32,
+    owner_id: u32,
+    padding0: u32,
+    padding1: u32,
+    padding2: u32,
 };
 
 @group(0) @binding(57) var<uniform> u_highlight: HighlightUniforms;
@@ -34,11 +40,11 @@ fn applyHighlight(color: vec4<f32>, instance_id: u32, region_id: u32) -> vec4<f3
     }
 #endif HAS_SELECTION
     // Hover uniform check (higher priority)
-    if (u_highlight.renderer_id == @RENDER_OBJECT_ID@ && u_highlight.element_id == instance_id) {
+    if (u_highlight.renderer_id == u_highlight.owner_id && u_highlight.element_id == instance_id) {
         if (is_selected) { return highlightColor(color, 2u); }
         return highlightColor(color, 0u);
     }
-    if (u_highlight.renderer_id == @RENDER_OBJECT_ID@ && u_highlight.region_index == region_id) {
+    if (u_highlight.renderer_id == u_highlight.owner_id && u_highlight.region_index == region_id) {
         if (is_selected) { return highlightColor(color, 2u); }
         return highlightColor(color, 0u);
     }

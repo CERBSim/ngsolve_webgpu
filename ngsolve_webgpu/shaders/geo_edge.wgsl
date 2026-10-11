@@ -115,6 +115,7 @@ fn fragment_main(input: GeoEdgeInput) -> @location(0) vec4<f32> {
   return applyHighlight(color, input.index, input.index);
 }
 
+#ifdef SELECT_PIPELINE
 @fragment
 fn fragmentQueryIndex(input: GeoEdgeInput) -> @location(0) vec4<u32> {
   checkClipping(input.p);
@@ -123,3 +124,4 @@ fn fragmentQueryIndex(input: GeoEdgeInput) -> @location(0) vec4<u32> {
   }
   return vec4<u32>(@RENDER_OBJECT_ID@, bitcast<u32>(input.position.z), 1u, input.index);
 }
+#endif SELECT_PIPELINE

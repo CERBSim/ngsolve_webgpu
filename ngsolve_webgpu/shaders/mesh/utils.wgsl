@@ -208,7 +208,7 @@ fn getTetrahedron(tetId: u32) -> Tetrahedron {
         
         // Skip curved element entries at front of sorted array
         var n_curved_offset = 0u;
-        if (mesh.is_curved != 0u) {
+        if ((mesh.is_curved & 2u) != 0u) {
             n_curved_offset = bitcast<u32>(mesh.data[mesh.offset_curvature_3d + 1u]);
         }
         

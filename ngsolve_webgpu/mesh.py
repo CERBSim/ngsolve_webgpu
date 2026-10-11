@@ -32,6 +32,54 @@ from webgpu.webgpu_api import *
 POINTINDEX_BASE = getattr(netgen.meshing.PointId, "base", 1)
 
 
+# reference vertex coordinates of pyramid, prism, hex (NGSolve numbering)
+_REF_VERTICES = {
+    5: np.array([(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (0, 0, 1)], dtype=float),
+    6: np.array([(1, 0, 0), (0, 1, 0), (0, 0, 0), (1, 0, 1), (0, 1, 1), (0, 0, 1)], dtype=float),
+    8: np.array([(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0),
+                 (0, 0, 1), (1, 0, 1), (1, 1, 1), (0, 1, 1)], dtype=float),
+}
+
+
+def _p1_shapes(nv, ref):
+    """Vertex shape functions of the uncurved element map with nv vertices at reference
+    points ref (..., 3)."""
+    x, y, z = ref[..., 0], ref[..., 1], ref[..., 2]
+    if nv == 4:
+        return np.stack([x, y, z, 1 - x - y - z], axis=-1)
+    if nv == 6:
+        lam = [x, y, 1 - x - y]
+        return np.stack([l * (1 - z) for l in lam] + [l * z for l in lam], axis=-1)
+    if nv == 8:
+        return np.stack([(1-x)*(1-y)*(1-z), x*(1-y)*(1-z), x*y*(1-z), (1-x)*y*(1-z),
+                         (1-x)*(1-y)*z, x*(1-y)*z, x*y*z, (1-x)*y*z], axis=-1)
+    # pyramid, as in netgen
+    noz = np.where(z == 1, 1e-10, 1 - z)
+    xi, eta = x / noz, y / noz
+    return np.stack([(1-xi)*(1-eta)*noz, xi*(1-eta)*noz, xi*eta*noz, (1-xi)*eta*noz, z], axis=-1)
+
+
+def _true_map_mask(els, coords, curve_order):
+    """Elements the shaders draw with their true map: the curved ones of a curved mesh
+    and all non-affine pyramids, prisms and hexes."""
+    nps = els["np"] if "np" in els.dtype.names else netgen.meshing.ElementNP[els["type"]]
+    mask = np.zeros(len(els), dtype=bool)
+    if curve_order > 1:
+        mask |= els["curved"].astype(bool) & np.isin(nps, (4, 5, 6, 8))
+    coords = np.asarray(coords)
+    for nv, ref in _REF_VERTICES.items():
+        ids = np.flatnonzero(nps == nv)
+        if len(ids) == 0:
+            continue
+        verts = coords[els["nodes"][ids, :nv].astype(np.int64) - POINTINDEX_BASE]
+        # residual of the best affine fit of the vertices
+        A = np.hstack([ref, np.ones((nv, 1))])
+        res = np.einsum("ij,njd->nid", np.eye(nv) - A @ np.linalg.pinv(A), verts)
+        size = np.linalg.norm(verts.max(axis=1) - verts.min(axis=1), axis=-1)
+        mask[ids] |= np.abs(res).max(axis=(1, 2)) > 1e-8 * size
+    return mask
+
+
 class Binding:
     """Binding numbers for uniforms in shader code in uniforms.wgsl"""
 
@@ -272,7 +320,7 @@ class MeshBuffers:
                     curvature_2d = self.curvature_data.data_2d.tobytes()
                 else:
                     self.elements["curvature_2d"] = np.array([0], dtype=np.float32)
-                    self.mesh_metadata.is_curved = 0
+                    self.mesh_metadata.is_curved &= ~1
                 self.gpu_elements.pop("curvature_2d", None)
                 curvature_3d = b''
                 if self.curvature_3d_data is not None:
@@ -367,7 +415,15 @@ class MeshBuffers:
         self.pmax = np.max(vertices, axis=0)
         self.elements["vertices"] = vertices
 
+        try:
+            curve_order = mesh.GetCurveOrder()
+        except:
+            curve_order = 1
+            print("Mesh has no curve order, using 1, update NGSolve/Netgen to detect curved meshes")
+        curve_order = max(curve_order, self._extra_order)
+
         # 3d Elements
+        n_curved_all = 0
         if self.need_3d:
             els = mesh.Elements3D().NumPy()
             if self.el3d_bitarray is not None:
@@ -412,17 +468,15 @@ class MeshBuffers:
             n_hex   = np.count_nonzero(np_vals == 8)
             n_tets = len(els) - n_pyra - n_prims - n_hex
 
-            # Detect curved elements for instance layout
-            curved_tet_ids   = np.flatnonzero(els['curved'] & (np_vals == 4)).astype(np.int32)
-            curved_hex_ids   = np.flatnonzero(els['curved'] & (np_vals == 8)).astype(np.int32)
-            curved_prism_ids = np.flatnonzero(els['curved'] & (np_vals == 6)).astype(np.int32)
-            n_curved_all = len(curved_tet_ids) + len(curved_hex_ids) + len(curved_prism_ids)
+            # Elements drawn with their true map, for instance layout
+            true_map = _true_map_mask(els, mesh.Coordinates(), curve_order)
+            curved_ids = [np.flatnonzero(true_map & (np_vals == n)).astype(np.int32)
+                          for n in (4, 8, 6, 5)]
+            n_curved_all = sum(len(ids) for ids in curved_ids)
 
-            # curved tets → curved hexes → curved prisms → pyramids → prisms → hex
+            # curved tets → curved hexes → curved prisms → curved pyramids → pyramids → prisms → hex
             element_numbers_sorted_by_type = np.concatenate([
-                curved_tet_ids,
-                curved_hex_ids,
-                curved_prism_ids,
+                *curved_ids,
                 rest_numbers[np_vals[rest_numbers] == 5],
                 rest_numbers[np_vals[rest_numbers] == 6],
                 rest_numbers[np_vals[rest_numbers] == 8],
@@ -453,12 +507,6 @@ class MeshBuffers:
             self.num_elements["tets"] = len(els) + n_pyra + 2 * n_prims + 5 * n_hex
             self.num_elements["n_3d_elements"] = len(els)
 
-        try:
-            curve_order = mesh.GetCurveOrder()
-        except:
-            curve_order = 1
-            print("Mesh has no curve order, using 1, update NGSolve/Netgen to detect curved meshes")
-        curve_order = max(curve_order, self._extra_order)
         if curve_order > 1:
             import ngsolve as ngs
 
@@ -466,21 +514,17 @@ class MeshBuffers:
 
             cf = ngs.CF((ngs.x, ngs.y, ngs.z))
             self.curvature_data = FunctionData(self, cf, curve_order)
-
-            # Compute sparse 3D curvature data for curved elements only
-            if self.need_3d:
-                self._compute_curvature_3d(mesh, curve_order)
-            else:
-                self.curvature_3d_data = None
         else:
-            self.curvature_3d_data = None
-            if self._subdivision is None:
-                self._subdivision = 1
+            self.curvature_data = None
+        # sparse 3D curvature data for the elements drawn with their true map only
+        self.curvature_3d_data = None
+        if self.need_3d and n_curved_all > 0:
+            self._compute_curvature_3d(mesh, curve_order)
         if self._subdivision is None:
             order = curve_order
             if order > 3:
                 subdiv = (order + 2) // 3 + 1
-            elif order > 1:
+            elif order > 1 or self.curvature_3d_data is not None:
                 subdiv = 3
             else:
                 subdiv = 1
@@ -516,18 +560,21 @@ class MeshBuffers:
             
         mesh_metadata.offset_curvature_2d = mesh_metadata.offset_3d_data + len(data_3d)//4
         mesh_metadata.offset_curvature_3d = mesh_metadata.offset_curvature_2d  # updated below if data exists
-        mesh_metadata.is_curved = 0 if self.curvature_data is None else 1
+        # bit 0: 2D curvature data, bit 1: 3D curvature data
+        mesh_metadata.is_curved = ((0 if self.curvature_data is None else 1)
+                                   | (0 if self.curvature_3d_data is None else 2))
     
         self.mesh_metadata = mesh_metadata
 
         self._last_mesh_timestamp = mesh._timestamp
 
     def _compute_curvature_3d(self, mesh, order):
-        """Compute Bernstein coefficients for curved 3D elements (tet, hex, prism)."""
+        """Compute Bernstein coefficients of the true map for the elements drawn with it
+        (tet, hex, prism, pyramid), see _true_map_mask."""
         import ngsolve as ngs
         from .cf import (get_3d_intrules, vandermonde_3d,
                          vandermonde_hex, vandermonde_prism,
-                         get_hex_intrule, get_prism_intrule)
+                         get_hex_intrule, get_prism_intrule, get_pyramid_intrule)
 
         els = mesh.Elements3D().NumPy()
         n_total = len(els)
@@ -537,7 +584,8 @@ class MeshBuffers:
 
         np_vals = (els["np"] if "np" in els.dtype.names
                    else netgen.meshing.ElementNP[els["type"]])
-        curved_flag = els['curved']
+        coords = np.array(mesh.Coordinates())
+        true_map = _true_map_mask(els, coords, order)
         lookup = np.full(n_total, -1, dtype=np.int32)
         all_coeffs = []
         running_offset = 0
@@ -545,92 +593,30 @@ class MeshBuffers:
         cf = ngs.CF((ngs.x, ngs.y, ngs.z))
         region = self.ngs_mesh.Materials(".*")
 
-        # Process tets
-        tet_mask = np_vals == 4
-        curved_tets = curved_flag & tet_mask
-        if np.any(curved_tets):
-            intrules = get_3d_intrules(order)
-            tet_rule = intrules[ngs.ET.TET]
-            ndof_tet = len(tet_rule)
-            with ngs.TaskManager():
-                pts = region.mesh.MapToAllElements({ngs.ET.TET: tet_rule}, region)
-                pmat = cf(pts).reshape(-1, ndof_tet, 3)
-            tet_indices = np.flatnonzero(tet_mask)
-            curved_among_tets = els['curved'][tet_indices]
-            curved_pmat = pmat[curved_among_tets]
-
-            V_inv = vandermonde_3d(order)
-            ibmat = ngs.Matrix(V_inv)
-            n_ct = len(curved_pmat)
-            coeffs = np.zeros((n_ct, ndof_tet, 3), dtype=np.float32)
-            with ngs.TaskManager():
-                for k in range(3):
-                    ngsmat = ngs.Matrix(curved_pmat[:, :, k].T.copy())
-                    result = ibmat * ngsmat
-                    coeffs[:, :, k] = np.array(result, dtype=np.float32).T
-
-            curved_global = np.flatnonzero(curved_tets)
-            for i, gid in enumerate(curved_global):
-                lookup[gid] = running_offset
-                running_offset += ndof_tet * 3
-            all_coeffs.append(coeffs.reshape(-1))
-
-        # Process hexes
-        hex_mask = np_vals == 8
-        curved_hexes = curved_flag & hex_mask
-        if np.any(curved_hexes):
-            hex_rule = get_hex_intrule(order)
-            ndof_hex = (order + 1) ** 3
-            with ngs.TaskManager():
-                pts = region.mesh.MapToAllElements({ngs.ET.HEX: hex_rule}, region)
-                pmat = cf(pts).reshape(-1, ndof_hex, 3)
-            hex_indices = np.flatnonzero(hex_mask)
-            curved_among_hexes = els['curved'][hex_indices]
-            curved_pmat = pmat[curved_among_hexes]
-
-            V_inv = vandermonde_hex(order)
-            ibmat = ngs.Matrix(V_inv)
-            n_ch = len(curved_pmat)
-            coeffs = np.zeros((n_ch, ndof_hex, 3), dtype=np.float32)
-            with ngs.TaskManager():
-                for k in range(3):
-                    ngsmat = ngs.Matrix(curved_pmat[:, :, k].T.copy())
-                    result = ibmat * ngsmat
-                    coeffs[:, :, k] = np.array(result, dtype=np.float32).T
-
-            curved_global = np.flatnonzero(curved_hexes)
-            for i, gid in enumerate(curved_global):
-                lookup[gid] = running_offset
-                running_offset += ndof_hex * 3
-            all_coeffs.append(coeffs.reshape(-1))
-
-        # Process prisms
-        prism_mask = np_vals == 6
-        curved_prisms = curved_flag & prism_mask
-        if np.any(curved_prisms):
-            prism_rule = get_prism_intrule(order)
-            ndof_prism = (order + 1) * (order + 2) // 2 * (order + 1)
-            with ngs.TaskManager():
-                pts = region.mesh.MapToAllElements({ngs.ET.PRISM: prism_rule}, region)
-                pmat = cf(pts).reshape(-1, ndof_prism, 3)
-            prism_indices = np.flatnonzero(prism_mask)
-            curved_among_prisms = els['curved'][prism_indices]
-            curved_pmat = pmat[curved_among_prisms]
-
-            V_inv = vandermonde_prism(order)
-            ibmat = ngs.Matrix(V_inv)
-            n_cp = len(curved_pmat)
-            coeffs = np.zeros((n_cp, ndof_prism, 3), dtype=np.float32)
-            with ngs.TaskManager():
-                for k in range(3):
-                    ngsmat = ngs.Matrix(curved_pmat[:, :, k].T.copy())
-                    result = ibmat * ngsmat
-                    coeffs[:, :, k] = np.array(result, dtype=np.float32).T
-
-            curved_global = np.flatnonzero(curved_prisms)
-            for i, gid in enumerate(curved_global):
-                lookup[gid] = running_offset
-                running_offset += ndof_prism * 3
+        # pyramids: hex polynomial in the collapsed coordinates (x/(1-z), y/(1-z), z)
+        for nv, et, rule, V_inv in (
+            (4, ngs.ET.TET, get_3d_intrules(order)[ngs.ET.TET], vandermonde_3d(order)),
+            (8, ngs.ET.HEX, get_hex_intrule(order), vandermonde_hex(order)),
+            (6, ngs.ET.PRISM, get_prism_intrule(order), vandermonde_prism(order)),
+            (5, ngs.ET.PYRAMID, get_pyramid_intrule(order), vandermonde_hex(order)),
+        ):
+            ids = np.flatnonzero(true_map & (np_vals == nv))
+            if len(ids) == 0:
+                continue
+            ndof = len(rule)
+            if order == 1:
+                # the vertex map, exact and independent of PML transformations
+                ref = np.array([ip.point for ip in rule])
+                verts = coords[els["nodes"][ids, :nv].astype(np.int64) - POINTINDEX_BASE]
+                pmat = np.einsum("mv,nvd->nmd", _p1_shapes(nv, ref), verts)
+            else:
+                with ngs.TaskManager():
+                    pts = region.mesh.MapToAllElements({et: rule}, region)
+                    pmat = cf(pts).reshape(-1, ndof, 3)
+                pmat = pmat[true_map[np_vals == nv]]
+            coeffs = np.einsum("ij,njk->nik", V_inv, pmat).astype(np.float32)
+            lookup[ids] = running_offset + ndof * 3 * np.arange(len(ids))
+            running_offset += ndof * 3 * len(ids)
             all_coeffs.append(coeffs.reshape(-1))
 
         n_curved = int(np.sum(lookup >= 0))
@@ -864,10 +850,21 @@ class MeshData:
             if d is not None:
                 order = max(order, d.order)
                 
-        return {
+        defines = {
             "MAX_EVAL_ORDER": order,
             "MAX_EVAL_ORDER_VEC3": order,
         }
+        return defines | self.true_map_defines()
+
+    def true_map_defines(self):
+        """Defines specializing the true map code, compiling the generic one is slow.
+        Every shader including elements3d should get them."""
+        c3d = self.curvature_3d_data
+        if c3d is None or c3d[1] == 0:
+            return {"TRUE_MAP_NONE": 1}
+        if c3d[0] == 1:
+            return {"TRUE_MAP_ORDER1": 1}
+        return {}
 
 class BaseMeshElements2d(Renderer):
     depthBias: int = 1
@@ -886,7 +883,7 @@ class BaseMeshElements2d(Renderer):
         from .cf import ComplexSettings
         from .pick import HighlightUniforms
         self.gpu_objects.complex_settings = ComplexSettings()
-        self._highlight_uniforms = HighlightUniforms()
+        self._highlight_uniforms = HighlightUniforms(owner_id=self._id)
 
     def update(self, options: RenderOptions):
         self.clipping.update(options)
@@ -1009,7 +1006,7 @@ class MeshSegments(Renderer):
         self._buffers: dict[str, Buffer] = {}
         self._thickness_uniform: Buffer | None = None
         self._user_colors = colors
-        self._highlight_uniforms = HighlightUniforms()
+        self._highlight_uniforms = HighlightUniforms(owner_id=self._id)
 
     def get_bounding_box(self):
         return self.data.get_bounding_box()
@@ -1136,7 +1133,7 @@ class MeshElements3d(Renderer):
         self._subdivision_override = None
         self.uniforms = None
         self.region_visibility = None
-        self._highlight_uniforms = HighlightUniforms()
+        self._highlight_uniforms = HighlightUniforms(owner_id=self._id)
         if colors is None:
             colors = [[255, 0, 0, 255] for _ in range(len(data.ngs_mesh.GetMaterials()))]
         self.gpu_objects.colormap = Colormap(colormap=colors, minval=-0.5, maxval=len(colors) - 0.5)
@@ -1285,7 +1282,7 @@ class MeshIdentifications(Renderer):
         self._color = color if color is not None else [1.0, 0.0, 0.0, 1.0]
         self._buffers: dict[str, Buffer] = {}
         self._thickness_uniform: Buffer | None = None
-        self._highlight_uniforms = HighlightUniforms()
+        self._highlight_uniforms = HighlightUniforms(owner_id=self._id)
 
     def get_bounding_box(self):
         return self.data.get_bounding_box()

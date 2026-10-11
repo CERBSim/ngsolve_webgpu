@@ -131,7 +131,7 @@ fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_ind
     }
 
 
-    if(subdivision == 1 || mesh.is_curved == 0u)
+    if(subdivision == 1 || (mesh.is_curved & 1u) == 0u)
       {
         var pi = (vertexId+2) % 3u;
 
@@ -405,7 +405,7 @@ fn calcTrig(tri: Triangle, vertexId: u32, instanceId: u32, rawInstanceId: u32)
         }
 
         var pos_and_gradients = mat3x3<f32>(vec3f(0.0), vec3f(0.0), vec3f(0.0));
-        if (mesh.is_curved != 0u) {
+        if ((mesh.is_curved & 1u) != 0u) {
             pos_and_gradients = evalTrigVec3Grad(&mesh.data, instanceId, lam, mesh.offset_curvature_2d);
         } else {
             let t = elementTangents(tri, lam);

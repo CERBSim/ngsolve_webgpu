@@ -47,7 +47,7 @@ fn compute_surface_vectors(@builtin(global_invocation_id) id: vec3<u32>) {
 #endif REGION_VISIBILITY
     var p = tri.p;
 
-    if (mesh.is_curved == 1u) {
+    if ((mesh.is_curved & 1u) != 0u) {
       p[0] = evalCurvedPos(trigId, vec2f(1.0, 0.0));
       p[1] = evalCurvedPos(trigId, vec2f(0.0, 1.0));
       p[2] = evalCurvedPos(trigId, vec2f(0.0, 0.0));

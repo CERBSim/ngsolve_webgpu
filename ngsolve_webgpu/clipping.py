@@ -5,6 +5,7 @@ from webgpu.colormap import Colormap
 from webgpu.renderer import Renderer, RenderOptions
 from webgpu.utils import BufferBinding, UniformBinding, ReadBuffer, run_compute_shader, read_buffer
 import ctypes
+import math
 
 from webgpu.webgpu_api import *
 
@@ -71,7 +72,7 @@ class ClippingCF(Renderer):
             component = -1 if self.data.cf.dim > 1 else 0
         self.gpu_objects.settings = FunctionSettings(component=component)
         self.gpu_objects.complex_settings = ComplexSettings()
-        self._highlight_uniforms = HighlightUniforms()
+        self._highlight_uniforms = HighlightUniforms(owner_id=self._id)
         self._phase_animation = None
         self._scene = None
         self._anim_speed = 1.0
@@ -82,6 +83,21 @@ class ClippingCF(Renderer):
     def _bind_component_param(self):
         """Auto-bind to FunctionData's shared component_param."""
         _bind_component_param(self)
+
+    # Drawn on the clipping plane: only active while it is enabled, so the (expensive)
+    # pipelines are built when clipping is switched on, not with every scene.
+    _needs_clipping_plane = True
+
+    @property
+    def active(self):
+        clipping = getattr(self, "_clipping", None)
+        if self._needs_clipping_plane and clipping is not None and clipping.mode == Clipping.Mode.DISABLED:
+            return False
+        return self._active
+
+    @active.setter
+    def active(self, value):
+        self._active = value
 
     @property
     def colormap(self):
@@ -102,9 +118,14 @@ class ClippingCF(Renderer):
             self.active = False
             return
         self.shader_defines = self.data.mesh_data.get_shader_defines()
-        clip_subdiv = self.data.mesh_data.subdivision or 1
-        if self.data.mesh_data.curvature_3d_data is None:
-            clip_subdiv = 1
+        # elements with a true map are cut on 8^levels children of their sub-tets,
+        # which also resolves the curvature of the cut, 2^levels ~ mesh subdivision
+        cut_levels = 0
+        if self.data.mesh_data.curvature_3d_data is not None:
+            subdiv = self.data.mesh_data.subdivision or 1
+            cut_levels = min(3, max(1, math.ceil(math.log2(subdiv))))
+        self.shader_defines["CLIPPING_CUT_LEVELS"] = cut_levels
+        clip_subdiv = 1
         self.shader_defines["CLIPPING_SUBDIVISION"] = clip_subdiv
         from .region_visibility import RegionVisibility
         RegionVisibility.apply(self, self.shader_defines)

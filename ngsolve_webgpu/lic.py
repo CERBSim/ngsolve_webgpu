@@ -324,6 +324,7 @@ class ClippingLIC(ClippingCF):
             "MAX_EVAL_ORDER": self.shader_defines.get("MAX_EVAL_ORDER", 1),
             "MAX_EVAL_ORDER_VEC3": self.shader_defines.get("MAX_EVAL_ORDER_VEC3", 1),
             "CLIPPING_SUBDIVISION": 1,
+            **self.data.mesh_data.true_map_defines(),
         }
         if self.data.cf.is_complex:
             d["IS_COMPLEX"] = 1
@@ -634,6 +635,7 @@ class SurfaceLIC(CFRenderer):
         d = {
             "MAX_EVAL_ORDER": max(field_order, 1),
             "MAX_EVAL_ORDER_VEC3": max(field_order, curv, 1),
+            **self.data.mesh_data.true_map_defines(),
         }
         if self.region_visibility is not None:
             d["REGION_VISIBILITY"] = 1

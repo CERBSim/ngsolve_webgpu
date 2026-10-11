@@ -31,6 +31,7 @@ class BaseGeometryRenderer(Renderer):
         from .pick import HighlightUniforms
         self._highlight_uniforms = HighlightUniforms()
         super().__init__(*args, **kwargs)
+        self._highlight_uniforms.owner_id = self._id
 
     def select(self, options, x, y):
         if not self._select_active:

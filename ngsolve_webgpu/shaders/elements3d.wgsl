@@ -8,6 +8,7 @@
 #import ngsolve/eval/tet
 #import ngsolve/eval/hex
 #import ngsolve/eval/prism
+#import ngsolve/eval/pyramid
 #ifdef SYMMETRY
 #import ngsolve/symmetry
 #endif SYMMETRY
@@ -29,6 +30,114 @@ const NODE_REF_PRISM = array<vec3f, 6>(
     vec3f(1,0,0), vec3f(0,1,0), vec3f(0,0,0),
     vec3f(1,0,1), vec3f(0,1,1), vec3f(0,0,1),
 );
+const NODE_REF_PYRAMID = array<vec3f, 5>(
+    vec3f(0,0,0), vec3f(1,0,0), vec3f(1,1,0), vec3f(0,1,0), vec3f(0,0,1),
+);
+
+// Reference coordinates of local vertex i of an element with np vertices
+fn nodeRef(np: u32, i: u32) -> vec3f {
+    if (np == 5u) { return NODE_REF_PYRAMID[i]; }
+    if (np == 6u) { return NODE_REF_PRISM[i]; }
+    if (np == 8u) { return NODE_REF_HEX[i]; }
+    return NODE_REF[i];
+}
+
+// Start of the true map coefficients of 3D element elementId in mesh.data,
+// -1 if the element is drawn with straight sub-tets.
+fn trueMapOffset(elementId: u32) -> i32 {
+#ifdef TRUE_MAP_NONE
+    return -1;
+#else TRUE_MAP_NONE
+    if ((mesh.is_curved & 2u) == 0u) {
+        return -1;
+    }
+    let oc3d = mesh.offset_curvature_3d;
+    if (bitcast<i32>(mesh.data[oc3d + 1u]) <= 0) {
+        return -1;
+    }
+    let lookup_val = bitcast<i32>(mesh.data[oc3d + 2u + elementId]);
+    if (lookup_val < 0) {
+        return -1;
+    }
+    let n_total = bitcast<u32>(mesh.data[mesh.offset_3d_data]);
+    return i32(oc3d + 2u + n_total) + lookup_val;
+#endif TRUE_MAP_NONE
+}
+
+fn trueMapOrder() -> i32 {
+    return bitcast<i32>(mesh.data[mesh.offset_curvature_3d]);
+}
+
+// True map and its derivatives in reference coordinates: mat4x3f(pos, dF/dx, dF/dy, dF/dz)
+#ifdef TRUE_MAP_ORDER1
+// all true maps are P1 (curve order 1): closed forms, much cheaper to compile than de Casteljau
+fn _trueMapCoeff(coeff_start: u32, i: u32) -> vec3f {
+    let b = coeff_start + 3u * i;
+    return vec3f(mesh.data[b], mesh.data[b + 1u], mesh.data[b + 2u]);
+}
+
+// trilinear on [0,1]^3, coefficient ix + 2 iy + 4 iz
+fn _trilinearGrad(cs: u32, l: vec3f) -> mat4x3f {
+    let c000 = _trueMapCoeff(cs, 0u); let c100 = _trueMapCoeff(cs, 1u);
+    let c010 = _trueMapCoeff(cs, 2u); let c110 = _trueMapCoeff(cs, 3u);
+    let c001 = _trueMapCoeff(cs, 4u); let c101 = _trueMapCoeff(cs, 5u);
+    let c011 = _trueMapCoeff(cs, 6u); let c111 = _trueMapCoeff(cs, 7u);
+    let c00 = mix(c000, c100, l.x); let c10 = mix(c010, c110, l.x);
+    let c01 = mix(c001, c101, l.x); let c11 = mix(c011, c111, l.x);
+    let c0 = mix(c00, c10, l.y); let c1 = mix(c01, c11, l.y);
+    let dx = mix(mix(c100 - c000, c110 - c010, l.y), mix(c101 - c001, c111 - c011, l.y), l.z);
+    let dy = mix(c10 - c00, c11 - c01, l.z);
+    return mat4x3f(mix(c0, c1, l.z), dx, dy, c1 - c0);
+}
+
+fn evalTrueMapGrad(np: u32, coeff_start: u32, ref_coord: vec3f) -> mat4x3f {
+    if (np == 6u) {
+        // z-layer major, triangle dofs weighted by (x, y, 1-x-y)
+        let x = ref_coord.x; let y = ref_coord.y; let z = ref_coord.z;
+        let v0 = _trueMapCoeff(coeff_start, 0u); let v1 = _trueMapCoeff(coeff_start, 1u);
+        let v2 = _trueMapCoeff(coeff_start, 2u); let v3 = _trueMapCoeff(coeff_start, 3u);
+        let v4 = _trueMapCoeff(coeff_start, 4u); let v5 = _trueMapCoeff(coeff_start, 5u);
+        let p0 = x * v0 + y * v1 + (1.0 - x - y) * v2;
+        let p1 = x * v3 + y * v4 + (1.0 - x - y) * v5;
+        return mat4x3f(mix(p0, p1, z), mix(v0 - v2, v3 - v5, z), mix(v1 - v2, v4 - v5, z), p1 - p0);
+    }
+    if (np == 5u) {
+        let noz = max(1.0 - ref_coord.z, 1e-6);
+        let c = _pyramidCollapsed(ref_coord);
+        let g = _trilinearGrad(coeff_start, c);
+        return mat4x3f(g[0], g[1] / noz, g[2] / noz, g[3] + (c.x * g[1] + c.y * g[2]) / noz);
+    }
+    // hex, tets have no order 1 true map
+    return _trilinearGrad(coeff_start, ref_coord);
+}
+
+fn evalTrueMap(np: u32, coeff_start: u32, ref_coord: vec3f) -> vec3f {
+    return evalTrueMapGrad(np, coeff_start, ref_coord)[0];
+}
+#else TRUE_MAP_ORDER1
+fn evalTrueMapGrad(np: u32, coeff_start: u32, ref_coord: vec3f) -> mat4x3f {
+    let order = trueMapOrder();
+    if (np == 5u) { return evalPyramidVec3GradAt(coeff_start, order, ref_coord); }
+    if (np == 6u) { return evalPrismVec3GradAt(coeff_start, order, ref_coord); }
+    if (np == 8u) { return evalHexVec3GradAt(coeff_start, order, ref_coord); }
+    return evalTetVec3GradAtDirect(coeff_start, order, ref_coord);
+}
+
+fn evalTrueMap(np: u32, coeff_start: u32, ref_coord: vec3f) -> vec3f {
+    let order = trueMapOrder();
+    if (np == 5u) { return evalPyramidVec3At(coeff_start, order, ref_coord); }
+    if (np == 6u) { return evalPrismVec3At(coeff_start, order, ref_coord); }
+    if (np == 8u) { return evalHexVec3At(coeff_start, order, ref_coord); }
+    return evalTetVec3AtDirect(coeff_start, order, ref_coord);
+}
+
+#endif TRUE_MAP_ORDER1
+
+// Sub-tet barycentric lam (first three) -> reference coordinates of the parent element
+fn subTetRefCoord(tet: Tetrahedron, lam: vec3f) -> vec3f {
+    return lam.x * nodeRef(tet.np, tet.pi[0]) + lam.y * nodeRef(tet.np, tet.pi[1])
+         + lam.z * nodeRef(tet.np, tet.pi[2]) + (1.0 - lam.x - lam.y - lam.z) * nodeRef(tet.np, tet.pi[3]);
+}
 
 // Decode face instance → element, face, subdivision
 // Instance layout:
@@ -54,7 +163,7 @@ fn decodeFaceInstance(instanceId: u32) -> FaceInfo {
     let IDX = offset_3d + 5u + 5u * numElements;  // INDEX_SORTED_BY_TYPE
 
     var nCurved = 0u;
-    if (mesh.is_curved != 0u) {
+    if ((mesh.is_curved & 2u) != 0u) {
         nCurved = bitcast<u32>(mesh.data[mesh.offset_curvature_3d + 1u]);
     }
 
@@ -138,21 +247,10 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
     }
 #endif FACET_CF
 
-    // Check if element is curved
-    var is_curved = false;
-    var curved_coeff_offset = 0u;
-    if (mesh.is_curved != 0u) {
-        let oc3d = mesh.offset_curvature_3d;
-        let n_curved = bitcast<i32>(mesh.data[oc3d + 1u]);
-        if (n_curved > 0) {
-            let lookup_val = bitcast<i32>(mesh.data[oc3d + 2u + info.elementId]);
-            if (lookup_val >= 0) {
-                is_curved = true;
-                let n_total = bitcast<u32>(mesh.data[mesh.offset_3d_data]);
-                curved_coeff_offset = oc3d + 2u + n_total + u32(lookup_val);
-            }
-        }
-    }
+    // Check if element is drawn with its true map
+    let true_map = trueMapOffset(info.elementId);
+    let is_curved = true_map >= 0;
+    let curved_coeff_offset = u32(max(true_map, 0));
 
     if (info.inFlatBatch == 1u && is_curved) {
         return zero;
@@ -181,32 +279,24 @@ fn vertex_main(@builtin(vertex_index) vertId: u32,
     var ref_lam = vec3f(0.0);
 
     if (is_curved) {
-        let oc3d = mesh.offset_curvature_3d;
-        let order = bitcast<i32>(mesh.data[oc3d]);
-
-        var R0: vec3f; var R1: vec3f; var R2: vec3f;
+        var fv: vec3u;
         if (element.np == 4u) {
-            let fv = TET_FACES[info.faceId];
-            R0 = NODE_REF[fv[0]]; R1 = NODE_REF[fv[1]]; R2 = NODE_REF[fv[2]];
+            fv = TET_FACES[info.faceId];
+        } else if (element.np == 5u) {
+            fv = PYRA_FACES[info.faceId];
         } else if (element.np == 6u) {
-            let fv = PRISM_FACES[info.faceId];
-            R0 = NODE_REF_PRISM[fv[0]]; R1 = NODE_REF_PRISM[fv[1]]; R2 = NODE_REF_PRISM[fv[2]];
-        } else if (element.np == 8u) {
-            let fv = HEX_FACES[info.faceId];
-            R0 = NODE_REF_HEX[fv[0]]; R1 = NODE_REF_HEX[fv[1]]; R2 = NODE_REF_HEX[fv[2]];
+            fv = PRISM_FACES[info.faceId];
+        } else {
+            fv = HEX_FACES[info.faceId];
         }
+        let R0 = nodeRef(element.np, fv[0]);
+        let R1 = nodeRef(element.np, fv[1]);
+        let R2 = nodeRef(element.np, fv[2]);
 
         let lam = (1.0 - u - v) * R0 + u * R1 + v * R2;
         ref_lam = lam;
 
-        var result: mat4x3f;
-        if (element.np == 4u) {
-            result = evalTetVec3GradAtDirect(curved_coeff_offset, order, lam);
-        } else if (element.np == 6u) {
-            result = evalPrismVec3GradAt(curved_coeff_offset, order, lam);
-        } else if (element.np == 8u) {
-            result = evalHexVec3GradAt(curved_coeff_offset, order, lam);
-        }
+        let result = evalTrueMapGrad(element.np, curved_coeff_offset, lam);
 
         position = result[0];
         let dlam_du = R1 - R0;
