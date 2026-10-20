@@ -118,6 +118,20 @@ class LicUniforms(UniformBase):
         )
 
 
+def _canvas_ready(renderer, options: RenderOptions) -> bool:
+    """True if the canvas has a size. Registers (once per canvas) a resize
+    callback that marks the renderer dirty: the LIC textures follow the canvas
+    size, and a canvas that is not laid out yet at the first update (size 0, a
+    texture of size 0 is invalid) gets its LIC on the first resize."""
+    canvas = getattr(options, "canvas", None)
+    if canvas is None:
+        return True
+    if getattr(renderer, "_resize_canvas", None) is not canvas:
+        renderer._resize_canvas = canvas
+        canvas.on_resize(renderer._on_camera_moved)
+    return int(canvas.width) > 0 and int(canvas.height) > 0
+
+
 def _store_lic_mvp(lic_uniforms: "LicUniforms", options: RenderOptions):
     """Record the camera MVP the LIC field is about to be built with into the LIC
     uniform, so the render pass can detect a stale LIC (camera moved since this
@@ -211,6 +225,8 @@ class ClippingLIC(ClippingCF):
             # compute still runs from Python in this update() before the engine
             # renders. (lic_output is rgba8unorm so its filterable "float" sample
             # type matches the engine's auto bind-group layout.)
+            return
+        if not _canvas_ready(self, options):
             return
 
         self._lic_enabled = True
@@ -549,6 +565,8 @@ class SurfaceLIC(CFRenderer):
         if os.environ.get("WEBGPU_EXPORTING"):
             # Static-HTML export can't carry the GPU-computed texture; show the
             # plain surface field there (graceful degrade), as ClippingLIC does.
+            return
+        if not _canvas_ready(self, options):
             return
 
         self._lic_enabled = True
