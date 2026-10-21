@@ -186,6 +186,9 @@ def evaluate_cf(cf, mesh, order, el2d_bitarray=None):
         pmat_abs = np.abs(pmat)  # element-wise absolute value
         minval = np.min(pmat_abs, axis=(0, 1))
         maxval = np.max(pmat_abs, axis=(0, 1))
+        if comps > 1:
+            # a vector component is shown signed (real part at some phase)
+            minval = -maxval
         norm = np.linalg.norm(pmat_abs, axis=2)
         minval = [float(np.min(norm))] + [float(v) for v in minval]
         maxval = [float(np.max(norm))] + [float(v) for v in maxval]
@@ -543,6 +546,8 @@ class FunctionData:
             pmat_abs = np.abs(pmat)
             minval = np.min(pmat_abs, axis=(0, 1))
             maxval = np.max(pmat_abs, axis=(0, 1))
+            if comps > 1:
+                minval = -maxval
             norm = np.linalg.norm(pmat_abs, axis=2)
         else:
             minval = np.min(pmat, axis=(0, 1))
