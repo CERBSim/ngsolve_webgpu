@@ -1085,7 +1085,8 @@ class CFRenderer(BaseMeshElements2d):
         self.gpu_objects.settings.component = component
         for cb in self._on_component_change:
             cb(component)
-        self.set_needs_update()
+        # the values stay, only the colormap range follows the component
+        super().set_needs_update()
 
     def set_complex_mode(self, mode):
         """Set complex visualization mode: 'real', 'imag', 'abs', 'arg'"""

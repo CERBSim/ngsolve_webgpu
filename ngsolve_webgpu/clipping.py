@@ -167,6 +167,8 @@ class ClippingCF(Renderer):
 
     def set_component(self, component: int):
         self.gpu_objects.settings.component = component
+        # update() widens the colormap to the range of the component
+        super().set_needs_update()
 
     def set_complex_mode(self, mode):
         """Set complex visualization mode: 'real', 'imag', 'abs', 'arg'"""
