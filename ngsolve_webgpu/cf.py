@@ -249,6 +249,9 @@ class FunctionData:
         order: int,
         order3d: int = -1,
     ):
+        import webgpu.utils
+
+        webgpu.utils.register_gpu_owner(self)
         self.mesh_data = mesh_data
         self.cf = cf
         self._base_order = order

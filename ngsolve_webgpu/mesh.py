@@ -193,7 +193,9 @@ class MeshBuffers:
 
     def __init__(self, mesh, el2d_bitarray=None, el3d_bitarray=None):
         import netgen.meshing
+        import webgpu.utils
 
+        webgpu.utils.register_gpu_owner(self)
         self.on_region = False
         self.el2d_bitarray = el2d_bitarray
         self.el3d_bitarray = el3d_bitarray
@@ -669,6 +671,9 @@ class MeshData:
     _timestamp: float = -1
 
     def __init__(self, mesh, el2d_bitarray=None, el3d_bitarray=None):
+        import webgpu.utils
+
+        webgpu.utils.register_gpu_owner(self)
         self.mesh_buffers = MeshBuffers.get_shared(mesh, el2d_bitarray, el3d_bitarray)
         self._deformation_data = None
         self._deformation_scale = 1
