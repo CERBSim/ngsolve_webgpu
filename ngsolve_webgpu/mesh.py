@@ -4,6 +4,7 @@ import netgen.meshing
 import typing
 import numpy as np
 import threading
+import warnings
 import weakref
 
 from webgpu.clipping import Clipping
@@ -955,7 +956,11 @@ class MeshElements2d(BaseMeshElements2d):
         super().__init__(data, label=label, clipping=clipping)
         
         def get_color(fd):
-            color = [int(ci*255) for ci in fd.color]
+            color = list(fd.color)
+            if any(not 0 <= ci <= 1 for ci in color):
+                warnings.warn(f"color {tuple(color)} of face '{fd.bcname}' outside [0,1], clamped")
+                color = [min(max(ci, 0.0), 1.0) for ci in color]
+            color = [int(ci*255) for ci in color]
             if len(color) == 3:
                 color = color + [255]
             return color
