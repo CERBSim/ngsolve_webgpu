@@ -370,8 +370,10 @@ class MeshBuffers:
 
         trigs_data = np.zeros((len(trigs), 4), dtype=np.int32)
 
-        trigs_data[:, :3] = trigs["nodes"][:, :3] - POINTINDEX_BASE
-        trigs_data[:, 3] = trigs["index"] - 1
+        # an empty element array has nodes of width 0
+        if len(trigs):
+            trigs_data[:, :3] = trigs["nodes"][:, :3] - POINTINDEX_BASE
+            trigs_data[:, 3] = trigs["index"] - 1
         # trigs_data = trigs_data.flatten()
 
         # append fourth point for quads
@@ -448,8 +450,9 @@ class MeshBuffers:
 
             els_data = np.zeros((len(els), 5), dtype=np.int32)
 
-            els_data[:, :4] = els["nodes"][:, :4] - POINTINDEX_BASE
-            els_data[:, 4] = els["index"] - 1
+            if len(els):
+                els_data[:, :4] = els["nodes"][:, :4] - POINTINDEX_BASE
+                els_data[:, 4] = els["index"] - 1
 
             rest_data = []
 
