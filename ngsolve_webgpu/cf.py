@@ -319,6 +319,61 @@ class FunctionData:
                 )
         self._component_labels = labels
 
+    def evaluate(self, point):
+        """Field value at world coordinates *point* (undeformed mesh), None
+        outside the mesh."""
+        mip = self.mesh_data.locate(point)
+        if mip is None:
+            return None
+        try:
+            return np.asarray(self.cf(mip))
+        except Exception:
+            return None
+
+    def compute_range(self, materials=None, boundaries=None):
+        """Value range over the given regions, in the layout of ``minval`` /
+        ``maxval`` (``[norm, comp0, ...]``; complex fields by modulus).
+        *materials* are codim-0 region names, *boundaries* boundary region
+        names (3D meshes only). Returns ``(minval, maxval)`` or None."""
+        import re
+        import ngsolve as ngs
+
+        mesh = self.mesh_data.ngs_mesh
+        ET = ngs.ET
+        vol_types = (ET.TET, ET.HEX, ET.PRISM, ET.PYRAMID) if mesh.dim == 3 else (ET.TRIG, ET.QUAD)
+        pattern = lambda names: "|".join(re.escape(n) for n in dict.fromkeys(names))
+        regions = []
+        if materials:
+            regions.append((mesh.Materials(pattern(materials)), vol_types))
+        if boundaries and mesh.dim == 3:
+            regions.append((mesh.Boundaries(pattern(boundaries)), (ET.TRIG, ET.QUAD)))
+
+        order = max(2 * self.base_order, 2)
+        minval = maxval = None
+        for region, eltypes in regions:
+            try:
+                rules = {et: ngs.IntegrationRule(et, order) for et in eltypes}
+                with ngs.TaskManager():
+                    pts = mesh.MapToAllElements(rules, region)
+                    vals = self.cf(pts)
+            except Exception:
+                continue
+            vals = np.asarray(vals).reshape(len(pts), -1)
+            comps = np.abs(vals) if self.is_complex else np.real(vals)
+            if comps.size == 0:
+                continue
+            norm = np.linalg.norm(comps, axis=1)
+            mn = [float(np.min(norm))] + [float(v) for v in np.min(comps, axis=0)]
+            mx = [float(np.max(norm))] + [float(v) for v in np.max(comps, axis=0)]
+            if minval is None:
+                minval, maxval = mn, mx
+            else:
+                minval = [min(a, b) for a, b in zip(minval, mn)]
+                maxval = [max(a, b) for a, b in zip(maxval, mx)]
+        if minval is None:
+            return None
+        return minval, maxval
+
     @property
     def min_values(self):
         """Dict mapping component option value -> min. {-1: norm, 0: comp0, ...}"""

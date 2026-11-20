@@ -285,7 +285,7 @@ class MeshBuffers:
         m = self.reg_or_mesh
         return m.mesh if isinstance(m, ngsolve.Region) else m
 
-    # -- region info ---------------------------------------------------
+    # -- region and element info ---------------------------------------
 
     @property
     def dim(self):
@@ -308,6 +308,26 @@ class MeshBuffers:
         if self.dim != 3:
             return []
         return [(fd.domin, fd.domout) for fd in self.mesh.FaceDescriptors()]
+
+    def element_types(self):
+        """Type names (``"TET"``, ``"PRISM"``, ``"TRIG"``, ...) of the codim-0
+        elements of the whole mesh, in element order."""
+        if getattr(self, "_element_types", None) is None:
+            import ngsolve as ngs
+
+            self._element_types = np.array(
+                [el.type.name for el in self.ngs_mesh.Elements(ngs.VOL)]
+            )
+        return self._element_types
+
+    def locate(self, point):
+        """Mesh point at world coordinates *point*, None outside the mesh."""
+        mesh = self.ngs_mesh
+        try:
+            mip = mesh(*[float(point[i]) for i in range(mesh.dim)])
+        except Exception:
+            return None
+        return mip if mip.nr >= 0 else None
 
     @property
     def need_3d(self):
@@ -815,7 +835,7 @@ class MeshData:
         self._timestamp = -1
         self.mesh_buffers.set_needs_update()
 
-    # -- region info, shared over all views of the mesh ----------------
+    # -- region and element info, shared over all views of the mesh ----
 
     @property
     def dim(self):
@@ -832,6 +852,36 @@ class MeshData:
     @property
     def boundary_adjacency(self):
         return self.mesh_buffers.boundary_adjacency
+
+    def element_types(self):
+        return self.mesh_buffers.element_types()
+
+    def locate(self, point):
+        return self.mesh_buffers.locate(point)
+
+    def undeformed(self, point, maxiter=12, tol=1e-10):
+        """Map a point of the deformed view back to the mesh: solves
+        ``Q = P + scale * deformation(P)`` for P by fixed-point iteration.
+        Returns *point* unchanged without deformation or if it fails."""
+        Q = np.zeros(3)
+        Q[: min(3, len(point))] = np.asarray(point, dtype=float)[:3]
+        deform = self._deformation_data
+        scale = float(self._deformation_scale)
+        if deform is None or scale == 0.0:
+            return Q
+        P = Q.copy()
+        for _ in range(maxiter):
+            val = deform.evaluate(P)
+            if val is None:
+                return Q
+            d = np.real(np.asarray(val, dtype=complex)).ravel()
+            dv = np.zeros(3)
+            dv[: min(3, d.size)] = d[:3]
+            new_p = Q - scale * dv
+            if np.linalg.norm(new_p - P) < tol:
+                return new_p
+            P = new_p
+        return P
 
     @property
     def needs_update(self):
