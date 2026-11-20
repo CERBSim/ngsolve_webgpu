@@ -228,6 +228,15 @@ def evaluate_cf(cf, mesh, order, el2d_bitarray=None):
     return ret, minval, maxval
 
 
+def default_component_labels(n):
+    """x, y, z for up to 3 components, 1..n above, [] for scalars."""
+    if n <= 1:
+        return []
+    if n <= 3:
+        return ["x", "y", "z"][:n]
+    return [str(i + 1) for i in range(n)]
+
+
 class FunctionData:
     mesh_data: MeshData
     data_2d: np.ndarray | None = None
@@ -248,12 +257,15 @@ class FunctionData:
         cf: "ngs.CoefficientFunction",
         order: int,
         order3d: int = -1,
+        component_labels: list[str] | None = None,
     ):
         import webgpu.utils
 
         webgpu.utils.register_gpu_owner(self)
         self.mesh_data = mesh_data
         self.cf = cf
+        self._component_labels = None
+        self.component_labels = component_labels
         self._base_order = order
         self.order = order
         self.order_3d = order if order3d == -1 else order3d
@@ -287,6 +299,25 @@ class FunctionData:
                 "dropdown", "Component", options=options, default=-1
             )
         return self._component_param
+
+    @property
+    def component_labels(self):
+        """Labels of the components for a component selector, [] for scalars.
+        Default x, y, z (numbers above 3 components); settable, e.g. ``["r", "z"]``,
+        None restores the default."""
+        if self._component_labels is not None:
+            return list(self._component_labels)
+        return default_component_labels(self.num_components)
+
+    @component_labels.setter
+    def component_labels(self, labels):
+        if labels is not None:
+            labels = [str(l) for l in labels]
+            if len(labels) != self.num_components:
+                raise ValueError(
+                    f"{len(labels)} component labels for a field with {self.num_components} components"
+                )
+        self._component_labels = labels
 
     @property
     def min_values(self):
