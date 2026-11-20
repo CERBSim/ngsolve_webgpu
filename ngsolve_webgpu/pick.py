@@ -33,6 +33,7 @@ class MeshPickResult:
     """
 
     def __init__(self, event, mesh, options, kind="surface"):
+        """*mesh* is a ``MeshData`` (or an ngsolve mesh, deprecated)."""
         self.event = event
         self.kind = kind  # "surface", "volume", or "clipping"
         self.element_nr = int(event.uint32[0])
@@ -41,10 +42,11 @@ class MeshPickResult:
 
         # Derive region name: surface on 3D uses boundaries; on 2D surface=volume uses materials
         try:
-            if kind == "surface" and mesh.dim == 3:
-                names = mesh.GetBoundaries()
+            boundaries = kind == "surface" and mesh.dim == 3
+            if hasattr(mesh, "material_names"):
+                names = mesh.boundary_names if boundaries else mesh.material_names
             else:
-                names = mesh.GetMaterials()
+                names = mesh.GetBoundaries() if boundaries else mesh.GetMaterials()
             self.region_name = names[self.region_index] if self.region_index < len(names) else f"region {self.region_index}"
         except Exception:
             self.region_name = f"region {self.region_index}"

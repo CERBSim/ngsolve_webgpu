@@ -285,6 +285,30 @@ class MeshBuffers:
         m = self.reg_or_mesh
         return m.mesh if isinstance(m, ngsolve.Region) else m
 
+    # -- region info ---------------------------------------------------
+
+    @property
+    def dim(self):
+        return self.mesh.dim
+
+    @property
+    def material_names(self):
+        """Names of the codim-0 regions, indexed by material number - 1."""
+        return list(self.ngs_mesh.GetMaterials())
+
+    @property
+    def boundary_names(self):
+        """Names of the codim-1 regions, indexed by boundary number - 1."""
+        return list(self.ngs_mesh.GetBoundaries())
+
+    @property
+    def boundary_adjacency(self):
+        """Per boundary region of a 3D mesh the adjacent material numbers
+        ``(domin, domout)``, 0 = none. Empty on 2D meshes."""
+        if self.dim != 3:
+            return []
+        return [(fd.domin, fd.domout) for fd in self.mesh.FaceDescriptors()]
+
     @property
     def need_3d(self):
         return self._need_3d
@@ -790,6 +814,24 @@ class MeshData:
     def set_needs_update(self):
         self._timestamp = -1
         self.mesh_buffers.set_needs_update()
+
+    # -- region info, shared over all views of the mesh ----------------
+
+    @property
+    def dim(self):
+        return self.mesh_buffers.dim
+
+    @property
+    def material_names(self):
+        return self.mesh_buffers.material_names
+
+    @property
+    def boundary_names(self):
+        return self.mesh_buffers.boundary_names
+
+    @property
+    def boundary_adjacency(self):
+        return self.mesh_buffers.boundary_adjacency
 
     @property
     def needs_update(self):

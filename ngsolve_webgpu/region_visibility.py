@@ -117,3 +117,106 @@ class RegionVisibility:
         none is assigned). Helper for the renderers' ``get_bindings``."""
         rv = getattr(renderer, "region_visibility", None)
         return rv.get_bindings() if rv is not None else []
+
+
+class RegionState:
+    """Region visibility intent and the alphas derived from it.
+
+    Holds the hidden codim-0 region names and per-boundary overrides
+    (``True`` = force show, ``False`` = force hide, absent = auto) and derives
+    the alpha arrays for :class:`RegionVisibility`. A boundary face is drawn
+    iff at least one adjacent material is visible; free-standing surfaces
+    stay visible. Regions are addressed by name, repeated names toggle
+    together. Indexing as in :class:`RegionVisibility`.
+
+    *mesh* is a ``MeshData`` (or anything with ``dim``, ``material_names``,
+    ``boundary_names``, ``boundary_adjacency``); an ngsolve mesh is accepted
+    and wrapped.
+    """
+
+    def __init__(self, mesh):
+        if not hasattr(mesh, "material_names"):
+            from .mesh import MeshBuffers
+
+            mesh = MeshBuffers.get_shared(mesh)
+        self.dim = mesh.dim
+        self.hidden = set()
+        self.overrides = {}
+
+        self.materials = list(mesh.material_names)
+        if self.dim == 3:
+            self.boundaries = list(mesh.boundary_names)
+            self.fd_doms = list(mesh.boundary_adjacency)
+            # one boundary region per face descriptor (el2d index == fd number)
+            n = min(len(self.boundaries), len(self.fd_doms))
+            self.boundaries = self.boundaries[:n]
+            self.fd_doms = self.fd_doms[:n]
+        else:
+            self.boundaries = []
+            self.fd_doms = []
+        self._cache_key = None
+
+    @property
+    def unique_materials(self):
+        return list(dict.fromkeys(self.materials))
+
+    @property
+    def unique_boundaries(self):
+        return list(dict.fromkeys(self.boundaries))
+
+    def material_name(self, index):
+        """Region name for a 0-based material index (None if out of range)."""
+        if 0 <= index < len(self.materials):
+            return self.materials[index]
+        return None
+
+    def vol_alphas(self):
+        return np.array(
+            [0.0 if m in self.hidden else 1.0 for m in self.materials],
+            dtype=np.float32,
+        )
+
+    def surf_alphas(self):
+        # cached: a regions panel queries this once per boundary row
+        key = (frozenset(self.hidden), frozenset(self.overrides.items()))
+        if key != self._cache_key:
+            self._alphas = self._compute_surf_alphas()
+            self._effective = {n for n, a in zip(self.boundaries, self._alphas) if a > 0}
+            self._cache_key = key
+        return self._alphas.copy()
+
+    def _compute_surf_alphas(self):
+        if self.dim != 3:
+            # 2D: the drawn surface elements are the materials
+            return self.vol_alphas()
+        vol = self.vol_alphas()
+        nmat = len(vol)
+        alphas = np.empty(len(self.fd_doms), dtype=np.float32)
+        for i, (name, doms) in enumerate(zip(self.boundaries, self.fd_doms)):
+            ov = self.overrides.get(name)
+            if ov is not None:
+                alphas[i] = 1.0 if ov else 0.0
+                continue
+            doms = [d for d in doms if 1 <= d <= nmat]
+            alphas[i] = 1.0 if (not doms or any(vol[d - 1] > 0 for d in doms)) else 0.0
+        return alphas
+
+    def material_visible(self, name):
+        return name not in self.hidden
+
+    def boundary_effective(self, name):
+        """Whether any boundary region with this name is currently drawn."""
+        self.surf_alphas()
+        return name in self._effective
+
+    def visible_boundary_names(self):
+        alphas = self.surf_alphas()
+        return list(dict.fromkeys(
+            n for i, n in enumerate(self.boundaries) if alphas[i] > 0
+        ))
+
+    def any_hidden(self):
+        """True if the state hides anything relative to the default."""
+        if self.hidden & set(self.materials):
+            return True
+        return any(self.overrides.get(n) is False for n in self.boundaries)
