@@ -96,7 +96,7 @@ fn vertexWireframe2d(@builtin(vertex_index) vertexId: u32, @builtin(instance_ind
     let index = tri.index;
 
 #ifdef REGION_VISIBILITY
-    if (regionAlphaSurf(index) == 0.0) {
+    if (regionAlphaSurf(index) == 0.0 || !elementVisible2d(tri.nr)) {
         var hidden: VertexOutput2d;
         return hidden;
     }
@@ -369,7 +369,7 @@ fn calcTrig(tri: Triangle, vertexId: u32, instanceId: u32, rawInstanceId: u32)
     let index = tri.index;
 
 #ifdef REGION_VISIBILITY
-    if (regionAlphaSurf(index) == 0.0) {
+    if (regionAlphaSurf(index) == 0.0 || !elementVisible2d(tri.nr)) {
         var hidden: VertexOutput2d;
         return hidden;
     }

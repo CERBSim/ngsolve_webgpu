@@ -2,14 +2,18 @@
 
 Used like ``Clipping``/``Colormap``: one instance per scene/tab, assigned to the
 renderers that should respect it (``renderer.region_visibility = rv``). Holds a
-single storage buffer of f32 alphas with the layout::
+single storage buffer of f32 alphas and element bit masks with the layout::
 
-    [bitcast(n_vol), bitcast(n_surf), vol_alpha[n_vol], surf_alpha[n_surf]]
+    [bitcast(n_vol), bitcast(n_surf), bitcast(n_el2d), bitcast(n_el3d),
+     vol_alpha[n_vol], surf_alpha[n_surf],
+     el2d_bits[ceil(n_el2d / 32)], el3d_bits[ceil(n_el3d / 32)]]
 
 ``vol`` alphas are indexed by the 3D element region index (netgen material
 number - 1), ``surf`` alphas by the 2D element index (face descriptor
 number - 1 on 3D meshes, material number - 1 on 2D meshes). Out-of-range
-indices count as visible, so partial arrays are safe.
+indices count as visible, so partial arrays are safe. The element masks are
+indexed by the drawn 2D and 3D element numbers (``MeshData.drawn_elements``);
+they are empty until ``set_element_masks`` is called with a mask.
 
 Renderers only compile the visibility check into their shaders when an
 instance is assigned (``REGION_VISIBILITY`` define); without one nothing
@@ -20,12 +24,26 @@ future ghost rendering.
 
 The GPU buffer is allocated once with the sizes of the first ``set_alphas``
 call and updated in place afterwards, so live/export engines can keep a
-stable reference to it (it acts as a compute-pass trigger there).
+stable reference to it (it acts as a compute-pass trigger there). The first
+element mask grows it (``buffer`` is then a new buffer; renderers holding
+the old one have to be updated).
 """
 
 import numpy as np
 
 from webgpu.utils import BufferBinding, buffer_from_array, write_array_to_buffer
+
+
+def _pack(mask, n):
+    """Bits of a bool mask (None: all set) in u32 words, bit i of word i // 32."""
+    words = (n + 31) // 32
+    bits = np.ones(words * 32, dtype=bool)
+    if mask is not None:
+        mask = np.asarray(mask, dtype=bool)
+        if len(mask) != n:
+            raise ValueError(f"element mask of length {len(mask)} for {n} elements")
+        bits[:n] = mask
+    return np.packbits(bits, bitorder="little").view(np.uint32)
 
 
 class Binding:
@@ -42,6 +60,9 @@ class RegionVisibility:
         self._surf = np.asarray(
             [] if surf_alphas is None else surf_alphas, dtype=np.float32
         )
+        self._el2d = np.zeros(0, dtype=np.uint32)   # bit words, n_el2d bits
+        self._el3d = np.zeros(0, dtype=np.uint32)
+        self._n_el = (0, 0)
         self._buffer = None
         # Called after every alpha change; the owning scene hooks re-render /
         # recompute here.
@@ -56,15 +77,19 @@ class RegionVisibility:
         return self._surf
 
     @property
+    def element_counts(self):
+        """(drawn 2D, drawn 3D elements) with bits in the buffer."""
+        return self._n_el
+
+    @property
     def buffer(self):
         """The GPU buffer (created on first access)."""
         return self._ensure_buffer()
 
     def _data(self):
-        header = np.array([len(self._vol), len(self._surf)], dtype=np.uint32)
-        return np.concatenate(
-            (header.view(np.float32), self._vol, self._surf)
-        )
+        header = np.array([len(self._vol), len(self._surf), *self._n_el], dtype=np.uint32)
+        return np.concatenate((header.view(np.float32), self._vol, self._surf,
+                               self._el2d.view(np.float32), self._el3d.view(np.float32)))
 
     def _ensure_buffer(self):
         if self._buffer is None:
@@ -97,6 +122,23 @@ class RegionVisibility:
                 )
             self._surf = surf
         if self._buffer is not None:
+            write_array_to_buffer(self._buffer, self._data())
+        for cb in self.callbacks:
+            cb()
+
+    def set_element_masks(self, el2d=None, el3d=None):
+        """Visible drawn 2D and 3D elements (bool arrays, None: all). A kind
+        gets bits with its first mask and keeps them; a new element count
+        makes a new buffer."""
+        n = tuple(len(m) if m is not None else old for m, old in zip((el2d, el3d), self._n_el))
+        if n == (0, 0):
+            return
+        self._el2d = _pack(el2d, n[0])
+        self._el3d = _pack(el3d, n[1])
+        if n != self._n_el:
+            self._n_el = n
+            self._buffer = None
+        elif self._buffer is not None:
             write_array_to_buffer(self._buffer, self._data())
         for cb in self.callbacks:
             cb()

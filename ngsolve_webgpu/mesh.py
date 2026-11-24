@@ -341,6 +341,29 @@ class MeshBuffers:
         self._need_3d = True
         self.set_needs_update()
 
+    def element_numbers(self, dim):
+        """Numbers of the drawn 2D (``dim`` 2) or 3D elements among all of the
+        mesh, None if all are drawn."""
+        if dim == 3:
+            if self.el3d_bitarray is None:
+                return None
+            return np.flatnonzero(np.array(self.el3d_bitarray, dtype=bool))
+        numbers = None
+        if self.el2d_bitarray is not None:
+            numbers = np.flatnonzero(np.array(self.el2d_bitarray, dtype=bool))
+        if self.on_region:
+            import ngsolve as ngs
+
+            region = self.reg_or_mesh
+            if region.VB() == ngs.VOL and region.mesh.dim == 3:
+                region = region.Boundaries()
+            index = self.mesh.Elements2D().NumPy()["index"]
+            if numbers is not None:
+                index = index[numbers]
+            keep = np.isin(index, np.flatnonzero(region.Mask()) + 1)
+            numbers = (np.arange(len(keep)) if numbers is None else numbers)[keep]
+        return numbers
+
     def set_needs_update(self):
         """Update GPU data on next render call"""
         self._last_mesh_timestamp = -1
@@ -400,16 +423,9 @@ class MeshBuffers:
 
         # Trigs TODO: Quads
         trigs = mesh.Elements2D().NumPy()
-        if self.el2d_bitarray is not None:
-            trigs = trigs[np.array(self.el2d_bitarray, dtype=bool)]
-        if self.on_region:
-            region = self.reg_or_mesh
-            import ngsolve as ngs
-
-            if region.VB() == ngs.VOL and region.mesh.dim == 3:
-                region = region.Boundaries()
-            indices = np.flatnonzero(region.Mask()) + 1
-            trigs = trigs[np.isin(trigs["index"], indices)]
+        numbers = self.element_numbers(2)
+        if numbers is not None:
+            trigs = trigs[numbers]
         self.num_elements[ElType.TRIG] = len(trigs)
 
         trigs_data = np.zeros((len(trigs), 4), dtype=np.int32)
@@ -475,8 +491,9 @@ class MeshBuffers:
         n_curved_all = 0
         if self.need_3d:
             els = mesh.Elements3D().NumPy()
-            if self.el3d_bitarray is not None:
-                els = els[np.array(self.el3d_bitarray, dtype=bool)]
+            numbers = self.element_numbers(3)
+            if numbers is not None:
+                els = els[numbers]
             els_np = (els["np"] if "np" in els.dtype.names
                       else netgen.meshing.ElementNP[els["type"]])
             for num_pts in (4, 5, 6, 8, 10):
@@ -779,6 +796,15 @@ class MeshData:
     @property
     def el3d_bitarray(self):
         return self.mesh_buffers.el3d_bitarray
+
+    def drawn_masks(self, el2d=None, el3d=None):
+        """Masks over all 2D and 3D elements of the mesh as masks over the
+        drawn ones (``RegionVisibility.set_element_masks``)."""
+        out = []
+        for dim, mask in ((2, el2d), (3, el3d)):
+            numbers = None if mask is None else self.mesh_buffers.element_numbers(dim)
+            out.append(mask if numbers is None else np.asarray(mask)[numbers])
+        return tuple(out)
 
     @property
     def elements(self):
