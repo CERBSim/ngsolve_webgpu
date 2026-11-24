@@ -22,6 +22,33 @@ class HighlightUniforms(UniformBase):
                          solid_index=0xFFFFFFFF, owner_id=owner_id, **kwargs)
 
 
+class RegionSelection:
+    """Selected regions of one renderer (binding 58, ``HAS_SELECTION`` in
+    highlight.wgsl), by the region index the renderer draws with."""
+
+    def __init__(self, mesh_data):
+        mesh_data = getattr(mesh_data, "mesh_data", mesh_data)
+        n = max(len(mesh_data.material_names), len(mesh_data.boundary_names), 1)
+        self.flags = np.zeros(n, dtype=np.uint32)
+        self._buffer = None
+
+    def set(self, indices):
+        self.flags[:] = 0
+        for i in indices:
+            if 0 <= i < len(self.flags):
+                self.flags[i] = 1
+        if self._buffer is not None:
+            from webgpu.utils import write_array_to_buffer
+
+            write_array_to_buffer(self._buffer, self.flags)
+
+    def get_bindings(self):
+        from webgpu.utils import BufferBinding, buffer_from_array
+
+        self._buffer = buffer_from_array(self.flags, reuse=self._buffer, use_cache=False)
+        return [BufferBinding(58, self._buffer)]
+
+
 class MeshPickResult:
     """Rich pick result for mesh-based renderers.
 

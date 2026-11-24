@@ -12,6 +12,8 @@ from webgpu.font import Font
 from webgpu.renderer import Renderer, RenderOptions, check_timestamp
 from webgpu.colormap import Colormap
 
+from .pick import RegionSelection
+
 if typing.TYPE_CHECKING:
     import netgen.meshing
     import ngsolve
@@ -26,6 +28,7 @@ from webgpu.utils import (
     get_device,
     read_shader_file,
     uniform_from_array,
+    write_array_to_buffer,
     Lock,
 )
 from webgpu.webgpu_api import *
@@ -1011,6 +1014,7 @@ class BaseMeshElements2d(Renderer):
         from .pick import HighlightUniforms
         self.gpu_objects.complex_settings = ComplexSettings()
         self._highlight_uniforms = HighlightUniforms(owner_id=self._id)
+        self.region_selection = RegionSelection(data)
 
     def update(self, options: RenderOptions):
         self.clipping.update(options)
@@ -1030,7 +1034,8 @@ class BaseMeshElements2d(Renderer):
         if self.data.deformation_data:
             order = max(order, self.data.deformation_data.order)
 
-        self.shader_defines = {"MAX_EVAL_ORDER": 1, "MAX_EVAL_ORDER_VEC3": order + 1}
+        self.shader_defines = {"MAX_EVAL_ORDER": 1, "MAX_EVAL_ORDER_VEC3": order + 1,
+                               "HAS_SELECTION": 1}
         from .region_visibility import RegionVisibility
         RegionVisibility.apply(self, self.shader_defines)
         if self.symmetry:
@@ -1055,6 +1060,7 @@ class BaseMeshElements2d(Renderer):
             UniformBinding(Binding.SUBDIVISION, self._buffers["subdivision"]),
             *self.gpu_objects.complex_settings.get_bindings(),
             *self._highlight_uniforms.get_bindings(),
+            *self.region_selection.get_bindings(),
             *RegionVisibility.bindings(self),
         ]
         if hasattr(self, "color_uniform"):
@@ -1137,10 +1143,29 @@ class MeshSegments(Renderer):
         self._buffers: dict[str, Buffer] = {}
         self._thickness_uniform: Buffer | None = None
         self._user_colors = colors
+        self._n_colors = 0
         self._highlight_uniforms = HighlightUniforms(owner_id=self._id)
 
     def get_bounding_box(self):
         return self.data.get_bounding_box()
+
+    def _color_array(self):
+        colors = np.zeros((self._n_colors, 4), dtype=np.float32)
+        if self._user_colors is None:
+            colors[:] = (0.0, 0.0, 0.0, 1.0)
+        for i, c in enumerate((self._user_colors or [])[:self._n_colors]):
+            colors[i] = [ci / 255 if ci > 1 else ci for ci in c[:4]]
+        return colors
+
+    def set_colors(self, colors):
+        """Colors per segment index (RGBA, 0..1 or 0..255), written into the
+        drawn buffer without a rebuild."""
+        self._user_colors = colors
+        buf = self._buffers.get("colors")
+        if buf is None:
+            self.set_needs_update()
+        elif self._n_colors:
+            write_array_to_buffer(buf, self._color_array().flatten())
 
     def update(self, options: RenderOptions):
         self.clipping.update(options)
@@ -1166,15 +1191,8 @@ class MeshSegments(Renderer):
         # indices and colors: one color entry per segment index
         indices = segs["index"].astype(np.uint32) - 1
         edge_indices = indices
-        max_index = int(edge_indices.max()) if edge_indices.size > 0 else -1
-        colors = np.zeros((max_index + 1, 4), dtype=np.float32)
-        if self._user_colors is not None:
-            for i, c in enumerate(self._user_colors):
-                if i > max_index:
-                    break
-                colors[i] = np.array([ci / 255 if ci > 1 else ci for ci in c[:4]], dtype=np.float32)
-        else:
-            colors[:, :] = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
+        self._n_colors = int(edge_indices.max()) + 1 if edge_indices.size > 0 else 0
+        colors = self._color_array()
 
         subdivision = self.data.subdivision or 1
 
@@ -1265,6 +1283,7 @@ class MeshElements3d(Renderer):
         self.uniforms = None
         self.region_visibility = None
         self._highlight_uniforms = HighlightUniforms(owner_id=self._id)
+        self.region_selection = RegionSelection(data)
         if colors is None:
             colors = [[255, 0, 0, 255] for _ in range(len(data.ngs_mesh.GetMaterials()))]
         self.gpu_objects.colormap = Colormap(colormap=colors, minval=-0.5, maxval=len(colors) - 0.5)
@@ -1331,7 +1350,7 @@ class MeshElements3d(Renderer):
         self._n_instances_flat = 4 * n_3d
         self._n_instances_subdiv = self.n_instances - self._n_instances_flat
         self.n_vertices = 3 * self._subdivision ** 2
-        self.shader_defines = self.data.get_shader_defines()
+        self.shader_defines = self.data.get_shader_defines() | {"HAS_SELECTION": 1}
         from .region_visibility import RegionVisibility
         RegionVisibility.apply(self, self.shader_defines)
         if self.symmetry:
@@ -1376,6 +1395,7 @@ class MeshElements3d(Renderer):
             *self.uniforms.get_bindings(),
             *self.gpu_objects.colormap.get_bindings(),
             *self._highlight_uniforms.get_bindings(),
+            *self.region_selection.get_bindings(),
             *RegionVisibility.bindings(self),
         ]
         if self.symmetry:

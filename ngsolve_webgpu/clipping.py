@@ -54,7 +54,7 @@ class ClippingCF(Renderer):
         self, data: FunctionData, clipping: Clipping = None, colormap: Colormap = None, component=None, symmetry=None
     ):
         super().__init__()
-        from .pick import HighlightUniforms
+        from .pick import HighlightUniforms, RegionSelection
         self._clipping = clipping or Clipping()
         self.clipping = Clipping()
         self.region_visibility = None
@@ -73,6 +73,7 @@ class ClippingCF(Renderer):
         self.gpu_objects.settings = FunctionSettings(component=component)
         self.gpu_objects.complex_settings = ComplexSettings()
         self._highlight_uniforms = HighlightUniforms(owner_id=self._id)
+        self.region_selection = RegionSelection(data)
         self._phase_animation = None
         self._scene = None
         self._anim_speed = 1.0
@@ -127,6 +128,7 @@ class ClippingCF(Renderer):
         self.shader_defines["CLIPPING_CUT_LEVELS"] = cut_levels
         clip_subdiv = 1
         self.shader_defines["CLIPPING_SUBDIVISION"] = clip_subdiv
+        self.shader_defines["HAS_SELECTION"] = 1
         from .region_visibility import RegionVisibility
         RegionVisibility.apply(self, self.shader_defines)
         self.n_vertices = 3 * clip_subdiv * clip_subdiv
@@ -276,6 +278,7 @@ class ClippingCF(Renderer):
                 *self.gpu_objects.complex_settings.get_bindings(),
                 BufferBinding(24, self.cut_trigs),
                 *self._highlight_uniforms.get_bindings(),
+                *self.region_selection.get_bindings(),
             ]
             if self.symmetry:
                 bindings += self.symmetry.get_bindings(self._original_n_instances)
