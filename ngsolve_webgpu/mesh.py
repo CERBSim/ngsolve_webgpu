@@ -166,6 +166,12 @@ class _MeshMetaData(ct.Structure):
 _shared_mesh_buffers = weakref.WeakValueDictionary()
 
 
+def shared_mesh_buffers(mesh):
+    """The shared MeshBuffers of a mesh and of its regions."""
+    ngmesh = getattr(mesh, "ngmesh", mesh)
+    return [b for b in list(_shared_mesh_buffers.values()) if b.mesh is ngmesh]
+
+
 class MeshBuffers:
     """CPU/GPU buffers built from one mesh (element tables, curvature, the
     "mesh" storage buffer). Shared by all MeshData views on the same mesh;
@@ -231,20 +237,20 @@ class MeshBuffers:
             return MeshBuffers(mesh, el2d_bitarray, el3d_bitarray)
         import netgen.meshing
 
-        if isinstance(mesh, netgen.meshing.Mesh):
-            key = (id(mesh),)
-        else:
+        ngmesh, region = mesh, ()
+        if not isinstance(mesh, netgen.meshing.Mesh):
             import ngsolve as ngs
 
             if isinstance(mesh, ngs.Region):
-                mask = np.array(mesh.Mask(), dtype=bool).tobytes()
-                key = (id(mesh.mesh.ngmesh), repr(mesh.VB()), mask)
+                region = (repr(mesh.VB()), np.array(mesh.Mask(), dtype=bool).tobytes())
+                ngmesh = mesh.mesh.ngmesh
             else:
-                key = (id(mesh.ngmesh),)
+                ngmesh = mesh.ngmesh
+        # .ngmesh gives a new python object unless one is alive: ngmesh stays
+        # alive here, so the instance holds this one and its id stays the key
+        key = (id(ngmesh), *region)
         shared = _shared_mesh_buffers.get(key)
         if shared is None:
-            # the instance holds the mesh alive, so the id in the key cannot
-            # be reused while the entry exists
             shared = MeshBuffers(mesh)
             _shared_mesh_buffers[key] = shared
         return shared
